@@ -30,7 +30,7 @@ PACKAGE_ENTRIES = (
     "SKILL.md", "references", "templates", "scripts",
     "ATTRIBUTION.md", "LICENSE", "VERSION",
 )
-LOCAL_LINK_RE = re.compile(r"(?<!)\\[[^\\]]+\\]\\(([^)]+)\\)")
+LOCAL_LINK_RE = re.compile(r"\]\(([^)]+)\)")
 
 
 def parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
