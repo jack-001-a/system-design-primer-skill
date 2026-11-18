@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v*"
+  create:
 
 permissions:
   contents: write
@@ -11,6 +12,7 @@ permissions:
 jobs:
   release:
     name: Build and publish release assets
+    if: github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -25,16 +27,29 @@ jobs:
           python -m unittest discover -s tests -v
           bash -n scripts/install.sh
           bash tests/test_install.sh
-      - name: Verify tag matches VERSION
+      - name: Determine release tag and target
+        id: release_meta
+        shell: bash
         run: |
           VERSION="v$(cat VERSION)"
-          test "$GITHUB_REF_NAME" = "$VERSION"
+          if [[ "$GITHUB_EVENT_NAME" == "create" ]]; then
+            test "$GITHUB_EVENT_REF_TYPE" = "branch"
+            test "$GITHUB_EVENT_REF" = "release/$VERSION"
+            echo "tag_name=$VERSION" >> "$GITHUB_OUTPUT"
+            echo "target_commitish=$GITHUB_EVENT_REF" >> "$GITHUB_OUTPUT"
+          else
+            test "$GITHUB_REF_NAME" = "$VERSION"
+            echo "tag_name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+            echo "target_commitish=" >> "$GITHUB_OUTPUT"
+          fi
       - name: Build ZIP and checksums
         run: python tools/package.py --output-dir dist
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: System Design Primer ${{ github.ref_name }}
+          tag_name: ${{ steps.release_meta.outputs.tag_name }}
+          target_commitish: ${{ steps.release_meta.outputs.target_commitish }}
+          name: System Design Primer ${{ steps.release_meta.outputs.tag_name }}
           generate_release_notes: true
           files: |
             dist/*.zip
