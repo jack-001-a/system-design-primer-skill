@@ -15,7 +15,7 @@ Run these commands from the repository root:
     python scripts/validate.py
     python -m unittest discover -s tests -v
     bash -n scripts/install.sh
-    bash scripts/test_install.sh
+    bash tests/test_install.sh
     python tools/package.py --output-dir dist
 
 On Windows, also run:
