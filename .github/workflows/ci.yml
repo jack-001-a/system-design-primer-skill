@@ -1,0 +1,84 @@
+name: Validate and package
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux:
+    name: Linux validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate Skill package
+        run: python scripts/validate.py
+      - name: Run Python unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Check Bash syntax
+        run: bash -n scripts/install.sh scripts/test_install.sh
+      - name: Test Bash installer
+        run: bash scripts/test_install.sh
+      - name: Build deterministic distribution
+        run: python tools/package.py --output-dir dist
+      - name: Verify distribution archive and manifest
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import zipfile
+          from pathlib import Path
+          archive = next(Path("dist").glob("system-design-primer-v*.zip"))
+          with zipfile.ZipFile(archive) as zf:
+              names = set(zf.namelist())
+              required = {
+                  "system-design-primer/SKILL.md",
+                  "system-design-primer/references/00-primer-map-and-attribution.md",
+                  "system-design-primer/MANIFEST.sha256.json",
+              }
+              missing = required - names
+              if missing:
+                  raise SystemExit(f"archive is missing: {sorted(missing)}")
+              manifest = json.loads(zf.read("system-design-primer/MANIFEST.sha256.json"))
+              for entry in manifest["files"]:
+                  payload = zf.read("system-design-primer/" + entry["path"])
+                  assert len(payload) == entry["size"]
+                  assert hashlib.sha256(payload).hexdigest() == entry["sha256"]
+          print(f"Archive verified: {archive}")
+          PY
+      - name: Upload distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: system-design-primer-skill
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  windows:
+    name: Windows validation
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate Skill package
+        run: python scripts/validate.py
+      - name: Run Python unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Test PowerShell installer
+        shell: pwsh
+        run: ./tests/test_install.ps1
