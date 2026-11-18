@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import stat
 import zipfile
 from pathlib import Path
 
@@ -26,7 +25,7 @@ def collect_files() -> list[Path]:
         ROOT / "VERSION",
     ]
     for folder in ("references", "templates", "scripts"):
-        files.extend(p for p in (ROOT / folder).rglob("*") if p.is_file())
+        files.extend(\n            p for p in (ROOT / folder).rglob("*")\n            if p.is_file() and "__pycache__" not in p.parts\n            and p.suffix not in {".pyc", ".pyo"} and not p.name.startswith(".")\n        )
     return sorted(files, key=lambda p: p.relative_to(ROOT).as_posix())
 
 
