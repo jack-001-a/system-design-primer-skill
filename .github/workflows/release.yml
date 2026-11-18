@@ -1,0 +1,41 @@
+name: Publish Skill release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release assets
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate package
+        run: |
+          python scripts/validate.py
+          python -m unittest discover -s tests -v
+          bash -n scripts/install.sh
+          bash scripts/test_install.sh
+      - name: Verify tag matches VERSION
+        run: |
+          VERSION="v$(cat VERSION)"
+          test "$GITHUB_REF_NAME" = "$VERSION"
+      - name: Build ZIP and checksums
+        run: python tools/package.py --output-dir dist
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: System Design Primer ${{ github.ref_name }}
+          generate_release_notes: true
+          files: |
+            dist/*.zip
+            dist/*.sha256
