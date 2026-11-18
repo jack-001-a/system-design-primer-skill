@@ -37,12 +37,25 @@ peak requests/sec = average requests/sec × peak-to-average factor
 writes/sec = total requests/sec × write fraction
 raw bytes = record count × average serialized bytes/record
 retained bytes = raw bytes × retention periods
-physical bytes ≈ retained bytes × (indexes + replicas + engine overhead factor)
+primary dataset bytes ≈ logical bytes × (1 + index overhead ratio + engine overhead ratio)
+total database copies ≈ primary dataset bytes × total copy count
+backup / snapshot / WAL / temporary migration space = estimate separately
 bandwidth bytes/sec ≈ RPS × mean payload bytes
 queue backlog growth/sec = arrival rate - successful processing rate
 ```
 
 For storage, distinguish logical data from indexes, replicas, snapshots, backups, WAL/binlogs, compaction headroom, and temporary migration copies. For network estimates, distinguish bytes from bits and include protocol overhead and peak concurrency.
+
+### Storage model and caveats
+
+Use separate layers rather than adding unlike factors together:
+
+1. Logical retained data = daily logical ingest × retention days, adjusted for growth, updates, compression and deletion behavior.
+2. Primary dataset storage ≈ logical retained data × (1 + index overhead ratio + engine overhead ratio). Define the ratios from measurements or clearly labeled assumptions.
+3. Total database storage ≈ primary dataset storage × total copy count. The copy count includes the primary and every full replica; do not count a replica factor twice.
+4. Backups, snapshots, point-in-time recovery logs, object-store exports, temporary migration copies and free-space/headroom are separate line items. Their retention and deduplication behavior differ from live database storage.
+
+This remains a first-order model: indexes may differ between replicas, compression may vary, and storage engines can have compaction or vacuum headroom requirements. Validate against production-like data and the selected database's metrics.
 
 ## 4. Example estimate
 
