@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sys
 from pathlib import Path
@@ -160,12 +161,13 @@ def validate(root: Path) -> list[str]:
             errors.append(f"SKILL.md references a missing file: {linked}")
 
     version_file = root / "VERSION"
+    version = ""
     if version_file.is_file():
         version = version_file.read_text(encoding="utf-8").strip()
         if not SEMVER_RE.fullmatch(version):
             errors.append(f"VERSION is not valid semantic version text: {version!r}")
         metadata_version = re.search(
-            r"(?m)^metadata:\s*\n[ \t]+version:\s*[\"']?([^\"'\s]+)",
+            r"(?m)^metadata:\\s*\\n[ \\t]+version:\\s*[\"']?([^\"'\\s]+)",
             content,
         )
         if metadata_version and metadata_version.group(1) != version:
@@ -173,6 +175,44 @@ def validate(root: Path) -> list[str]:
                 f"SKILL.md metadata version {metadata_version.group(1)!r} "
                 f"does not match VERSION {version!r}"
             )
+
+    package_file = root / "package.json"
+    if not package_file.is_file():
+        errors.append("package.json is missing")
+    else:
+        try:
+            package = json.loads(package_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"package.json is invalid: {exc}")
+            package = {}
+        package_name = package.get("name", "")
+        if not isinstance(package_name, str) or not re.fullmatch(
+            r"(?:@[a-z0-9][a-z0-9._-]*/)?[a-z0-9][a-z0-9._-]*",
+            package_name,
+        ):
+            errors.append("package.json name must be a valid lowercase npm package name")
+        package_version = package.get("version", "")
+        if package_version != version:
+            errors.append(
+                f"package.json version {package_version!r} does not match VERSION {version!r}"
+            )
+        repository = package.get("repository", {})
+        if not isinstance(repository, dict) or repository.get("url") != (
+            "https://github.com/jack-001-a/system-design-primer-skill.git"
+        ):
+            errors.append("package.json repository.url must match this GitHub repository")
+        files = package.get("files", [])
+        required_npm_files = {
+            "SKILL.md", "README.md", "ATTRIBUTION.md", "LICENSE", "VERSION",
+            "references/", "templates/", "scripts/",
+        }
+        if not isinstance(files, list) or not required_npm_files.issubset(set(files)):
+            errors.append("package.json files must include the Skill, references, templates, scripts, and license files")
+        publish_config = package.get("publishConfig", {})
+        if not isinstance(publish_config, dict) or publish_config.get("access") != "public":
+            errors.append("package.json publishConfig.access must be public")
+        if package.get("private") is True:
+            errors.append("package.json private must not be true for an npm release")
 
     return errors
 
