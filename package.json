@@ -1,0 +1,39 @@
+{
+  "name": "system-design-primer-skill",
+  "version": "1.2.0",
+  "description": "A portable System Design Agent Skill for architecture design, reviews, scalability, reliability, and AI systems.",
+  "license": "CC-BY-4.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jack-001-a/system-design-primer-skill.git"
+  },
+  "homepage": "https://github.com/jack-001-a/system-design-primer-skill#readme",
+  "bugs": {
+    "url": "https://github.com/jack-001-a/system-design-primer-skill/issues"
+  },
+  "keywords": [
+    "agent-skill",
+    "system-design",
+    "software-architecture",
+    "distributed-systems",
+    "architecture-review",
+    "codex",
+    "claude-code",
+    "cursor",
+    "github-copilot"
+  ],
+  "files": [
+    "SKILL.md",
+    "README.md",
+    "ATTRIBUTION.md",
+    "LICENSE",
+    "VERSION",
+    "references/",
+    "templates/",
+    "scripts/"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}
