@@ -51,9 +51,13 @@ for parent in "${PARENTS[@]}"; do
     fail "target already exists: $dest (use --force to replace it)"
   fi
 done
-PACKAGE_ITEMS=(SKILL.md references templates ATTRIBUTION.md LICENSE VERSION)\nSCRIPT_ITEMS=(install.sh install.ps1 validate.py)
+PACKAGE_ITEMS=(SKILL.md references templates ATTRIBUTION.md LICENSE VERSION)
+SCRIPT_ITEMS=(install.sh install.ps1 validate.py)
 for item in "${PACKAGE_ITEMS[@]}"; do
   [[ -e "$SOURCE/$item" ]] || fail "required package entry is missing: $item"
+done
+for item in "${SCRIPT_ITEMS[@]}"; do
+  [[ -f "$SOURCE/scripts/$item" ]] || fail "required script is missing: scripts/$item"
 done
 if ((DRY_RUN)); then
   for parent in "${PARENTS[@]}"; do
@@ -73,6 +77,8 @@ for parent in "${PARENTS[@]}"; do
   }
   trap cleanup EXIT
   for item in "${PACKAGE_ITEMS[@]}"; do cp -R -- "$SOURCE/$item" "$staging/"; done
+  mkdir -p "$staging/scripts"
+  for item in "${SCRIPT_ITEMS[@]}"; do cp -- "$SOURCE/scripts/$item" "$staging/scripts/"; done
   chmod +x "$staging/scripts/"*.sh "$staging/scripts/"*.py 2>/dev/null || true
   if [[ -e "$dest" || -L "$dest" ]]; then
     backup="$parent/.$NAME.backup.$$"
