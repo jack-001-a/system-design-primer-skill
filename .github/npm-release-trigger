@@ -1,2 +1,3 @@
 One-time trigger for the initial public npm release of system-design-primer-skill@1.2.0. Subsequent versions publish from matching v* tags.
 Retry after correcting package version metadata validator.
+Retry initial npm publication after NPM_TOKEN was configured by the repository owner.
