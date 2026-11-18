@@ -24,7 +24,7 @@ jobs:
           python scripts/validate.py
           python -m unittest discover -s tests -v
           bash -n scripts/install.sh
-          bash scripts/test_install.sh
+          bash tests/test_install.sh
       - name: Verify tag matches VERSION
         run: |
           VERSION="v$(cat VERSION)"
