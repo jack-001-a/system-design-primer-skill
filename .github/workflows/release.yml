@@ -2,9 +2,10 @@ name: Publish Skill release
 
 on:
   push:
+    branches:
+      - "release/**"
     tags:
       - "v*"
-  create:
 
 permissions:
   contents: write
@@ -12,7 +13,6 @@ permissions:
 jobs:
   release:
     name: Build and publish release assets
-    if: github.event_name != 'create' || (github.event.ref_type == 'branch' && startsWith(github.event.ref, 'release/'))
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
@@ -32,11 +32,10 @@ jobs:
         shell: bash
         run: |
           VERSION="v$(cat VERSION)"
-          if [[ "$GITHUB_EVENT_NAME" == "create" ]]; then
-            test "$GITHUB_EVENT_REF_TYPE" = "branch"
-            test "$GITHUB_EVENT_REF" = "release/$VERSION"
+          if [[ "$GITHUB_REF_TYPE" == "branch" ]]; then
+            test "$GITHUB_REF_NAME" = "release/$VERSION"
             echo "tag_name=$VERSION" >> "$GITHUB_OUTPUT"
-            echo "target_commitish=$GITHUB_EVENT_REF" >> "$GITHUB_OUTPUT"
+            echo "target_commitish=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
           else
             test "$GITHUB_REF_NAME" = "$VERSION"
             echo "tag_name=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
