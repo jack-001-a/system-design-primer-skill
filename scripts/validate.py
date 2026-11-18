@@ -167,7 +167,7 @@ def validate(root: Path) -> list[str]:
         if not SEMVER_RE.fullmatch(version):
             errors.append(f"VERSION is not valid semantic version text: {version!r}")
         metadata_version = re.search(
-            r"(?m)^metadata:\\s*\\n[ \\t]+version:\\s*[\"']?([^\"'\\s]+)",
+            r"(?m)^metadata:\s*\n[ \t]+version:\s*["']?([^"'\s]+)",
             content,
         )
         if metadata_version and metadata_version.group(1) != version:
