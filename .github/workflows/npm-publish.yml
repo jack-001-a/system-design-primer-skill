@@ -89,6 +89,16 @@ jobs:
             exit 1
           fi
 
+      - name: Check npm publishing credentials
+        shell: bash
+        run: |
+          if [[ -z "$NODE_AUTH_TOKEN" ]]; then
+            echo "::error::Missing repository Actions secret NPM_TOKEN. Add a granular npm publish token at Repository Settings > Secrets and variables > Actions."
+            exit 1
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
       - name: Publish public package with provenance
         run: npm publish --access public --provenance
         env:
