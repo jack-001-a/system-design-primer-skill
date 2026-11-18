@@ -39,10 +39,16 @@ switch ($Agent + ':' + $Scope) {
   'copilot:user' { $Parents += (Join-Path $Base '.copilot/skills') }
 }
 
-$Items = @('SKILL.md','references','templates','ATTRIBUTION.md','LICENSE','VERSION')\n$ScriptItems = @('install.sh','install.ps1','validate.py')
+$Items = @('SKILL.md','references','templates','ATTRIBUTION.md','LICENSE','VERSION')
+$ScriptItems = @('install.sh','install.ps1','validate.py')
 foreach ($Item in $Items) {
   if (-not (Test-Path -LiteralPath (Join-Path $Source $Item))) {
     throw "Required package entry is missing: $Item"
+  }
+}
+foreach ($Item in $ScriptItems) {
+  if (-not (Test-Path -LiteralPath (Join-Path $Source "scripts/$Item") -PathType Leaf)) {
+    throw "Required script is missing: scripts/$Item"
   }
 }
 
@@ -68,6 +74,11 @@ foreach ($Parent in $Parents) {
     New-Item -ItemType Directory -Path $Staging | Out-Null
     foreach ($Item in $Items) {
       Copy-Item -LiteralPath (Join-Path $Source $Item) -Destination $Staging -Recurse -Force
+    }
+    $ScriptsDestination = Join-Path $Staging "scripts"
+    New-Item -ItemType Directory -Force -Path $ScriptsDestination | Out-Null
+    foreach ($Item in $ScriptItems) {
+      Copy-Item -LiteralPath (Join-Path $Source "scripts/$Item") -Destination $ScriptsDestination -Force
     }
 
     if (Test-Path -LiteralPath $Destination) {
