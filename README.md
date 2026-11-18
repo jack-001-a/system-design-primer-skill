@@ -1,144 +1,112 @@
 # System Design Primer — Agent Skill
 
-一套面向多种 AI 编程 Agent 的可安装系统设计 Skill。知识框架参考 Donne Martin 的 System Design Primer，并补充现代软件工程实践。
+面向软件架构设计、架构审查、性能优化、技术选型和迁移规划的可安装 Agent Skill。以 Donne Martin 的 System Design Primer 为知识主题起点，并补充现代生产工程实践。
 
-## 目录
+- **版本：** 1.1.0
+- **语言：** 中文说明，保留常用英文技术术语
+- **运行依赖：** Skill 本身无第三方运行依赖；安装/校验仅需 Bash、PowerShell 或 Python 3
 
-```text
-system-design-primer-skill/
-├── SKILL.md
-├── README.md
-├── ATTRIBUTION.md
-├── LICENSE
-├── references/       # 按需加载的知识库（12 份）
-├── templates/        # 架构设计、审查和 ADR 模板
-└── scripts/          # macOS/Linux 与 Windows 安装脚本及校验器
-```
+## 内容结构
 
-## 支持方式
+    system-design-primer/
+    ├── SKILL.md
+    ├── README.md / ATTRIBUTION.md / LICENSE / VERSION
+    ├── references/      12 份渐进式知识参考
+    ├── templates/       架构设计、架构审查、ADR 模板
+    └── scripts/         Linux/macOS、Windows 安装器和校验器
 
-本包采用 Agent Skills 的通用目录格式：一个技能目录包含 `SKILL.md` 和可选 `references/`、`templates/`、`scripts/`。不同宿主工具会从不同目录发现技能，因此安装时把同一份技能目录复制到宿主认可的位置。
+## 下载
 
-推荐安装：
+推荐从 [GitHub Releases](https://github.com/jack-001-a/system-design-primer-skill/releases) 下载版本化 ZIP。仓库主分支源码 ZIP 也可从 [main.zip](https://github.com/jack-001-a/system-design-primer-skill/archive/refs/heads/main.zip) 获取。
 
-- Codex：`.agents/skills/`（项目）或 `~/.agents/skills/`（用户级）
-- Claude Code：`.claude/skills/` 或 `~/.claude/skills/`
-- Cursor：`.agents/skills/`、`.cursor/skills/` 或对应用户级目录
-- GitHub Copilot：`.agents/skills/`、`.github/skills/` 或用户级 Copilot Skills 目录
+发布 ZIP 内含 system-design-primer/ 目录、嵌入式 MANIFEST.sha256.json 和同名 .sha256 校验文件。校验文件按 SHA-256 生成；Release 只会在 Git tag 与 VERSION 一致、CI 通过后发布。
 
-## macOS / Linux
+## 支持的 Agent 目录
 
-先下载并解压仓库 ZIP。然后在**目标代码仓库根目录**执行以下命令（把脚本路径替换成你实际解压的位置）；安装脚本以当前工作目录作为项目根目录：
+| Agent | 项目级目录 | 用户级目录 |
+|---|---|---|
+| OpenAI Codex | .agents/skills/ | ~/.agents/skills/ |
+| Claude Code | .claude/skills/ | ~/.claude/skills/ |
+| Cursor | .cursor/skills/ 或 .agents/skills/ | ~/.cursor/skills/ 或 ~/.agents/skills/ |
+| GitHub Copilot | .github/skills/、.claude/skills/ 或 .agents/skills/ | ~/.copilot/skills/ 或 ~/.agents/skills/ |
 
-```bash
-# 当前项目：同时安装到 Codex/Cursor/Copilot 通用目录和 Claude Code 目录
-bash /path/to/system-design-primer-skill/scripts/install.sh --agent all --scope project
+目录依据：[Codex Skill 指南](https://learn.chatgpt.com/docs/build-skills)、[Claude Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)、[Cursor Skills](https://cursor.com/docs/skills)、[GitHub Copilot Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)。
 
-# 只安装 Codex（项目级）
-bash scripts/install.sh --agent codex --scope project
+## 安装
 
-# 用户级，当前账号下所有项目可用
-bash scripts/install.sh --agent all --scope user
+先解压 ZIP。**在目标代码仓库根目录执行安装命令**；脚本会根据当前目录决定项目级安装位置。示例假设解压后的文件夹为 /opt/system-design-primer。
 
-# 查看计划而不写文件
-bash scripts/install.sh --agent all --scope project --dry-run
+### macOS / Linux
 
-# 已存在时，明确允许覆盖
-bash scripts/install.sh --agent all --scope project --force
-```
+    cd /path/to/your-project
 
-## Windows PowerShell
+    # 只装 Codex
+    bash /opt/system-design-primer/scripts/install.sh --agent codex --scope project
 
-```powershell
-# 当前项目，通用目录 + Claude Code（从目标代码仓库根目录运行）
-& "C:\path\to\system-design-primer-skill\scripts\install.ps1" -Agent all -Scope project
+    # 只装 Claude Code
+    bash /opt/system-design-primer/scripts/install.sh --agent claude --scope project
 
-# 用户级
-.\scripts\install.ps1 -Agent all -Scope user
+    # 只装 Cursor（使用 Cursor 专用目录）
+    bash /opt/system-design-primer/scripts/install.sh --agent cursor --scope project
 
-# 预览
-.\scripts\install.ps1 -Agent all -Scope project -WhatIf
+    # 只装 GitHub Copilot
+    bash /opt/system-design-primer/scripts/install.sh --agent copilot --scope project
 
-# 明确覆盖已存在目录
-.\scripts\install.ps1 -Agent all -Scope project -Force
-```
+    # 一次安装多种宿主目录
+    bash /opt/system-design-primer/scripts/install.sh --agent all --scope project
 
-## 官方目录依据
+    # 安装到当前用户目录
+    bash /opt/system-design-primer/scripts/install.sh --agent all --scope user
 
-- [Agent Skills format](https://github.com/agentskills/agentskills)
-- [Codex: Build skills](https://learn.chatgpt.com/docs/build-skills)
-- [Claude Code / Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)
-- [Cursor: Skills](https://cursor.com/help/customization/skills)
-- [GitHub Copilot: Add agent skills](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/add-skills)
+### Windows PowerShell
 
-`--agent all` 会安装两份相同内容：`.agents/skills`（Codex、Cursor、Copilot 的共享目录）和 `.claude/skills`（Claude Code 目录）。Cursor 会扫描多个兼容目录；如果它因此显示重复 Skill，请在 Cursor 项目中只保留 `.agents/skills` 版本，并保留 `.claude/skills` 供 Claude Code 使用，或改用单独的 `--agent cursor` 安装。
+    Set-Location C:\path\to\your-project
 
-## 手动安装
+    # 根据需要选择 codex、claude、cursor、copilot 或 all
+    & C:\path\to\system-design-primer\scripts\install.ps1 -Agent codex -Scope project
 
-将整个 `system-design-primer` 技能目录（必须包含 SKILL.md 与 references）复制到对应位置：
+    # 安装到用户级目录
+    & C:\path\to\system-design-primer\scripts\install.ps1 -Agent all -Scope user
 
-```text
-项目级 Codex / Cursor / Copilot：
-<repo>/.agents/skills/system-design-primer/
+## 安装器行为与安全
 
-项目级 Claude Code：
-<repo>/.claude/skills/system-design-primer/
+- 默认不覆盖已存在的 Skill；需要更新时显式使用 --force 或 -Force。
+- --dry-run / -WhatIf 仅预览目标路径，不创建或修改文件。
+- 安装器先检查全部目标，再使用同目录 staging 目录替换；失败时尽力恢复原目录。
+- 只复制 SKILL.md、references、templates、scripts、ATTRIBUTION.md、LICENSE 和 VERSION，不复制 .git、GitHub Actions、测试或开发工具。
+- --agent all 的项目级目标为 .agents/skills、.claude/skills、.github/skills；用户级目标为 ~/.agents/skills、~/.claude/skills、~/.copilot/skills。
+- Cursor 也会兼容发现 .agents/skills 和 .claude/skills。若同时启用多个宿主，建议用对应的单宿主安装参数，避免同一 Skill 被重复发现。
+- 安装脚本不会安装依赖，也不会自动执行 Skill 中的脚本。
 
-Cursor 专用目录：
-<repo>/.cursor/skills/system-design-primer/
+## 校验与开发
 
-GitHub Copilot 专用目录：
-<repo>/.github/skills/system-design-primer/
+在仓库根目录运行：
 
-用户级 Codex / Cursor 通用目录：
-~/.agents/skills/system-design-primer/
+    python scripts/validate.py
+    python -m unittest discover -s tests -v
+    bash -n scripts/install.sh
+    bash tests/test_install.sh
+    python tools/package.py --output-dir dist
 
-用户级 Claude Code：
-~/.claude/skills/system-design-primer/
-```
+Windows 还可运行：
 
-不要只复制 `SKILL.md`；参考文件会被 Skill 按需读取。
+    .\tests\test_install.ps1
+
+GitHub Actions 会在 Ubuntu 和 Windows 上运行校验/测试；推送符合 VERSION 的 v* tag 时构建 ZIP 和 SHA-256，并发布 GitHub Release。
 
 ## 使用示例
 
-自然语言即可触发，或在支持显式调用的 Agent 中点名：
+    使用 system-design-primer Skill 审查此仓库的整体架构。
+    重点分析关键业务流、数据模型、事务边界、缓存、异步任务、
+    可靠性、安全和可观测性。按严重程度排序，每条发现附文件证据。
+    先只审查，不要修改代码。
 
-```text
-使用 system-design-primer Skill，为这个仓库审查整体架构。
-重点检查数据模型、事务边界、缓存、异步任务、可靠性和安全性。
-所有发现请附文件路径和严重程度，不要先修改代码。
-```
+    使用 system-design-primer Skill 设计多租户订阅计费系统。
+    先明确 FR/NFR、容量假设、数据模型、幂等、对账和失败恢复，
+    再给出架构图、替代方案、ADR 和分阶段上线计划。
 
-```text
-使用 system-design-primer Skill，为新增的多租户订阅计费功能设计方案。
-先明确需求、容量假设、数据模型、幂等与失败恢复，再输出架构图和 ADR。
-```
+## 归属与许可
 
-```text
-使用 system-design-primer Skill，分析当前 API 的 P95 延迟问题。
-先从代码和配置中找证据，给出测量方案和可验证假设，不要先引入缓存。
-```
+本项目为独立、非官方 Skill。知识主题参考 [Donne Martin/System Design Primer](https://github.com/donnemartin/system-design-primer)，并加入原创工作流与现代工程实践。原创说明、模板和参考文字采用 CC BY 4.0；第三方链接内容保留其各自版权和许可，详见 ATTRIBUTION.md。
 
-```text
-使用 system-design-primer Skill，规划从模块化单体迁移到独立服务的路线。
-请证明拆分必要性，比较不拆分的替代方案，并包含数据迁移和回滚计划。
-```
-
-## 运行安全
-
-- 安装脚本默认不覆盖已存在的 Skill；需要覆盖时显式传 `--force` / `-Force`。
-- Skill 是指导 AI 的文档，不是自动化架构扫描器。Review 结论必须从仓库证据得出。
-- 不要把未经审查的第三方 Skill 直接用于包含生产密钥或敏感数据的环境。
-- 对具体云服务、框架版本和安全控制，查阅官方最新文档；本知识包不替代产品文档。
-
-## 验证
-
-在解压后的技能包目录运行结构检查：
-
-```bash
-python scripts/validate.py
-```
-
-安装后，在 Agent 中显式调用一次，并确认它能读取 `references/` 中的文件。若未显示，检查目录位置、重启/刷新 Agent，并确认技能目录名与 frontmatter `name` 一致。
-
-版本：1.0.0
+更多信息见 [CHANGELOG.md](CHANGELOG.md)、[CONTRIBUTING.md](CONTRIBUTING.md) 和 [SECURITY.md](SECURITY.md)。
