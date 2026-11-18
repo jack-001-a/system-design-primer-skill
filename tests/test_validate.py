@@ -39,6 +39,17 @@ class PackageTests(unittest.TestCase):
             )
             self.assertTrue(any("name must" in error for error in validate(root)))
 
+    def test_skill_metadata_version_must_match_package_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SKILL.md").write_text(
+                '---\nname: example-skill\ndescription: test\nmetadata:\n  version: "2.0.0"\n---\nbody\n',
+                encoding="utf-8",
+            )
+            (root / "VERSION").write_text("1.0.0\n", encoding="utf-8")
+            errors = validate(root)
+            self.assertTrue(any("does not match VERSION" in item for item in errors))
+
     def test_distributable_symlink_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
