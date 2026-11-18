@@ -32,7 +32,7 @@
 | Cursor | .cursor/skills/ 或 .agents/skills/ | ~/.cursor/skills/ 或 ~/.agents/skills/ |
 | GitHub Copilot | .github/skills/、.claude/skills/ 或 .agents/skills/ | ~/.copilot/skills/ 或 ~/.agents/skills/ |
 
-Cursor Cloud Agents 个人 Skill 应安装到 `~/.cursor/skills/` 并在 Cursor Settings → Agents 中开启 Sync Skills。`~/.agents/skills/` 可用于本地 Cursor 兼容发现，但不要据此假定个人 Skill 会自动同步到 Cloud Agents。项目级 Skill 可放在仓库的 `.cursor/skills/` 或 `.agents/skills/`。Copilot 云端使用还需遵循其 dotfiles/云端环境配置要求，不能假设所有本地用户级目录都会自动进入云端会话。
+Cursor Cloud Agents 个人 Skill 应安装到 `~/.cursor/skills/` 并在 Cursor Settings → Agents 中开启 Sync Skills。`~/.agents/skills/` 可用于本地 Cursor 兼容发现，但不会自动同步到 Cloud Agents。项目级 Skill 可放在仓库的 `.cursor/skills/` 或 `.agents/skills/`。GitHub Copilot Cloud Agent 的个人 Skill 则需要放入个人 dotfiles 仓库的 `.copilot/skills/`，并在 Copilot Cloud settings 中配置该 dotfiles 仓库；此方式适用于 cloud sandbox，不适用于 GitHub Actions 会话。参考 [Cursor Cloud Skills](https://cursor.com/docs/skills) 和 [GitHub Copilot Cloud sessions](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/personalize-cloud-sessions)。
 
 目录依据：[Codex Skill 指南](https://learn.chatgpt.com/docs/build-skills)、[Claude Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)、[Cursor Skills](https://cursor.com/docs/skills)、[GitHub Copilot Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)。
 
