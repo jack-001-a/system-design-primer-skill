@@ -21,7 +21,7 @@ metadata:
 - 不强加给纯文案、简单 UI、独立算法或无架构影响的小修。
 
 ## 工作模式
-Design（新系统/重大功能）；Review（基于仓库事实审查）；Optimize（测量驱动优化）；Migration（迁移与演进）；Decision（方案比较与 ADR）；Interview（面试演练）。按任务自动选择，不要求用户使用固定命令。
+Quick Design（小范围设计，优先给出最小可行方案与关键权衡）；Design（新系统/重大功能）；Review（基于仓库事实审查）；Optimize（测量驱动优化）；Migration（迁移与演进）；Decision（方案比较与 ADR）；Interview（面试演练）。按任务自动选择，不要求用户使用固定命令。先识别任务规模和风险：简单问题采用精简输出，重大架构变更采用完整设计；不要为了套用模板而制造无关章节。
 
 ## 核心原则
 ### 1. 先确认需求和约束
@@ -80,14 +80,14 @@ Design（新系统/重大功能）；Review（基于仓库事实审查）；Opti
 - peak RPS = average RPS × peak factor（注明测量值或假设）
 - write throughput = total requests × write ratio
 - raw storage = records × bytes/record × retention multiplier
-- effective storage ≈ raw storage × (index + replication + overhead factor)（明确这是近似模型）
+- primary storage ≈ logical storage × (1 + index overhead ratio + engine overhead ratio)；total database copies ≈ primary storage × total copy count（主库与所有副本的总份数）。备份、快照、WAL/binlog 和迁移临时空间独立估算，不要将索引、复制和开销系数直接相加。
 - network bandwidth ≈ RPS × average response bytes，另计 TLS、协议、重传和峰值
 - cache memory ≈ hot keys × measured serialized size + data-structure overhead + headroom
 - queue backlog growth = arrival rate − processing rate（arrival > processing 时积压增长）
 避免混淆 bit/byte、MB/MiB、平均/峰值、逻辑数据/副本/备份。对重试、突发、批处理和保留期做敏感性分析。
 
 ## 默认输出结构
-1. 结论与推荐；2. 需求/约束/假设；3. 容量估算；4. 高层架构图；5. 核心组件与数据流；6. 决策与替代方案；7. 数据正确性/并发/一致性；8. 故障/安全/可观测性；9. 演进/测试/回滚；10. 开放问题与未验证假设。Review 按 Critical/High/Medium/Low 排序并附证据。代码修改附摘要、测试命令和未覆盖风险。
+完整 Design 默认包含：结论与推荐、需求/约束/假设、容量估算、高层架构图、核心组件与数据流、决策与替代方案、数据正确性/并发/一致性、故障/安全/可观测性、演进/测试/回滚、开放问题与未验证假设。Quick Design 可只呈现结论、关键假设、方案图或流程、主要权衡与下一步。Review 按 Critical/High/Medium/Low 排序并附证据；Optimize 强调基线、瓶颈、实验和回归结果；Migration 强调兼容、切换、验证和回滚。代码修改附摘要、实际运行的测试命令及未覆盖风险。
 
 ## 渐进式参考加载
 - 需求与估算：`references/01-requirements-and-capacity.md`
@@ -99,6 +99,7 @@ Design（新系统/重大功能）；Review（基于仓库事实审查）；Opti
 - 可靠性：`references/07-reliability-and-resilience.md`
 - API/安全/可观测性：`references/08-api-security-observability.md`
 - 现代工程实践：`references/09-modern-engineering.md`
+- AI / LLM / RAG / Agent 系统架构：`references/12-ai-systems-architecture.md`
 - 工作流与检查表：`references/10-workflows-and-checklists.md`
 - 案例：`references/11-case-studies.md`
 - Primer 映射与出处：`references/00-primer-map-and-attribution.md`
