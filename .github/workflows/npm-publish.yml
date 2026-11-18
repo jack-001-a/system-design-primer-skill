@@ -1,0 +1,95 @@
+name: Publish npm package
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths:
+      - ".github/npm-release-trigger"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: npm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Validate and publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
+
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+
+      - name: Validate package metadata and Skill content
+        shell: bash
+        run: |
+          python scripts/validate.py
+          version="$(tr -d '[:space:]' < VERSION)"
+          package_version="$(node -p "require('./package.json').version")"
+          package_name="$(node -p "require('./package.json').name")"
+          test "$version" = "$package_version"
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            test "$GITHUB_REF_NAME" = "v$version"
+          fi
+          echo "Publishing $package_name@$version"
+
+      - name: Verify npm package contents
+        shell: bash
+        run: |
+          npm pack --dry-run --json > npm-pack.json
+          node <<'NODE'
+          const fs = require('node:fs');
+          const report = JSON.parse(fs.readFileSync('npm-pack.json', 'utf8'));
+          const paths = new Set(report[0].files.map((file) => file.path));
+          const required = [
+            'SKILL.md',
+            'README.md',
+            'ATTRIBUTION.md',
+            'LICENSE',
+            'VERSION',
+            'references/12-ai-systems-architecture.md',
+            'templates/adr-template.md',
+            'scripts/install.sh',
+            'scripts/install.ps1',
+          ];
+          const missing = required.filter((path) => !paths.has(path));
+          if (missing.length) throw new Error('npm archive is missing: ' + missing.join(', '));
+          if ([...paths].some((path) => path.startsWith('tests/') || path.startsWith('.github/'))) {
+            throw new Error('npm archive unexpectedly contains development or CI files');
+          }
+          console.log('npm archive content check passed (' + paths.size + ' files)');
+          NODE
+
+      - name: Ensure this version is not already published
+        shell: bash
+        run: |
+          name="$(node -p "require('./package.json').name")"
+          version="$(node -p "require('./package.json').version")"
+          if npm view "$name@$version" version >/dev/null 2>&1; then
+            echo "$name@$version already exists on npm; refusing to overwrite"
+            exit 1
+          fi
+
+      - name: Publish public package with provenance
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
