@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability/performance/reliability risks, evaluating data, cache, messaging, API or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   language: "zh-CN with standard English technical terms"
 ---
 
