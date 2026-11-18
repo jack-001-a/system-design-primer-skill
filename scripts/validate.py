@@ -20,6 +20,7 @@ REQUIRED_REFERENCES = {
     "09-modern-engineering.md",
     "10-workflows-and-checklists.md",
     "11-case-studies.md",
+    "12-ai-systems-architecture.md",
 }
 REQUIRED_TEMPLATES = {
     "adr-template.md",
@@ -31,6 +32,7 @@ PACKAGE_ENTRIES = (
     "ATTRIBUTION.md", "LICENSE", "VERSION",
 )
 LOCAL_LINK_RE = re.compile(r"\]\(([^)]+)\)")
+SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
 
 
 def parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
@@ -57,6 +59,23 @@ def parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
             value = value[1:-1]
         fields[key] = value
     return fields, "\n".join(lines[end + 1:])
+
+
+def _check_package_symlinks(root: Path) -> list[str]:
+    errors: list[str] = []
+    for entry in PACKAGE_ENTRIES:
+        path = root / entry
+        if path.is_symlink():
+            errors.append(f"distributable package entry must not be a symlink: {entry}")
+            continue
+        if path.is_dir():
+            for child in path.rglob("*"):
+                if child.is_symlink():
+                    errors.append(
+                        f"distributable package path must not contain symlinks: "
+                        f"{child.relative_to(root)}"
+                    )
+    return errors
 
 
 def validate(root: Path) -> list[str]:
@@ -94,6 +113,7 @@ def validate(root: Path) -> list[str]:
     for entry in PACKAGE_ENTRIES:
         if not (root / entry).exists():
             errors.append(f"required package entry is missing: {entry}")
+    errors.extend(_check_package_symlinks(root))
 
     refs_dir = root / "references"
     if refs_dir.is_dir():
@@ -116,10 +136,25 @@ def validate(root: Path) -> list[str]:
             if target.startswith(("http://", "https://", "mailto:", "#")):
                 continue
             path_text = target.split("#", 1)[0].split("?", 1)[0]
-            if path_text and not (markdown.parent / path_text).resolve().exists():
-                errors.append(f"broken local link in {markdown.relative_to(root)}: {target}")
+            if not path_text:
+                continue
+            resolved = (markdown.parent / path_text).resolve()
+            try:
+                resolved.relative_to(root)
+            except ValueError:
+                errors.append(
+                    f"local link escapes repository root in "
+                    f"{markdown.relative_to(root)}: {target}"
+                )
+                continue
+            if not resolved.exists():
+                errors.append(
+                    f"broken local link in {markdown.relative_to(root)}: {target}"
+                )
 
-    linked_paths = set(re.findall(r"\x60((?:references|templates|scripts)/[^\x60]+)\x60", content))
+    linked_paths = set(
+        re.findall(r"`((?:references|templates|scripts)/[^`]+)`", content)
+    )
     for linked in sorted(linked_paths):
         if not (root / linked).is_file():
             errors.append(f"SKILL.md references a missing file: {linked}")
@@ -127,7 +162,7 @@ def validate(root: Path) -> list[str]:
     version_file = root / "VERSION"
     if version_file.is_file():
         version = version_file.read_text(encoding="utf-8").strip()
-        if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version):
+        if not SEMVER_RE.fullmatch(version):
             errors.append(f"VERSION is not valid semantic version text: {version!r}")
 
     return errors
@@ -135,8 +170,12 @@ def validate(root: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent,
-                        help="Skill package root (defaults to repository root)")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path(__file__).resolve().parent.parent,
+        help="Skill package root (defaults to repository root)",
+    )
     args = parser.parse_args()
     errors = validate(args.root)
     if errors:
@@ -147,7 +186,7 @@ def main() -> int:
     version = (args.root / "VERSION").read_text(encoding="utf-8").strip()
     print(f"OK: {fields['name']} ({version})")
     print(f"OK: {len(REQUIRED_REFERENCES)} required references and {len(REQUIRED_TEMPLATES)} templates")
-    print("OK: frontmatter, local links, package entries, and semantic version")
+    print("OK: frontmatter, symlink boundaries, local links, package entries, and semantic version")
     return 0
 
 
