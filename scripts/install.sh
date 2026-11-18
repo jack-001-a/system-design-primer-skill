@@ -1,79 +1,92 @@
 #!/usr/bin/env bash
-set -euo pipefail
-
-usage() {
-  cat <<'EOF'
-Install system-design-primer Agent Skill.
-
-Usage:
-  bash scripts/install.sh [--agent all|codex|claude|cursor|copilot] [--scope project|user] [--dry-run] [--force]
-
-Examples:
-  bash scripts/install.sh --agent all --scope project
-  bash scripts/install.sh --agent all --scope user
-  bash scripts/install.sh --agent cursor --scope project --force
-EOF
-}
-
+set -Eeuo pipefail
+NAME="system-design-primer"
 AGENT="all"
 SCOPE="project"
 DRY_RUN=0
 FORCE=0
-while [[ $# -gt 0 ]]; do
+usage() {
+  cat <<'EOF'
+Install the system-design-primer Agent Skill.
+Usage: bash scripts/install.sh [--agent all|codex|claude|cursor|copilot] [--scope project|user] [--dry-run] [--force]
+Targets: all -> .agents/skills + .claude/skills + .github/skills (project)
+              .agents/skills + .claude/skills + .copilot/skills (user)
+Run from the target project's root for --scope project.
+Only distributable Skill files are copied; .git, CI, and tests are excluded.
+Existing installs are never replaced unless --force is supplied.
+EOF
+}
+fail() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
+while (($#)); do
   case "$1" in
-    --agent) AGENT="${2:?missing agent}"; shift 2 ;;
-    --scope) SCOPE="${2:?missing scope}"; shift 2 ;;
+    --agent) (($# >= 2)) || fail "--agent requires a value"; AGENT="$2"; shift 2 ;;
+    --scope) (($# >= 2)) || fail "--scope requires a value"; SCOPE="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
     --force) FORCE=1; shift ;;
     -h|--help) usage; exit 0 ;;
-    *) echo "Unknown argument: $1" >&2; usage; exit 2 ;;
+    *) usage >&2; fail "unknown argument: $1" ;;
   esac
 done
-
-case "$AGENT" in all|codex|claude|cursor|copilot) ;; *) echo "Invalid agent: $AGENT" >&2; exit 2 ;; esac
-case "$SCOPE" in project|user) ;; *) echo "Invalid scope: $SCOPE" >&2; exit 2 ;; esac
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SOURCE="$(cd "$SCRIPT_DIR/.." && pwd)"
-if [[ ! -f "$SOURCE/SKILL.md" ]]; then
-  echo "Cannot find SKILL.md next to scripts/" >&2; exit 1
-fi
-
-BASE="$(pwd)"
-if [[ "$SCOPE" == "user" ]]; then BASE="$HOME"; fi
-
-declare -a TARGETS=()
-case "$AGENT" in
-  all)
-    TARGETS+=("$BASE/.agents/skills")
-    TARGETS+=("$BASE/.claude/skills")
-    ;;
-  codex) TARGETS+=("$BASE/.agents/skills") ;;
-  claude) TARGETS+=("$BASE/.claude/skills") ;;
-  cursor) TARGETS+=("$BASE/.cursor/skills") ;;
-  copilot) TARGETS+=("$BASE/.github/skills") ;;
+case "$AGENT" in all|codex|claude|cursor|copilot) ;; *) fail "invalid agent: $AGENT" ;; esac
+case "$SCOPE" in project|user) ;; *) fail "invalid scope: $SCOPE" ;; esac
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
+SOURCE="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+[[ -f "$SOURCE/SKILL.md" ]] || fail "SKILL.md not found at package root"
+BASE="$PWD"
+[[ "$SCOPE" == "user" ]] && BASE="$HOME"
+[[ -n "$BASE" && -d "$BASE" ]] || fail "target root does not exist: $BASE"
+declare -a PARENTS=()
+case "$AGENT:$SCOPE" in
+  all:project) PARENTS=("$BASE/.agents/skills" "$BASE/.claude/skills" "$BASE/.github/skills") ;;
+  all:user) PARENTS=("$BASE/.agents/skills" "$BASE/.claude/skills" "$BASE/.copilot/skills") ;;
+  codex:*) PARENTS=("$BASE/.agents/skills") ;;
+  claude:*) PARENTS=("$BASE/.claude/skills") ;;
+  cursor:*) PARENTS=("$BASE/.cursor/skills") ;;
+  copilot:project) PARENTS=("$BASE/.github/skills") ;;
+  copilot:user) PARENTS=("$BASE/.copilot/skills") ;;
 esac
-
-NAME="system-design-primer"
-for parent in "${TARGETS[@]}"; do
+for parent in "${PARENTS[@]}"; do
   dest="$parent/$NAME"
-  if [[ -e "$dest" && "$FORCE" -ne 1 ]]; then
-    echo "Target exists; not overwriting: $dest" >&2
-    echo "Re-run with --force to replace it." >&2
-    exit 3
+  if [[ -e "$dest" || -L "$dest" ]] && ((FORCE == 0)); then
+    fail "target already exists: $dest (use --force to replace it)"
   fi
-  if [[ "$DRY_RUN" -eq 1 ]]; then
-    echo "Would install: $SOURCE -> $dest"
-    continue
-  fi
-  mkdir -p "$parent"
-  if [[ -e "$dest" ]]; then rm -rf "$dest"; fi
-  cp -R "$SOURCE" "$dest"
-  echo "Installed: $dest"
 done
-
-if [[ "$DRY_RUN" -eq 1 ]]; then
-  echo "Dry run complete; no files changed."
-else
-  echo "Done. Refresh/restart the agent if the skill is not discovered."
+PACKAGE_ITEMS=(SKILL.md references templates scripts ATTRIBUTION.md LICENSE VERSION)
+for item in "${PACKAGE_ITEMS[@]}"; do
+  [[ -e "$SOURCE/$item" ]] || fail "required package entry is missing: $item"
+done
+if ((DRY_RUN)); then
+  for parent in "${PARENTS[@]}"; do
+    printf 'Would install %s -> %s/%s\n' "$SOURCE" "$parent" "$NAME"
+  done
+  printf 'Dry run complete; no files changed.\n'
+  exit 0
 fi
+for parent in "${PARENTS[@]}"; do
+  mkdir -p "$parent"
+  dest="$parent/$NAME"
+  staging="$(mktemp -d "$parent/.$NAME.tmp.XXXXXX")"
+  backup=""
+  cleanup() {
+    [[ -n "${staging:-}" && -d "$staging" ]] && rm -rf -- "$staging"
+    if [[ -n "${backup:-}" && -e "$backup" && ! -e "$dest" ]]; then mv -- "$backup" "$dest"; fi
+  }
+  trap cleanup EXIT
+  for item in "${PACKAGE_ITEMS[@]}"; do cp -R -- "$SOURCE/$item" "$staging/"; done
+  chmod +x "$staging/scripts/"*.sh "$staging/scripts/"*.py 2>/dev/null || true
+  if [[ -e "$dest" || -L "$dest" ]]; then
+    backup="$parent/.$NAME.backup.$$"
+    [[ ! -e "$backup" ]] || fail "backup path already exists: $backup"
+    mv -- "$dest" "$backup"
+  fi
+  if ! mv -- "$staging" "$dest"; then
+    [[ -z "$backup" || ! -e "$backup" ]] || mv -- "$backup" "$dest"
+    fail "could not move staged Skill into place: $dest"
+  fi
+  [[ -z "$backup" || ! -e "$backup" ]] || rm -rf -- "$backup"
+  staging=""
+  backup=""
+  trap - EXIT
+  printf 'Installed: %s\n' "$dest"
+done
+printf 'Installation complete. Reload the agent if the Skill is not discovered.\n'
