@@ -1,8 +1,10 @@
 # System Design Primer — Agent Skill
 
+![CI](https://github.com/jack-001-a/system-design-primer-skill/actions/workflows/ci.yml/badge.svg) ![Latest Release](https://img.shields.io/github/v/release/jack-001-a/system-design-primer-skill)
+
 面向软件架构设计、架构审查、性能优化、技术选型和迁移规划的可安装 Agent Skill。以 Donne Martin 的 System Design Primer 为知识主题起点，并补充现代生产工程实践。
 
-- **版本：** 1.1.0
+- **版本：** 1.2.0
 - **语言：** 中文说明，保留常用英文技术术语
 - **运行依赖：** Skill 本身无第三方运行依赖；安装/校验仅需 Bash、PowerShell 或 Python 3
 
@@ -11,7 +13,7 @@
     system-design-primer/
     ├── SKILL.md
     ├── README.md / ATTRIBUTION.md / LICENSE / VERSION
-    ├── references/      12 份渐进式知识参考
+    ├── references/      13 份渐进式知识参考
     ├── templates/       架构设计、架构审查、ADR 模板
     └── scripts/         Linux/macOS、Windows 安装器和校验器
 
@@ -29,6 +31,8 @@
 | Claude Code | .claude/skills/ | ~/.claude/skills/ |
 | Cursor | .cursor/skills/ 或 .agents/skills/ | ~/.cursor/skills/ 或 ~/.agents/skills/ |
 | GitHub Copilot | .github/skills/、.claude/skills/ 或 .agents/skills/ | ~/.copilot/skills/ 或 ~/.agents/skills/ |
+
+Cursor Cloud Agents 个人 Skill 应安装到 `~/.cursor/skills/` 并在 Cursor Settings → Agents 中开启 Sync Skills。`~/.agents/skills/` 可用于本地 Cursor 兼容发现，但不会自动同步到 Cloud Agents。项目级 Skill 可放在仓库的 `.cursor/skills/` 或 `.agents/skills/`。GitHub Copilot Cloud Agent 的个人 Skill 则需要放入个人 dotfiles 仓库的 `.copilot/skills/`，并在 Copilot Cloud settings 中配置该 dotfiles 仓库；此方式适用于 cloud sandbox，不适用于 GitHub Actions 会话。参考 [Cursor Cloud Skills](https://cursor.com/docs/skills) 和 [GitHub Copilot Cloud sessions](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/personalize-cloud-sessions)。
 
 目录依据：[Codex Skill 指南](https://learn.chatgpt.com/docs/build-skills)、[Claude Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)、[Cursor Skills](https://cursor.com/docs/skills)、[GitHub Copilot Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)。
 
@@ -92,7 +96,7 @@ Windows 还可运行：
 
     .\tests\test_install.ps1
 
-GitHub Actions 会在 Ubuntu 和 Windows 上运行校验/测试；推送符合 VERSION 的 v* tag 时构建 ZIP 和 SHA-256，并发布 GitHub Release。
+GitHub Actions 会在 Ubuntu、macOS 和 Windows 上运行校验/测试。正式发布仅由版本 Tag 触发：先更新 VERSION 和 CHANGELOG.md，合并到 main 并等待 CI 通过，再创建与 VERSION 完全一致的 v* Tag。Release 工作流会在三个平台完成验证后构建 ZIP、SHA-256 并发布 GitHub Release；release/** 分支不会直接触发正式发布。
 
 ## 使用示例
 
@@ -108,5 +112,7 @@ GitHub Actions 会在 Ubuntu 和 Windows 上运行校验/测试；推送符合 V
 ## 归属与许可
 
 本项目为独立、非官方 Skill。知识主题参考 [Donne Martin/System Design Primer](https://github.com/donnemartin/system-design-primer)，并加入原创工作流与现代工程实践。原创说明、模板和参考文字采用 CC BY 4.0；第三方链接内容保留其各自版权和许可，详见 ATTRIBUTION.md。
+
+AI 系统架构的深入内容见 [references/12-ai-systems-architecture.md](references/12-ai-systems-architecture.md)。
 
 更多信息见 [CHANGELOG.md](CHANGELOG.md)、[CONTRIBUTING.md](CONTRIBUTING.md) 和 [SECURITY.md](SECURITY.md)。

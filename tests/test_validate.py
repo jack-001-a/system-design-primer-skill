@@ -39,6 +39,46 @@ class PackageTests(unittest.TestCase):
             )
             self.assertTrue(any("name must" in error for error in validate(root)))
 
+    def test_skill_metadata_version_must_match_package_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SKILL.md").write_text(
+                '---\nname: example-skill\ndescription: test\nmetadata:\n  version: "2.0.0"\n---\nbody\n',
+                encoding="utf-8",
+            )
+            (root / "VERSION").write_text("1.0.0\n", encoding="utf-8")
+            errors = validate(root)
+            self.assertTrue(any("does not match VERSION" in item for item in errors))
+
+    def test_distributable_symlink_is_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SKILL.md").write_text(
+                "---\nname: example-skill\ndescription: test\n---\nbody\n",
+                encoding="utf-8",
+            )
+            (root / "references").mkdir()
+            outside = Path(tmp) / "outside.md"
+            outside.write_text("outside", encoding="utf-8")
+            try:
+                (root / "references" / "linked.md").symlink_to(outside)
+            except OSError as exc:
+                self.skipTest(f"symlinks are not available on this runner: {exc}")
+            errors = validate(root)
+            self.assertTrue(any("must not contain symlinks" in item for item in errors))
+
+    def test_local_link_cannot_escape_package_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "package"
+            root.mkdir()
+            (root / "SKILL.md").write_text(
+                "---\nname: example-skill\ndescription: test\n---\n"
+                "[outside](../../outside.md)\n",
+                encoding="utf-8",
+            )
+            errors = validate(root)
+            self.assertTrue(any("local link escapes repository root" in item for item in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
