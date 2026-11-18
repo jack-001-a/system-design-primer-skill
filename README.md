@@ -10,7 +10,6 @@ system-design-primer-skill/
 ├── README.md
 ├── ATTRIBUTION.md
 ├── LICENSE
-├── MANIFEST.sha256.json
 ├── references/       # 按需加载的知识库（12 份）
 ├── templates/        # 架构设计、审查和 ADR 模板
 └── scripts/          # macOS/Linux 与 Windows 安装脚本及校验器
