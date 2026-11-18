@@ -164,6 +164,15 @@ def validate(root: Path) -> list[str]:
         version = version_file.read_text(encoding="utf-8").strip()
         if not SEMVER_RE.fullmatch(version):
             errors.append(f"VERSION is not valid semantic version text: {version!r}")
+        metadata_version = re.search(
+            r"(?m)^metadata:\\s*\\n[ \\t]+version:\\s*[\\\"']?([^\\\"'\\s]+)",
+            content,
+        )
+        if metadata_version and metadata_version.group(1) != version:
+            errors.append(
+                f"SKILL.md metadata version {metadata_version.group(1)!r} "
+                f"does not match VERSION {version!r}"
+            )
 
     return errors
 
