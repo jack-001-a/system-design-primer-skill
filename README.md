@@ -23,6 +23,23 @@
 
 发布 ZIP 内含 system-design-primer/ 目录、嵌入式 MANIFEST.sha256.json 和同名 .sha256 校验文件。校验文件按 SHA-256 生成；Release 只会在 Git tag 与 VERSION 一致、CI 通过后发布。
 
+## 通过 npm 安装
+
+本项目也发布为 npm 包，包名为 `system-design-primer-skill`。npm 包直接包含 `SKILL.md`、13 份参考文档、模板和跨平台安装脚本；不引入第三方运行依赖。
+
+在目标项目根目录执行：
+
+    npm install --save-dev system-design-primer-skill skills
+    npx skills experimental_sync --yes
+
+`skills experimental_sync` 会从已安装的 npm 依赖中发现包根目录的 `SKILL.md`，并将 Skill 链接到当前项目的 Agent Skill 目录。需要指定宿主时，可追加 `--agent codex`、`--agent claude-code` 或其他受支持的 Agent 标识。此同步命令目前属于 Skills CLI 的实验性功能，具体支持范围以其最新文档为准。
+
+也可以直接从 GitHub 安装，无需 npm：
+
+    npx skills add jack-001-a/system-design-primer-skill
+
+npm 包页面：[system-design-primer-skill](https://www.npmjs.com/package/system-design-primer-skill)。
+
 ## 支持的 Agent 目录
 
 | Agent | 项目级目录 | 用户级目录 |
