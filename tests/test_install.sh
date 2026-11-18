@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-SCRIPT="$(cd -- "$(dirname -- "$0")" && pwd -P)/install.sh"
+SCRIPT="$(cd -- "$(dirname -- "$0")/.." && pwd -P)/scripts/install.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf -- "$TMP"' EXIT
 mkdir -p "$TMP/project" "$TMP/home"
