@@ -39,6 +39,18 @@ class PackageTests(unittest.TestCase):
             )
             self.assertTrue(any("name must" in error for error in validate(root)))
 
+    def test_local_link_cannot_escape_package_root(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "package"
+            root.mkdir()
+            (root / "SKILL.md").write_text(
+                "---\nname: example-skill\ndescription: test\n---\n"
+                "[outside](../../outside.md)\n",
+                encoding="utf-8",
+            )
+            errors = validate(root)
+            self.assertTrue(any("local link escapes repository root" in item for item in errors))
+
 
 if __name__ == "__main__":
     unittest.main()
