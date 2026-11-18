@@ -45,18 +45,9 @@ Treat API schemas, event schemas, database schema, and cached representations as
 
 ## 6. AI application architecture
 
-For LLM/agent features, system design also includes:
+For LLM/agent features, system design also includes model/provider routing, token and GPU capacity, prompt/tool versioning, prompt-injection boundaries, least-privilege tool authorization, output validation, retrieval freshness and tenant isolation, evaluation, and safe cancellation/recovery. Treat model output as untrusted data. A prompt or generated plan must not bypass application authorization, validation, or transaction controls.
 
-- model/provider latency, quota, cost, and fallback;
-- prompt and tool versioning;
-- untrusted-input and prompt-injection boundaries;
-- tool authorization and least privilege;
-- output validation and structured contracts;
-- retrieval freshness, provenance, access control, and tenant isolation;
-- evaluation datasets, regression tests, safety tests, and online quality metrics;
-- timeouts, retries, cancellation, and human approval for consequential actions.
-
-Treat model output as untrusted data. A prompt or generated plan must not bypass application authorization, validation, or transaction controls.
+Use `references/12-ai-systems-architecture.md` for detailed workload modeling, inference/GPU planning, model gateways, RAG pipelines, agent tool boundaries, evaluation, cost and failure handling.
 
 ## 7. Operational ownership
 
