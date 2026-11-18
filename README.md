@@ -2,13 +2,9 @@
 
 A portable Chinese-language Agent Skill for system design, architecture review, performance optimization, migration planning, technical decisions, and system-design interviews.
 
-## Contents
+## Quick start
 
-The complete distributable package, including `SKILL.md`, reference guides, templates, install scripts, validation script, attribution, and license, is provided in [`system-design-primer-skill.zip`](./system-design-primer-skill.zip).
-
-## Install
-
-Download and extract the ZIP, then follow the instructions in `README.md` inside the package.
+Use [`SKILL.md`](./SKILL.md) as the agent skill instructions. This repository currently contains the core skill entrypoint; supporting reference guides, templates, install scripts, and validation assets from the full local bundle have not yet been uploaded.
 
 ## Attribution
 
