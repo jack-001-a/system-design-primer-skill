@@ -34,7 +34,7 @@ class PackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "SKILL.md").write_text(
-                "---\nname: Bad_Name\ndescription: test\n---\nbody\n",
+                "---\nname: example-skill\ndescription: test\n---\nbody\n",
                 encoding="utf-8",
             )
             self.assertTrue(any("name must" in error for error in validate(root)))
