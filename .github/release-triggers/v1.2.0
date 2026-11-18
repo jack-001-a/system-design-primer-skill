@@ -1,1 +1,0 @@
-One-time release trigger for System Design Primer v1.2.0. The release workflow validates Linux, macOS, and Windows, then creates the v1.2.0 tag and publishes the ZIP plus SHA-256 checksum.
