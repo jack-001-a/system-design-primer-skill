@@ -1,53 +1,155 @@
 #!/usr/bin/env python3
-"""Lightweight, dependency-free structure check for this Agent Skill package."""
-from pathlib import Path
+"""Validate the Agent Skill package without third-party dependencies."""
+from __future__ import annotations
+
+import argparse
 import re
 import sys
+from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
-skill_path = ROOT / "SKILL.md"
-if not skill_path.is_file():
-    raise SystemExit("ERROR: SKILL.md is missing")
+REQUIRED_REFERENCES = {
+    "00-primer-map-and-attribution.md",
+    "01-requirements-and-capacity.md",
+    "02-architecture-and-networking.md",
+    "03-data-and-storage.md",
+    "04-caching.md",
+    "05-async-and-messaging.md",
+    "06-distributed-systems.md",
+    "07-reliability-and-resilience.md",
+    "08-api-security-observability.md",
+    "09-modern-engineering.md",
+    "10-workflows-and-checklists.md",
+    "11-case-studies.md",
+}
+REQUIRED_TEMPLATES = {
+    "adr-template.md",
+    "architecture-design-template.md",
+    "architecture-review-template.md",
+}
+PACKAGE_ENTRIES = (
+    "SKILL.md", "references", "templates", "scripts",
+    "ATTRIBUTION.md", "LICENSE", "VERSION",
+)
+LOCAL_LINK_RE = re.compile(r"(?<!!)\\[[^\\]]+\\]\\(([^)]+)\\)")
 
-text = skill_path.read_text(encoding="utf-8")
-if not text.startswith("---\n"):
-    raise SystemExit("ERROR: SKILL.md must start with YAML frontmatter")
-parts = text.split("---", 2)
-if len(parts) < 3:
-    raise SystemExit("ERROR: YAML frontmatter is not closed")
-frontmatter = parts[1]
-for required in ("name:", "description:"):
-    if not re.search(rf"(?m)^{re.escape(required)}", frontmatter):
-        raise SystemExit(f"ERROR: required frontmatter field {required[:-1]} is missing")
-name_match = re.search(r"(?m)^name:\s*([a-z0-9-]+)\s*$", frontmatter)
-if not name_match:
-    raise SystemExit("ERROR: name must use lowercase letters, digits, and hyphens")
-if len(name_match.group(1)) > 64:
-    raise SystemExit("ERROR: skill name exceeds 64 characters")
-if "references/" not in text or not (ROOT / "references").is_dir():
-    raise SystemExit("ERROR: references/ directory is missing or not linked from SKILL.md")
 
-missing = []
-for md in ROOT.rglob("*.md"):
-    content = md.read_text(encoding="utf-8")
-    for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", content):
-        if target.startswith(("http://", "https://", "#", "mailto:")):
+def parse_frontmatter(content: str) -> tuple[dict[str, str], str]:
+    lines = content.splitlines()
+    if not lines or lines[0].strip() != "---":
+        raise ValueError("SKILL.md must start with a YAML frontmatter delimiter")
+    try:
+        end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+    except StopIteration as exc:
+        raise ValueError("YAML frontmatter closing delimiter is missing") from exc
+
+    fields: dict[str, str] = {}
+    for line in lines[1:end]:
+        if not line.strip() or line.lstrip().startswith("#") or line[:1].isspace():
             continue
-        path_part = target.split("#", 1)[0]
-        if path_part and not (md.parent / path_part).exists():
-            missing.append(f"{md.relative_to(ROOT)} -> {target}")
-if missing:
-    print("ERROR: broken local Markdown links:", file=sys.stderr)
-    print("\n".join(missing), file=sys.stderr)
-    raise SystemExit(1)
+        key, sep, value = line.partition(":")
+        if not sep:
+            raise ValueError(f"invalid frontmatter line: {line}")
+        key = key.strip()
+        value = value.strip()
+        if key in fields:
+            raise ValueError(f"duplicate frontmatter field: {key}")
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+            value = value[1:-1]
+        fields[key] = value
+    return fields, "\n".join(lines[end + 1:])
 
-reference_count = len(list((ROOT / "references").glob("*.md")))
-if reference_count < 10:
-    raise SystemExit(f"ERROR: expected at least 10 reference files, found {reference_count}")
-for rel in ("scripts/install.sh", "scripts/install.ps1", "templates/architecture-design-template.md", "templates/architecture-review-template.md", "templates/adr-template.md"):
-    if not (ROOT / rel).is_file():
-        raise SystemExit(f"ERROR: required package file is missing: {rel}")
 
-print(f"OK: {name_match.group(1)}")
-print(f"OK: {reference_count} reference files")
-print("OK: local Markdown links and required templates/installers")
+def validate(root: Path) -> list[str]:
+    errors: list[str] = []
+    root = root.resolve()
+    skill_file = root / "SKILL.md"
+    if not skill_file.is_file():
+        return ["SKILL.md is missing"]
+
+    content = skill_file.read_text(encoding="utf-8")
+    try:
+        fields, body = parse_frontmatter(content)
+    except ValueError as exc:
+        return [str(exc)]
+
+    name = fields.get("name", "")
+    description = fields.get("description", "")
+    if not name:
+        errors.append("frontmatter field 'name' is required")
+    elif len(name) > 64 or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", name):
+        errors.append("name must be <=64 chars and contain lowercase letters, digits, and hyphens only")
+    if name in {"anthropic", "claude"}:
+        errors.append(f"reserved skill name: {name}")
+    if not description:
+        errors.append("frontmatter field 'description' is required and must be non-empty")
+    elif len(description) > 1024:
+        errors.append(f"description exceeds 1024 characters ({len(description)})")
+    if re.search(r"<[^>]+>", description):
+        errors.append("description must not contain XML/HTML tags")
+    if len(content.splitlines()) > 500:
+        errors.append(f"SKILL.md exceeds 500 lines ({len(content.splitlines())})")
+    if not body.strip():
+        errors.append("SKILL.md body is empty")
+
+    for entry in PACKAGE_ENTRIES:
+        if not (root / entry).exists():
+            errors.append(f"required package entry is missing: {entry}")
+
+    refs_dir = root / "references"
+    if refs_dir.is_dir():
+        actual_refs = {p.name for p in refs_dir.glob("*.md")}
+        for filename in sorted(REQUIRED_REFERENCES - actual_refs):
+            errors.append(f"required reference is missing: references/{filename}")
+        for filename in sorted(actual_refs):
+            if (refs_dir / filename).stat().st_size == 0:
+                errors.append(f"empty reference file: references/{filename}")
+
+    templates_dir = root / "templates"
+    if templates_dir.is_dir():
+        actual_templates = {p.name for p in templates_dir.glob("*.md")}
+        for filename in sorted(REQUIRED_TEMPLATES - actual_templates):
+            errors.append(f"required template is missing: templates/{filename}")
+
+    for markdown in root.rglob("*.md"):
+        text = markdown.read_text(encoding="utf-8")
+        for target in LOCAL_LINK_RE.findall(text):
+            if target.startswith(("http://", "https://", "mailto:", "#")):
+                continue
+            path_text = target.split("#", 1)[0].split("?", 1)[0]
+            if path_text and not (markdown.parent / path_text).resolve().exists():
+                errors.append(f"broken local link in {markdown.relative_to(root)}: {target}")
+
+    linked_paths = set(re.findall(r"\x60((?:references|templates|scripts)/[^\x60]+)\x60", content))
+    for linked in sorted(linked_paths):
+        if not (root / linked).is_file():
+            errors.append(f"SKILL.md references a missing file: {linked}")
+
+    version_file = root / "VERSION"
+    if version_file.is_file():
+        version = version_file.read_text(encoding="utf-8").strip()
+        if not re.fullmatch(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version):
+            errors.append(f"VERSION is not valid semantic version text: {version!r}")
+
+    return errors
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent,
+                        help="Skill package root (defaults to repository root)")
+    args = parser.parse_args()
+    errors = validate(args.root)
+    if errors:
+        for error in errors:
+            print(f"ERROR: {error}", file=sys.stderr)
+        return 1
+    fields, _ = parse_frontmatter((args.root / "SKILL.md").read_text(encoding="utf-8"))
+    version = (args.root / "VERSION").read_text(encoding="utf-8").strip()
+    print(f"OK: {fields['name']} ({version})")
+    print(f"OK: {len(REQUIRED_REFERENCES)} required references and {len(REQUIRED_TEMPLATES)} templates")
+    print("OK: frontmatter, local links, package entries, and semantic version")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
