@@ -99,7 +99,7 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish public package with provenance
-        run: npm publish --access public --provenance
+      - name: Stage public package for maintainer approval
+        run: npm stage publish --access public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
