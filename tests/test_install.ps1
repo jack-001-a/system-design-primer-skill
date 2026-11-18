@@ -21,13 +21,9 @@ try {
   Set-Content -Path (Join-Path $Destination 'SKILL.md') -Value 'sentinel'
   & $ScriptPath -Agent codex -Scope project -Force
   if ((Get-Content (Join-Path $Destination 'SKILL.md') -Raw) -match 'sentinel') { throw 'Force did not replace old content' }
-  Pop-Location
-
-  $env:HOME = $HomeDir
-  Push-Location $Project
-  & $ScriptPath -Agent all -Scope user
-  foreach ($Relative in @('.agents/skills/system-design-primer/SKILL.md','.claude/skills/system-design-primer/SKILL.md','.copilot/skills/system-design-primer/SKILL.md')) {
-    if (-not (Test-Path (Join-Path $HomeDir $Relative))) { throw "Missing user install: $Relative" }
+  & $ScriptPath -Agent all -Scope project
+  foreach ($Relative in @('.agents/skills/system-design-primer/SKILL.md','.claude/skills/system-design-primer/SKILL.md','.github/skills/system-design-primer/SKILL.md')) {
+    if (-not (Test-Path (Join-Path $Project $Relative))) { throw "Missing project install: $Relative" }
   }
   Pop-Location
   Write-Host 'OK: PowerShell installer integration tests'
