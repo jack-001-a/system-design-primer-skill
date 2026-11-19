@@ -21,11 +21,12 @@ An installable Agent Skill for software architecture design, architecture review
 
 Version 2.3.0 adds an evidence-first task-routing guide, explicit reference-loading paths, repository-review traceability rules, and a compact regression case set for design, review, optimization, security, and migration tasks. The validator checks the evaluation dataset structure and keeps the README, Skill metadata, package manifest, changelog, and VERSION aligned.
 
-The evaluation workflow now includes a dependency-free review aggregator. Run model responses through the six fixture prompts, annotate required outputs (0–2) and guardrails (pass/fail), then aggregate comparable results:
+The evaluation workflow now includes a provider-neutral model runner and a dependency-free human-review aggregator. Run the six fixture prompts through a user-supplied Python adapter, then review and aggregate the responses:
 
+    python scripts/run_evals.py --adapter ./adapter.py --model provider/model-and-version --output evals/responses.jsonl
     python scripts/evaluate.py --responses evals/responses.jsonl --output evals/report.json
 
-See [evals/README.md](evals/README.md) for the JSONL schema, scoring rubric, comparison controls, and limitations. The tool validates human annotations; it does not automatically judge model correctness or claim benchmark performance.
+See [evals/README.md](evals/README.md) for the adapter protocol, JSONL schema, scoring rubric, comparison controls, and limitations. The runner invokes only the adapter you supply; the aggregator validates human annotations and does not automatically judge model correctness or claim benchmark performance.
 
 ## Observability and performance engineering
 
