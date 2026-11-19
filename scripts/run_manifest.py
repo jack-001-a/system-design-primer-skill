@@ -123,6 +123,15 @@ def compare_manifests(left: dict[str, Any], right: dict[str, Any]) -> dict[str, 
     }
 
 
+def load_verified_manifest(path: Path) -> dict[str, Any]:
+    """Load a sealed manifest and return it only after fingerprint verification."""
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(manifest, dict):
+        raise ValueError(f"{path}: expected a JSON object")
+    verify_manifest(manifest)
+    return manifest
+
+
 def read_json(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(value, dict):
