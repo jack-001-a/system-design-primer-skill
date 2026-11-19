@@ -187,6 +187,28 @@
         "Do not equate write acknowledgement with replica freshness",
         "Do not use last-write-wins timestamps as a universal conflict-resolution strategy"
       ]
+    },
+    {
+      "id": "evidence-boundary-review",
+      "task": "Review a repository from static source and configuration only. The code shows a retrying payment client, a database transaction, and a queue publisher, but no production telemetry or deployment configuration is available. Produce a prioritized review without claiming runtime behavior that cannot be observed.",
+      "expected_mode": "Review",
+      "references": [
+        "13-architecture-intelligence.md",
+        "15-failure-analysis.md",
+        "37-consensus-and-distributed-transactions.md",
+        "69-task-routing-and-evidence.md"
+      ],
+      "required_outputs": [
+        "declare the inspection scope and trace the payment request path through transaction and event publication",
+        "separate directly observed facts, reasoned inferences, assumptions, and unknown runtime behavior",
+        "prioritize concrete risks with file or symbol evidence, trigger conditions, impact, and validation steps",
+        "identify the additional telemetry or deployment evidence needed to confirm runtime conclusions"
+      ],
+      "guardrails": [
+        "Do not claim production traffic, deployed topology, or actual failure rates from static source alone",
+        "Do not describe a queue publish after a database commit as atomic without a demonstrated mechanism",
+        "Do not report tests, benchmarks, or runtime checks as executed unless evidence shows they ran"
+      ]
     }
   ]
 }
