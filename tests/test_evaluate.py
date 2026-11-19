@@ -229,5 +229,38 @@ class EvaluationEngineTests(unittest.TestCase):
         self.assertEqual(report["security_violation_events"][0]["event_id"], "evt-bad")
 
 
+    def test_review_history_verifies_reviewer_and_revision_chain(self) -> None:
+        from scripts.review_provenance import review_event_hash, validate_review_history
+        review = {"required_outputs": [2], "guardrails": [True]}
+        first = {"reviewer_id": "reviewer-a", "reviewed_at": "2026-11-19T10:00:00Z",
+                 "rubric_version": "rubric-v1", "review": review, "previous_event_sha256": None}
+        first["event_sha256"] = review_event_hash(first)
+        revised = {"required_outputs": [1], "guardrails": [True]}
+        second = {"reviewer_id": "reviewer-b", "reviewed_at": "2026-11-19T11:00:00+00:00",
+                  "rubric_version": "rubric-v1", "review": revised,
+                  "previous_event_sha256": first["event_sha256"]}
+        second["event_sha256"] = review_event_hash(second)
+        result = validate_review_history([first, second], revised)
+        self.assertEqual(result["events"], 2)
+        self.assertEqual(result["reviewer_id"], "reviewer-b")
+        with self.assertRaisesRegex(ValueError, "link mismatch"):
+            validate_review_history([first, {**second, "previous_event_sha256": "0" * 64}], revised)
+        with self.assertRaisesRegex(ValueError, "latest review_history snapshot"):
+            validate_review_history([first, second], review)
+
+    def test_review_history_rejects_tampering_and_timezone_less_timestamp(self) -> None:
+        from scripts.review_provenance import review_event_hash, validate_review_history
+        review = {"required_outputs": [2], "guardrails": [True]}
+        event = {"reviewer_id": "reviewer-a", "reviewed_at": "2026-11-19T10:00:00",
+                 "rubric_version": "rubric-v1", "review": review, "previous_event_sha256": None}
+        event["event_sha256"] = review_event_hash(event)
+        with self.assertRaisesRegex(ValueError, "timezone-aware"):
+            validate_review_history([event], review)
+        event["reviewed_at"] = "2026-11-19T10:00:00Z"
+        event["event_sha256"] = review_event_hash(event)
+        event["review"]["guardrails"][0] = False
+        with self.assertRaisesRegex(ValueError, "hash mismatch"):
+            validate_review_history([event], review)
+
 if __name__ == "__main__":
     unittest.main()
