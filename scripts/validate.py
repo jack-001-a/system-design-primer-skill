@@ -146,6 +146,8 @@ REQUIRED_SCOPE_BOUNDARIES = {
     "55-opentelemetry-and-instrumentation.md",
     "59-capacity-planning-and-performance-modeling.md",
     "67-storage-infrastructure-and-storage-systems.md",
+    "37-consensus-and-distributed-transactions.md",
+    "56-distributed-tracing-and-context-propagation.md",
 }
 SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
 
