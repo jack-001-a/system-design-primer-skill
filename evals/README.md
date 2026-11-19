@@ -646,3 +646,24 @@ python scripts/evidence_archive.py verify --evidence-dir evidence-archive \
 The manifest records each relative path, byte length, and SHA-256 digest. Verification rejects path traversal, symlinks, missing/modified files, unlisted files, duplicate entries, and a manifest whose independently supplied digest does not match. Preserve the manifest digest through a separate trusted channel. The manifest timestamp is an operator-supplied collection time, not a trusted timestamp.
 
 **Important limitation:** this utility verifies archive byte integrity only. It does not parse or validate CRL signatures, OCSP BasicResponse signatures, responder authorization, thisUpdate/nextUpdate, certificate status at the TSA genTime, or certificate path policy. Do not treat an archived CRL/OCSP file as proof of valid historical revocation status until a dedicated PKI verifier checks its signatures, issuer/responder chain, scope, freshness, and applicability to the TSA certificate. Retain the original DER/PEM objects and their provenance; do not rely on filenames or self-declared metadata.
+
+
+## Historical TSA certificate revocation check using archived CRLs
+
+After independently verifying the RFC 3161 token, normalize its `genTime` to UTC and check the TSA signer certificate against the issuer path and archived CRL at that instant:
+
+```bash
+python scripts/verify_tsa_revocation.py \
+  --certificate tsa-signer.pem \
+  --issuer-roots tsa-issuer-roots.pem \
+  --issuer-roots-sha256 INDEPENDENTLY_RECORDED_ROOT_BUNDLE_SHA256 \
+  --crl tsa-issuer.crl \
+  --at-time 2026-11-19T12:00:00Z \
+  --intermediates tsa-issuer-intermediates.pem
+```
+
+The helper invokes OpenSSL `verify -attime ... -crl_check -CRLfile ...`, evaluating certificate validity and CRL applicability at the supplied historical instant. It pins the issuer-root bundle using an independently supplied SHA-256 digest. A successful result means the supplied path passed the configured OpenSSL CRL checks at that instant; it does not prove that the chosen trust policy or CRL distribution is complete. Supply the correct issuer roots, intermediates, and applicable CRL. Preserve exact inputs and provenance in the evidence archive. The `--at-time` value must come from the already verified RFC 3161 token's `genTime`, never the operator's local clock or archive manifest timestamp.
+
+**OCSP is not marked verified by this command.** OpenSSL's OCSP client can verify response signatures and responder chains, but its client mode does not expose the same historical `-attime` control available to `openssl verify`. A separate OCSP historical verifier must validate BasicOCSPResponse signature, responder authorization and chain, CertID match, `producedAt`, `thisUpdate`, `nextUpdate`, nonce policy where applicable, and status semantics before claiming status at TSA `genTime`. Until then, archived OCSP responses remain integrity-preserved evidence only.
+
+References: [OpenSSL verification options](https://docs.openssl.org/master/man1/openssl-verification-options/) and [OpenSSL OCSP command](https://docs.openssl.org/master/man1/openssl-ocsp/).
