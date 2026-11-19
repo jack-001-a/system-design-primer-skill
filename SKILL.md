@@ -35,6 +35,17 @@ For repository reviews, establish the inspection boundary and trace at least one
 
 For designs and decisions, separate user-provided facts, repository evidence, assumptions, estimates, and unresolved questions. Every estimate must show its formula and inputs. Every recommendation must include the condition that would invalidate it. Use the evaluation cases in `evals/system-design-cases.json` as regression prompts when changing routing or output behavior.
 
+### Execution protocol
+
+1. **Classify before expanding scope.** Select one primary working mode and the user's main decision. For mixed tasks, name the secondary concern only when it changes a material recommendation.
+2. **Route, then load selectively.** Read the routing index, load the primary reference, and add cross-domain references only for concrete dependencies, invariants, or failure modes. Do not load the whole library by default.
+3. **Build an evidence ledger.** Keep user-provided facts, inspected repository evidence, current official documentation, assumptions, estimates, and unknowns distinct. A reference explains what to examine; it does not prove the target system implements it.
+4. **Resolve conflicts at the correct boundary.** Prefer evidence for the actual deployed code/version and explicit business invariants over generic patterns. If authoritative sources disagree or behavior is version-dependent, state the competing interpretations and the verification needed; do not silently blend them.
+5. **Choose the smallest useful deliverable.** Match detail to risk and task size. Ask a concise clarifying question only when an unresolved input could change the decision; otherwise proceed with labeled assumptions and a verification path.
+6. **Make recommendations falsifiable.** For each material recommendation, state its rationale, trade-off, applicability condition, failure mode, and a measurable or inspectable validation step. Do not imply tests, benchmarks, runtime access, or deployments that did not occur.
+7. **Close the loop.** For code or configuration changes, report exact files changed, checks actually run, results, and remaining risks. For designs, report open decisions, owners/evidence needed, and revisit triggers.
+
+
 ## Core principles
 
 ### 1. Establish requirements and constraints first
