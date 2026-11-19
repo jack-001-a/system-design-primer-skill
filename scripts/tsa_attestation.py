@@ -191,7 +191,7 @@ def main() -> int:
                                         args.verifier_bundle_sha256, args.verifier_identity)
             if args.output.exists():
                 raise FileExistsError(args.output)
-            args.output.write_text(json.dumps(result, sort_keys=True, indent=2) + "\\n", encoding="utf-8")
+            args.output.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8")
             output = {"signed": True, "key_id": result["key_id"],
                       "report_sha256": result["report_sha256"], "output": str(args.output)}
         else:
