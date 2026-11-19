@@ -1,5 +1,9 @@
 # Consensus and Distributed Transactions
 
+## Scope and boundaries
+
+This document owns consensus protocol safety/liveness assumptions and cross-resource transaction guarantees, including quorum decisions, two-phase commit, saga boundaries, and ambiguous outcomes. Use [distributed systems](06-distributed-systems.md) for the broader consistency and coordination vocabulary; [data and storage](03-data-and-storage.md) for database-local transaction and isolation semantics; [asynchronous processing](05-async-and-messaging.md) for broker-agnostic delivery and outbox/inbox patterns; [event streaming](28-event-streaming-and-kafka-pulsar.md) for broker-specific guarantees; and [durable workflows](32-workflow-orchestration-and-temporal.md) for long-running process execution. Consensus commit, message acknowledgement, workflow history, and business completion are distinct evidence boundaries.
+
 ## Consensus fundamentals
 Consensus lets distributed replicas agree on an ordered sequence or value despite specified failures. Raft and Paxos-family protocols rely on quorum intersection and explicit safety/liveness assumptions; they do not make arbitrary networks synchronous.
 For Raft-style systems, understand leader election, terms, log replication, commit index, membership changes, quorum availability, and snapshot/log compaction. A majority quorum is necessary for progress in the common crash-fault model, but latency and availability depend on placement and network conditions. A committed log entry is not automatically equivalent to an acknowledged application-level business operation: specify the storage durability contract, state-machine application, client response point, and behavior after an ambiguous timeout. Linearizable reads require an appropriate protocol (for example, a quorum-confirmed read or a valid lease with bounded-clock assumptions); a local read from a leader or follower is not inherently linearizable.
