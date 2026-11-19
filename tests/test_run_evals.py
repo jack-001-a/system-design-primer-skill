@@ -35,14 +35,14 @@ class ModelRunnerTests(unittest.TestCase):
             "request=json.load(sys.stdin)\n"
             "print(json.dumps({'output': request['case_id'] + ':' + request['model']}))\n"
         )
-        output, elapsed = invoke_adapter(adapter, [], self.case, "provider/model-v1", 5)
+        output, elapsed, trace = invoke_adapter(adapter, [], self.case, "provider/model-v1", 5)
         self.assertEqual(output, "sample:provider/model-v1")
         self.assertGreaterEqual(elapsed, 0)
 
     def test_does_not_disclose_scoring_rubric_to_model(self) -> None:
         source = "import json,sys\nrequest=json.load(sys.stdin)\nprint(json.dumps({'output': json.dumps(request, sort_keys=True)}))\n"
         adapter = self.adapter(source)
-        output, _ = invoke_adapter(adapter, [], self.case, "model", 5)
+        output, _, _ = invoke_adapter(adapter, [], self.case, "model", 5)
         request = json.loads(output)
         self.assertNotIn("required_outputs", request)
         self.assertNotIn("guardrails", request)
@@ -77,9 +77,9 @@ class ModelRunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             adapter = Path(directory) / "adapter.py"
             adapter.write_text(
-                "import json\\nprint(json.dumps({'output':'ok','tool_trace':["
+                "import json\nprint(json.dumps({'output':'ok','tool_trace':["
                 "{'sequence':1,'tool':'db.read','operation':'read',"
-                "'authorization':'allowed','outcome':'success'}]}))\\n",
+                "'authorization':'allowed','outcome':'success'}]}))\n",
                 encoding="utf-8",
             )
             output, elapsed, trace = invoke_adapter(
