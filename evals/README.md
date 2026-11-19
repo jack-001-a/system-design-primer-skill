@@ -534,3 +534,22 @@ including older reports, returns 2 (`unknown`). Model labels may differ. A passi
 result establishes matching evaluation design metadata only, not statistical significance
 or model quality. When rubric definitions change, generate a new review rather than
 silently relabeling historical annotations.
+
+
+## Review evidence Merkle commitments
+
+Each report contains a per-model SHA-256 Merkle tree over case-level evidence. A leaf binds case ID, model label, exact per-case rubric fingerprint, review annotation, reviewer provenance summary, review panel/adjudication, model-output SHA-256, tool-trace SHA-256, and manifest identifiers. Every leaf carries an inclusion proof. A global commitment binds dataset/rubric fingerprints, evaluation provenance, manifest status, response audit-chain status, and all model roots.
+
+Verify all roots and case proofs:
+
+```bash
+python scripts/review_evidence.py verify --report evals/report.json
+```
+
+Verify one case:
+
+```bash
+python scripts/review_evidence.py verify-proof --report evals/report.json --model provider/model --case-id capacity-estimation
+```
+
+The root is a commitment, not a signature. Retain the global review_evidence_root independently or sign it externally to detect replacement of the entire report. Existing report sidecars still bind exact report/response bytes; Merkle proofs add case-level inclusion verification.
