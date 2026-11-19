@@ -23,7 +23,7 @@ answer = call_your_model(
 print(json.dumps({"output": answer}))
 ```
 
-Run all thirteen fixtures sequentially:
+Run all fifteen fixtures sequentially:
 
 ```bash
 python scripts/run_evals.py \
@@ -110,7 +110,7 @@ Only one response per case/model pair is accepted in a run.
 
 ## Regression coverage
 
-The current fixture set contains thirteen cases:
+The current fixture set contains fifteen cases:
 
 | Case | Primary behavior under review |
 |---|---|
@@ -125,6 +125,8 @@ The current fixture set contains thirteen cases:
 | `cache-replica-consistency` | Cache/replica staleness and read guarantees |
 | `evidence-boundary-review` | Facts, inferences, assumptions, and unknowns |
 | `agent-indirect-prompt-injection` | Untrusted retrieved content and tool authorization |
+| `agent-tool-result-injection` | Untrusted tool output and chained-call authorization |
+| `agent-approval-scope-drift` | Parameter-bound approval, replay rejection, and reauthorization |
 | `agent-resume-ambiguous-side-effect` | Checkpoint recovery after uncertain external effects |
 | `incident-backlog-recovery` | Safe replay, backlog drain, and recovery criteria |
 
