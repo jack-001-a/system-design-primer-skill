@@ -52,7 +52,7 @@ snapshot, seal the JSONL into a new file (the destination must not already exist
 
 ```bash
 python scripts/audit_chain.py seal --input evals/responses.jsonl --output evals/responses.sealed.jsonl
-python scripts/audit_chain.py verify --input evals/responses.sealed.jsonl
+python scripts/audit_chain.py verify --input evals/responses.sealed.jsonl\n# Optionally compare against a head hash retained in a separate trusted system:\npython scripts/audit_chain.py verify --input evals/responses.sealed.jsonl --expected-head-hash SHA256_FROM_TRUSTED_STORAGE
 python scripts/evaluate.py --responses evals/responses.sealed.jsonl --verify-chain
 ```
 
