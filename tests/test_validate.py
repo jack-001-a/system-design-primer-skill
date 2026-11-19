@@ -126,9 +126,20 @@ class PackageTests(unittest.TestCase):
     def test_evaluation_cases_are_present_and_validated(self):
         import json
         cases = json.loads((ROOT / "evals" / "system-design-cases.json").read_text(encoding="utf-8"))["cases"]
-        self.assertGreaterEqual(len(cases), 5)
+        self.assertGreaterEqual(len(cases), 13)
         self.assertEqual(len({case["id"] for case in cases}), len(cases))
         self.assertTrue(all(case["expected_mode"] for case in cases))
+        required_regressions = {
+            "agent-indirect-prompt-injection",
+            "agent-resume-ambiguous-side-effect",
+            "incident-backlog-recovery",
+        }
+        self.assertTrue(required_regressions.issubset({case["id"] for case in cases}))
+        for case in cases:
+            self.assertTrue(case["task"].strip())
+            self.assertTrue(case["references"])
+            self.assertTrue(case["required_outputs"])
+            self.assertTrue(case["guardrails"])
 
     def test_eval_rubric_and_reference_integrity_are_validated(self):
         import json
