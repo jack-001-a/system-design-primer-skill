@@ -16,6 +16,7 @@ try {
   if (-not (Test-Path (Join-Path $Destination 'SKILL.md'))) { throw 'Skill entrypoint missing' }
   if (-not (Test-Path (Join-Path $Destination 'evals/README.md')) -or -not (Test-Path (Join-Path $Destination 'evals/system-design-cases.json'))) { throw 'Evaluation assets missing from installation' }
   if (Test-Path (Join-Path $Destination '.git')) { throw '.git leaked into installed Skill' }
+  if (Test-Path (Join-Path $Destination 'scripts/validate.py')) { throw 'Repository-only validator leaked into installed Skill' }
 
   $FailedAsExpected = $false
   try { & $ScriptPath -Agent codex -Scope project } catch { $FailedAsExpected = $true }
