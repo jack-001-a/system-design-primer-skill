@@ -4,6 +4,49 @@ The files in this directory are regression fixtures. They define representative 
 expected output dimensions, and safety/correctness guardrails; they do **not** establish
 that any model has passed those tasks.
 
+## Run prompts against a model
+
+The runner calls a user-supplied Python adapter, so the repository does not require a
+specific provider SDK. Create an adapter that reads one JSON object from stdin and writes
+one JSON object to stdout:
+
+```python
+# adapter.py — replace this example with your provider SDK call
+import json
+import sys
+
+request = json.load(sys.stdin)
+answer = call_your_model(
+    model=request["model"],
+    prompt=request["task"],
+)
+print(json.dumps({"output": answer}))
+```
+
+Run the six fixtures sequentially:
+
+```bash
+python scripts/run_evals.py \
+  --adapter ./adapter.py \
+  --model provider/model-and-version \
+  --output evals/responses.jsonl
+```
+
+The adapter receives `schema_version`, `case_id`, `model`, `task`,
+`expected_mode`, `references`, `required_outputs`, and `guardrails`. It must
+return `{"output": "complete model response"}` on stdout. Adapter diagnostics belong
+on stderr. Repeat `--adapter-arg VALUE` to pass adapter-specific arguments. The
+runner uses the current Python interpreter, enforces a 180-second per-case timeout by
+default (configurable with `--timeout`), records per-case duration, and refuses to
+overwrite an existing output file.
+
+Credentials should be supplied to the adapter through environment variables or your
+secret manager; never place API keys in command arguments, fixture files, or response
+records. The runner does not transmit data itself: the adapter controls which service
+receives the prompt. Review the adapter code before running it.
+
+After the run, follow the human-review and aggregation steps below.
+
 ## Run a reviewed comparison
 
 1. Run each case prompt against the model(s) being evaluated. Keep system instructions,
