@@ -88,6 +88,7 @@ class ModelRunnerTests(unittest.TestCase):
         self.assertEqual(output, "ok")
         self.assertGreaterEqual(elapsed, 0)
         self.assertEqual(trace[0]["tool"], "db.read")
+        self.assertEqual(trace[0]["session_id"], "sess-1")
 
 
 if __name__ == "__main__":
