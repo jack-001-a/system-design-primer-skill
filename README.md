@@ -4,7 +4,7 @@
 
 An installable Agent Skill for software architecture design, architecture reviews, performance optimization, technology evaluation, and migration planning. It uses Donne Martin's System Design Primer as its knowledge foundation and adds modern production engineering practices.
 
-- **Version:** 1.8.0
+- **Version:** 1.9.0
 - **Language:** English, with standard technical terminology
 - **Runtime dependencies:** The Skill itself has no third-party runtime dependencies. Installation and validation require only Bash, PowerShell, or Python 3.
 
@@ -13,8 +13,8 @@ An installable Agent Skill for software architecture design, architecture review
     system-design-primer/
     ├── SKILL.md
     ├── README.md / ATTRIBUTION.md / LICENSE / VERSION
-    ├── references/      41 progressive knowledge references
-    ├── templates/       Design, review, ADR, decision, scorecard, failure, agent, production-readiness, disaster-recovery, FinOps, event-streaming, event-sourcing, CDC, database architecture, sharding, and zero-downtime migration templates
+    ├── references/      48 progressive knowledge references
+    ├── templates/       Design, review, ADR, decision, scorecard, failure, agent, production-readiness, disaster-recovery, FinOps, event-streaming, event-sourcing, CDC, database architecture, sharding, zero-downtime migration, API architecture, real-time systems, and API security templates
     └── scripts/         Linux/macOS and Windows installers and validators
 
 ## Downloads
@@ -156,6 +156,6 @@ Production architecture guidance covers [Kubernetes and container platforms](ref
 
 Data-intensive and event-driven architecture guidance covers [Kafka and Pulsar event streaming](references/28-event-streaming-and-kafka-pulsar.md), [Event Sourcing and CQRS](references/29-event-sourcing-and-cqrs.md), [CDC and Debezium](references/30-change-data-capture-and-debezium.md), [data lakehouse and stream/batch processing](references/31-data-lakehouse-and-stream-batch.md), [durable workflow orchestration](references/32-workflow-orchestration-and-temporal.md), and [schema registry and event governance](references/33-schema-registry-and-event-governance.md). Matching templates support event-streaming designs, event-sourced domains, and CDC data pipelines.
 
-Database and distributed-data guidance covers [PostgreSQL internals and performance](references/34-postgresql-internals-and-performance.md), [MySQL/InnoDB](references/35-mysql-innodb-and-performance.md), [sharding and Distributed SQL](references/36-sharding-and-distributed-sql.md), [consensus and distributed transactions](references/37-consensus-and-distributed-transactions.md), [Elasticsearch/OpenSearch search architecture](references/38-search-architecture-elasticsearch-opensearch.md), [vector databases and hybrid retrieval](references/39-vector-databases-and-hybrid-retrieval.md), and [zero-downtime database migrations](references/40-zero-downtime-database-migrations.md). Matching templates support database architecture reviews, sharding decisions, and migration plans.
+API and real-time architecture guidance covers [API gateway and edge architecture](references/41-api-gateway-and-edge-architecture.md), [REST API design and lifecycle](references/42-rest-api-design-and-lifecycle.md), [GraphQL architecture](references/43-graphql-architecture-and-governance.md), [gRPC and service contracts](references/44-grpc-and-service-contracts.md), [WebSocket, SSE, and real-time systems](references/45-websocket-sse-and-realtime-systems.md), [real-time collaboration with OT/CRDT](references/46-realtime-collaboration-ot-crdt.md), and [API security, rate limiting, and abuse prevention](references/47-api-security-rate-limiting-and-abuse.md). Matching templates support API design, real-time system design, and API security reviews.\n\nDatabase and distributed-data guidance covers [PostgreSQL internals and performance](references/34-postgresql-internals-and-performance.md), [MySQL/InnoDB](references/35-mysql-innodb-and-performance.md), [sharding and Distributed SQL](references/36-sharding-and-distributed-sql.md), [consensus and distributed transactions](references/37-consensus-and-distributed-transactions.md), [Elasticsearch/OpenSearch search architecture](references/38-search-architecture-elasticsearch-opensearch.md), [vector databases and hybrid retrieval](references/39-vector-databases-and-hybrid-retrieval.md), and [zero-downtime database migrations](references/40-zero-downtime-database-migrations.md). Matching templates support database architecture reviews, sharding decisions, and migration plans.
 
 For more information, see [CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md).
