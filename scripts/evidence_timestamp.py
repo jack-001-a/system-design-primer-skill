@@ -77,19 +77,36 @@ def parse_openssl_gen_time(value: str) -> str:
 
 
 def parse_accuracy(details: str) -> dict[str, int] | None:
-    match = re.search(r"^Accuracy:\s*(.+)$", details, re.I | re.M)
-    if not match:
+    """Parse the optional RFC 3161 Accuracy field without accepting partial matches."""
+    matches = re.findall(r"^Accuracy:[ \\t]*(.*?)[ \\t]*$", details, re.I | re.M)
+    if not matches:
         return None
+    if len(matches) != 1 or not matches[0]:
+        raise ValueError("timestamp token accuracy field is malformed")
+
     result: dict[str, int] = {}
-    for amount, unit in re.findall(r"(\d+)\s*(seconds?|millis(?:econds?)?|micros(?:econds?)?)", match.group(1), re.I):
-        key = "seconds" if unit.lower().startswith("second") else ("millis" if unit.lower().startswith("milli") else "micros")
+    order = {"seconds": 0, "millis": 1, "micros": 2}
+    previous = -1
+    for component in matches[0].split(","):
+        parsed = re.fullmatch(
+            r"[ \\t]*(\\d+)[ \\t]+(seconds?|millis|micros)[ \\t]*",
+            component, re.I,
+        )
+        if not parsed:
+            raise ValueError("timestamp token accuracy field is malformed")
+        amount, unit = parsed.groups()
+        unit = unit.lower()
+        key = "seconds" if unit.startswith("second") else unit
         if key in result:
             raise ValueError("timestamp token contains duplicate accuracy components")
-        result[key] = int(amount)
-    if not result or any(v < 1 or v > 999 for k, v in result.items() if k != "seconds") or result.get("seconds", 0) < 0:
-        raise ValueError("timestamp token accuracy field is malformed")
+        if order[key] <= previous:
+            raise ValueError("timestamp token accuracy components are out of order")
+        value = int(amount)
+        if key in ("millis", "micros") and not 1 <= value <= 999:
+            raise ValueError("timestamp token millis and micros accuracy must be between 1 and 999")
+        result[key] = value
+        previous = order[key]
     return result
-
 
 
 def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[str, str]:

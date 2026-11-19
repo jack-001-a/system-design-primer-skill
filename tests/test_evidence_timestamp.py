@@ -132,6 +132,32 @@ class EvidenceTimestampTests(unittest.TestCase):
                 import hashlib as h
                 verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
 
+    def test_parse_accuracy_accepts_optional_rfc3161_components_and_boundaries(self):
+        from scripts.evidence_timestamp import parse_accuracy
+        self.assertIsNone(parse_accuracy("Policy OID: 1.2.3\\n"))
+        self.assertEqual(parse_accuracy("Accuracy: 0 seconds"), {"seconds": 0})
+        self.assertEqual(parse_accuracy("Accuracy: 999999 seconds, 1 millis, 999 micros"),
+                         {"seconds": 999999, "millis": 1, "micros": 999})
+        self.assertEqual(parse_accuracy("Accuracy: 999 micros"), {"micros": 999})
+
+    def test_parse_accuracy_rejects_partial_or_malformed_components(self):
+        from scripts.evidence_timestamp import parse_accuracy
+        invalid = [
+            "Accuracy:", "Accuracy: 1 seconds garbage", "Accuracy: 1 seconds, junk",
+            "Accuracy: 1 seconds trailing", "Accuracy: 1 millis, 2 seconds",
+            "Accuracy: 1 seconds, 2 seconds", "Accuracy: 0 millis",
+            "Accuracy: 1000 millis", "Accuracy: 0 micros", "Accuracy: 1000 micros",
+            "Accuracy: -1 seconds", "Accuracy: 1.5 seconds",
+        ]
+        for value in invalid:
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                parse_accuracy(value)
+
+    def test_parse_accuracy_rejects_duplicate_accuracy_lines(self):
+        from scripts.evidence_timestamp import parse_accuracy
+        with self.assertRaisesRegex(ValueError, "malformed"):
+            parse_accuracy("Accuracy: 1 seconds\\nAccuracy: 2 millis")
+
     def test_inspector_uses_cms_signerinfo_certificate_not_embedded_certificate_guess(self):
         from datetime import datetime, timedelta, timezone
         from cryptography import x509

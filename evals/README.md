@@ -899,3 +899,8 @@ Without all four timestamp inputs (request, response, TSA CA bundle, and
 independent CA-bundle pin), the verifier reports no cryptographically proven
 signing time. TSA clock accuracy and trust policy remain external trust
 assumptions; retain the original DER objects and trust inputs.
+
+
+### RFC 3161 Accuracy parsing
+
+The optional Accuracy field is parsed as a complete, ordered list of `seconds`, `millis`, and `micros` components. The parser rejects duplicate components, out-of-order components, partial matches, trailing text, and invalid sub-second values. RFC 3161 permits non-negative seconds; when present, millis and micros are each in the inclusive range 1–999. If Accuracy is absent, it remains unknown and is never treated as zero. Accuracy is the TSA's declared uncertainty interval, not independent proof of clock correctness.
