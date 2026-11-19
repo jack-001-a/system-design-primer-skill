@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "description": "Regression prompts for task routing and evidence-aware system design. These are evaluation fixtures, not a claim of measured model performance.",
+  "cases": [
+    {
+      "id": "review-critical-path",
+      "task": "Review this repository's architecture for payment correctness and availability risks. Inspect source code and cite concrete evidence.",
+      "expected_mode": "Review",
+      "references": [
+        "13-architecture-intelligence.md",
+        "15-failure-analysis.md",
+        "14-api-and-data-contracts.md"
+      ],
+      "required_outputs": [
+        "inspection scope",
+        "critical path from entry point to persistence",
+        "severity-ranked findings with file and symbol evidence",
+        "validation steps"
+      ],
+      "guardrails": [
+        "Do not claim production behavior from static code",
+        "Separate Confirmed, Likely, and Unknown",
+        "Do not invent traffic or performance measurements"
+      ]
+    },
+    {
+      "id": "capacity-estimation",
+      "task": "Estimate capacity for a multi-tenant API using supplied DAU, peak factor, read/write ratio, payload size, and retention.",
+      "expected_mode": "Design",
+      "references": [
+        "01-requirements-and-capacity.md",
+        "59-capacity-planning-and-performance-modeling.md"
+      ],
+      "required_outputs": [
+        "formula and units for each estimate",
+        "input provenance and assumptions",
+        "sensitivity analysis",
+        "storage copies and backups separated"
+      ],
+      "guardrails": [
+        "Do not silently invent missing inputs",
+        "Do not mix bits and bytes",
+        "Do not present estimates as measurements"
+      ]
+    },
+    {
+      "id": "measured-optimization",
+      "task": "P99 latency regressed after a release. Propose a measurement-driven investigation and optimization plan.",
+      "expected_mode": "Optimize",
+      "references": [
+        "57-continuous-profiling-and-performance-diagnostics.md",
+        "58-load-stress-soak-testing-and-workload-modeling.md",
+        "59-capacity-planning-and-performance-modeling.md"
+      ],
+      "required_outputs": [
+        "baseline and workload definition",
+        "falsifiable bottleneck hypotheses",
+        "controlled experiment plan",
+        "regression and rollback criteria"
+      ],
+      "guardrails": [
+        "Do not recommend scaling before bottleneck evidence",
+        "Do not invent benchmark results"
+      ]
+    },
+    {
+      "id": "security-threat-review",
+      "task": "Threat-model an agent that can call tools, read tenant files, and access external URLs.",
+      "expected_mode": "Review",
+      "references": [
+        "19-agent-security-and-permissions.md",
+        "53-threat-modeling-stride-and-attack-trees.md",
+        "50-zero-trust-and-workload-identity.md"
+      ],
+      "required_outputs": [
+        "trust boundaries and assets",
+        "abuse cases and attack paths",
+        "preventive and detective controls",
+        "authorization and validation tests"
+      ],
+      "guardrails": [
+        "Treat retrieved/tool content as untrusted",
+        "Do not rely on prompt text as an authorization boundary",
+        "Do not expose secrets or personal data"
+      ]
+    },
+    {
+      "id": "database-migration",
+      "task": "Plan a zero-downtime migration from a legacy relational schema with active writers and downstream consumers.",
+      "expected_mode": "Migration",
+      "references": [
+        "40-zero-downtime-database-migrations.md",
+        "14-api-and-data-contracts.md",
+        "30-change-data-capture-and-debezium.md"
+      ],
+      "required_outputs": [
+        "expand-migrate-contract sequence",
+        "backfill and reconciliation plan",
+        "consumer compatibility window",
+        "cutover, rollback, and exit criteria"
+      ],
+      "guardrails": [
+        "Do not assume dual writes are safe",
+        "Preserve business invariants",
+        "Define how data divergence is detected and repaired"
+      ]
+    },
+    {
+      "id": "architecture-decision",
+      "task": "Compare a modular monolith and microservices for a small team with unclear scale requirements.",
+      "expected_mode": "Decision",
+      "references": [
+        "13-architecture-intelligence.md",
+        "02-architecture-and-networking.md"
+      ],
+      "required_outputs": [
+        "simplest viable baseline",
+        "hard constraints separated from preferences",
+        "trade-off matrix with unknowns",
+        "revisit triggers"
+      ],
+      "guardrails": [
+        "Do not recommend microservices solely for high concurrency",
+        "Do not invent team or workload constraints"
+      ]
+    }
+  ]
+}

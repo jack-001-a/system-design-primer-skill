@@ -78,6 +78,7 @@ REQUIRED_REFERENCES = {
     "66-edge-computing-architecture.md",
     "67-storage-infrastructure-and-storage-systems.md",
     "68-tcp-quic-and-network-performance.md",
+    "69-task-routing-and-evidence.md",
 }
 REQUIRED_TEMPLATES = {
     "adr-template.md",
@@ -262,6 +263,43 @@ def validate(root: Path) -> list[str]:
                 f"does not match VERSION {version!r}"
             )
 
+    eval_file = root / "evals" / "system-design-cases.json"
+    if not eval_file.is_file():
+        errors.append("evaluation case file is missing: evals/system-design-cases.json")
+    else:
+        try:
+            evaluation = json.loads(eval_file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            errors.append(f"evaluation case file is invalid JSON: {exc}")
+            evaluation = {}
+        cases = evaluation.get("cases", []) if isinstance(evaluation, dict) else []
+        if not isinstance(cases, list) or not cases:
+            errors.append("evaluation case file must contain a non-empty 'cases' array")
+        else:
+            seen_case_ids: set[str] = set()
+            for index, case in enumerate(cases):
+                prefix = f"evaluation case {index + 1}"
+                if not isinstance(case, dict):
+                    errors.append(f"{prefix} must be an object")
+                    continue
+                case_id = case.get("id")
+                if not isinstance(case_id, str) or not case_id.strip():
+                    errors.append(f"{prefix} must have a non-empty string id")
+                elif case_id in seen_case_ids:
+                    errors.append(f"duplicate evaluation case id: {case_id}")
+                else:
+                    seen_case_ids.add(case_id)
+                for field in ("task", "expected_mode", "required_outputs", "guardrails"):
+                    if not case.get(field):
+                        errors.append(f"{prefix} is missing required field: {field}")
+                references = case.get("references", [])
+                if not isinstance(references, list):
+                    errors.append(f"{prefix} references must be an array")
+                else:
+                    for reference in references:
+                        if not isinstance(reference, str) or not (refs_dir / reference).is_file():
+                            errors.append(f"{prefix} references a missing reference: {reference!r}")
+
     package_file = root / "package.json"
     if not package_file.is_file():
         errors.append("package.json is missing")
@@ -282,6 +320,15 @@ def validate(root: Path) -> list[str]:
             errors.append(
                 f"package.json version {package_version!r} does not match VERSION {version!r}"
             )
+        if version_file.is_file() and (root / "README.md").is_file():
+            readme_text = (root / "README.md").read_text(encoding="utf-8")
+            if not re.search(r"(?m)^- \*\*Version:\*\* " + re.escape(version) + r"$", readme_text):
+                errors.append(f"README version must match VERSION {version!r}")
+        changelog_file = root / "CHANGELOG.md"
+        if changelog_file.is_file():
+            first_version = re.search(r"(?m)^##\s*([^ —]+)", changelog_file.read_text(encoding="utf-8"))
+            if not first_version or first_version.group(1) != version:
+                errors.append(f"latest CHANGELOG version must match VERSION {version!r}")
         repository = package.get("repository", {})
         if not isinstance(repository, dict) or repository.get("url") != (
             "https://github.com/jack-001-a/system-design-primer-skill.git"
