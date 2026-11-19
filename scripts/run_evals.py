@@ -15,9 +15,9 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from .evaluate import load_cases
+    from .evaluate import load_cases, validate_tool_trace
 except ImportError:  # Direct execution: python scripts/run_evals.py
-    from evaluate import load_cases
+    from evaluate import load_cases, validate_tool_trace
 
 
 def invoke_adapter(
@@ -58,8 +58,10 @@ def invoke_adapter(
     if not isinstance(response, dict) or not isinstance(response.get("output"), str):
         raise RuntimeError("adapter response must be an object with a string 'output' field")
     trace = response.get("tool_trace", [])
-    if not isinstance(trace, list):
-        raise RuntimeError("adapter tool_trace must be an array when provided")
+    try:
+        validate_tool_trace(trace)
+    except ValueError as exc:
+        raise RuntimeError(f"adapter returned invalid tool_trace: {exc}") from exc
     if not response["output"].strip():
         raise RuntimeError("adapter returned an empty output")
     return response["output"], elapsed_ms, trace
