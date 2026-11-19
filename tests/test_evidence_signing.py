@@ -31,7 +31,7 @@ class EvidenceSigningTests(unittest.TestCase):
   self.store["keys"]["release-2026"]["revoked_at"]="2020-01-01T00:00:00Z"; self.write_store()
   with self.assertRaisesRegex(ValueError,"revocation effective time"): self.verify()
  def test_expired_key_rejects_signature_outside_validity(self):
-  self.store["keys"]["release-2026"]["not_after"]="2020-01-01T00:00:00Z"; self.write_store()
+  self.store["keys"]["release-2026"]["not_before"]="2019-01-01T00:00:00Z"; self.store["keys"]["release-2026"]["not_after"]="2020-01-01T00:00:00Z"; self.write_store()
   with self.assertRaisesRegex(ValueError,"outside key validity"): self.verify()
  def test_trust_store_pin_mismatch_rejected(self):
   with self.assertRaisesRegex(ValueError,"pin mismatch"): verify_signature(self.report,self.signature,self.trust,"0"*64)
