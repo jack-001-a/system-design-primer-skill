@@ -120,6 +120,16 @@ PACKAGE_ENTRIES = (
     "ATTRIBUTION.md", "LICENSE", "VERSION",
 )
 LOCAL_LINK_RE = re.compile(r"\]\(([^)]+)\)")
+
+REQUIRED_SCOPE_BOUNDARIES = {
+    "05-async-and-messaging.md",
+    "07-reliability-and-resilience.md",
+    "15-failure-analysis.md",
+    "28-event-streaming-and-kafka-pulsar.md",
+    "32-workflow-orchestration-and-temporal.md",
+    "60-chaos-engineering-and-resilience-experiments.md",
+    "61-incident-management-and-postmortems.md",
+}
 SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
 
 
@@ -209,8 +219,13 @@ def validate(root: Path) -> list[str]:
         for filename in sorted(REQUIRED_REFERENCES - actual_refs):
             errors.append(f"required reference is missing: references/{filename}")
         for filename in sorted(actual_refs):
-            if (refs_dir / filename).stat().st_size == 0:
+            reference_text = (refs_dir / filename).read_text(encoding="utf-8")
+            if not reference_text.strip():
                 errors.append(f"empty reference file: references/{filename}")
+            if filename in REQUIRED_SCOPE_BOUNDARIES and "## Scope and boundaries" not in reference_text:
+                errors.append(
+                    f"reference is missing its required scope boundary section: references/{filename}"
+                )
 
         routing_file = refs_dir / "69-task-routing-and-evidence.md"
         if routing_file.is_file():
