@@ -82,6 +82,13 @@ class PackageTests(unittest.TestCase):
             "59-capacity-planning-and-performance-modeling.md",
             "60-chaos-engineering-and-resilience-experiments.md",
             "61-incident-management-and-postmortems.md",
+            "62-dns-and-service-discovery.md",
+            "63-load-balancing-and-global-traffic-management.md",
+            "64-cdn-and-edge-caching.md",
+            "65-cloud-networking-and-connectivity.md",
+            "66-edge-computing-architecture.md",
+            "67-storage-infrastructure-and-storage-systems.md",
+            "68-tcp-quic-and-network-performance.md",
         }.issubset(REQUIRED_REFERENCES))
         self.assertTrue({
             "architecture-decision-matrix-template.md",
@@ -110,6 +117,10 @@ class PackageTests(unittest.TestCase):
             "performance-test-plan-template.md",
             "chaos-experiment-template.md",
             "incident-postmortem-template.md",
+            "network-architecture-design-template.md",
+            "cdn-and-edge-strategy-template.md",
+            "storage-architecture-design-template.md",
+            "edge-computing-readiness-template.md",
         }.issubset(REQUIRED_TEMPLATES))
 
     def test_invalid_name_is_rejected(self):

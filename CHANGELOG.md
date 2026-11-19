@@ -1,5 +1,17 @@
 # Changelog
 
+## 2.2.0 — 2026-11-19
+
+- Add DNS and service discovery guidance covering namespaces, TTLs, resolver behavior, endpoint health, security, and failure modes.
+- Add load balancing and global traffic management guidance for algorithms, health semantics, connection draining, regional routing, and failover.
+- Add CDN and edge caching architecture for cache keys, freshness, invalidation, origin shielding, privacy, security, and cost.
+- Add cloud networking and connectivity guidance for VPC/VNet topology, CIDR/IPv6, routing, transit, private connectivity, NAT, and segmentation.
+- Add edge computing architecture for offline operation, fleet lifecycle, device identity, synchronization, and local recovery.
+- Add storage infrastructure guidance for block, file, object, local, and distributed storage, including durability, performance, recovery, and lifecycle economics.
+- Add TCP/QUIC and network performance guidance for latency decomposition, congestion, BDP, connection management, and diagnostics.
+- Add network architecture, CDN/edge strategy, storage architecture, and edge readiness templates; extend validation and tests.
+
+
 ## 2.1.0 — 2026-11-19
 
 - Add OpenTelemetry architecture and instrumentation guidance for traces, metrics, logs, Collector pipelines, sampling, privacy, and telemetry cost.
