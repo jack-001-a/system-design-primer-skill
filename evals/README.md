@@ -712,7 +712,9 @@ The report requires an independently recorded SHA-256 pin for every supplied res
 
 The report refuses to combine a CRL result whose validation time differs from the supplied token `genTime`, requires explicit successful CRL status and SHA-256 bindings, and requires any OCSP result to identify the same TSA certificate. It retains exact result-file digests and source-object digests. OCSP remains a separate current-time assessment and can never upgrade or replace the historical CRL finding. Omitting OCSP is permitted and reported as `not_provided`.
 
-The report's historical finding is deliberately scoped to the supplied certificate path and CRL. The report does not itself verify the timestamp token, establish completeness of revocation sources or trust policy, validate a nonce, or provide a digital signature. Preserve the report and its SHA-256 digest through an independent trusted channel. Do not treat a report file or its hash as a substitute for signed source evidence.
+The report's `limitations` list is generated from the evidence actually supplied. It always retains the timestamp-verification boundary, direct-CRL coverage limitations (including unsupported distribution-point, delta, indirect, and partial-reason scopes), independent-pin provenance limits, and the fact that this aggregate is not a signature. OCSP-specific limitations appear only when relevant: omitted OCSP is described as unassessed; current-time OCSP is explicitly not historical; historical OCSP is tied to `genTime`; and the responder-revocation gap is removed only when a separately pinned CRL result is bound to the exact responder certificate and `genTime`. A successful responder check still does not prove complete revocation-source or trust-policy coverage. The nonce limitation is included only when an OCSP response is supplied, because this verifier reports `nonce_checked: false`.
+
+These are evidence-scope descriptions, not proof that the supplied sources or policies are complete. Preserve the report and its SHA-256 digest through an independent trusted channel. Do not treat a report file or its hash as a substitute for signed source evidence.
 
 
 

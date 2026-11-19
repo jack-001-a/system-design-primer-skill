@@ -36,6 +36,46 @@ def require_digest(value: Any, field: str) -> str:
         raise ValueError(field + " must be a lowercase SHA-256 digest")
     return value
 
+def _build_limitations(ocsp: dict[str, Any], responder: dict[str, Any]) -> list[str]:
+    """Describe only the evidence gaps that remain for this report configuration."""
+    limitations = [
+        "This report does not independently verify the RFC 3161 token or derive genTime; it binds the caller-supplied time to the pinned timestamp and CRL result files.",
+        "The TSA CRL finding covers only the supplied certificate path and CRL. It does not prove that all applicable revocation sources, trust policies, or CRL partitions were supplied.",
+        "The supported CRL verifier is limited to direct CRLs without certificate CRLDistributionPoints; delta, indirect, named issuing-distribution-point, and partial-reason coverage are not assessed.",
+        "Result JSON files are accepted only when their byte digests match independently supplied pins; a digest generated from the same untrusted file is not an authenticity guarantee.",
+        "The independent pins must be retained through a separate trusted channel. This report does not prove who produced the result JSON or which verifier binary executed.",
+        "This report is an aggregation record, not a digital signature or an independent trust anchor.",
+    ]
+    if not ocsp.get("provided"):
+        limitations.append(
+            "No OCSP response was supplied; neither current-time nor historical OCSP status was assessed."
+        )
+        limitations.append(
+            "OCSP responder certificate revocation at genTime was not assessed because no OCSP responder identity and historical response were supplied."
+        )
+    else:
+        if ocsp.get("historical_status_claim"):
+            limitations.append(
+                "The supplied OCSP response is assessed only at RFC 3161 genTime; it does not establish the responder's current-time status."
+            )
+        else:
+            limitations.append(
+                "The supplied OCSP response is current-time evidence only; it cannot establish certificate status at RFC 3161 genTime."
+            )
+        limitations.append(
+            "The OCSP verifier does not check a request nonce; nonce_checked is false."
+        )
+        if responder.get("status") == "not_assessed":
+            limitations.append(
+                "OCSP responder certificate revocation at genTime was not assessed. A historical OCSP status result and a separately pinned CRL result for the exact responder certificate, bound to genTime, are required."
+            )
+        else:
+            limitations.append(
+                "The OCSP responder non-revocation finding covers only the supplied responder certificate path and direct CRL; it does not prove complete responder revocation-source or trust-policy coverage."
+            )
+    return limitations
+
+
 def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                             crl_result_sha256: str, ocsp_result: dict[str, Any] | None = None,
                             ocsp_result_sha256: str | None = None,
@@ -243,17 +283,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "current_ocsp_assessment": ocsp_section,
         "historical_ocsp_responder_revocation_assessment": responder_revocation_section,
         "overall_assessment": overall_assessment,
-        "limitations": [
-            "This report does not independently verify the RFC 3161 token or derive genTime; it binds the caller-supplied time to the CRL result.",
-            "The CRL result covers the supplied certificate path and CRL only; it does not prove that all applicable revocation sources or trust policies were supplied.",
-            "A current-time OCSP result is never treated as historical status at genTime; only an explicitly historical result with matching time fields can make that claim.",
-            "The OCSP verifier does not check a request nonce; nonce_checked is false.",
-            "OCSP responder certificate revocation is not assessed: response-signature and responder-path verification do not establish that the responder certificate was not revoked at genTime.",
-            "Responder revocation can only be assessed when the OCSP verifier is given a separately pinned signer certificate, proves its ResponderID matches the BasicOCSPResponse, forces OpenSSL to verify using that exact certificate, and a separately pinned issuer CRL result is bound to the same certificate and genTime.",
-            "Result JSON files are accepted only when their byte digests match independently supplied pins; a digest generated from the same untrusted file is not an authenticity guarantee.",
-            "The independent pins must be retained through a separate trusted channel. This report does not prove who produced the result JSON or which verifier binary executed.",
-            "This report is an aggregation record, not a digital signature or an independent trust anchor.",
-        ],
+        "limitations": _build_limitations(ocsp_section, responder_revocation_section),
     }
 
 def write_report(output: Path, report: dict[str, Any]) -> str:

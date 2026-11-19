@@ -260,4 +260,41 @@ class TsaValidationReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not explicitly verified"):
             self.build_report_with_timestamp(self.gen_time, bad, self.crl_file_hash)
 
+    def test_limitations_are_specific_when_ocsp_is_omitted(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        limitations = report["limitations"]
+        joined = " ".join(limitations).lower()
+        self.assertTrue(any("neither current-time nor historical ocsp" in item.lower() for item in limitations))
+        self.assertTrue(any("responder certificate revocation" in item.lower() for item in limitations))
+        self.assertFalse(any("nonce" in item.lower() for item in limitations))
+        self.assertTrue(any("delta, indirect" in item.lower() for item in limitations))
+
+    def test_limitations_distinguish_current_time_ocsp_scope(self):
+        report = self.build_report_with_timestamp(
+            self.gen_time, self.crl, self.crl_file_hash, self.ocsp, self.ocsp_file_hash)
+        limitations = " ".join(report["limitations"]).lower()
+        self.assertIn("current-time evidence only", limitations)
+        self.assertIn("does not check a request nonce", limitations)
+        self.assertIn("responder certificate revocation at gentime was not assessed", limitations)
+
+    def test_historical_ocsp_without_responder_crl_keeps_only_responder_gap(self):
+        historical = self.historical_ocsp_with_signer()
+        report = self.build_report_with_timestamp(
+            self.gen_time, self.crl, self.crl_file_hash, historical, self.ocsp_file_hash)
+        limitations = " ".join(report["limitations"]).lower()
+        self.assertIn("assessed only at rfc 3161 gentime", limitations)
+        self.assertIn("responder certificate revocation at gentime was not assessed", limitations)
+        self.assertNotIn("current-time evidence only", limitations)
+
+    def test_historical_ocsp_with_responder_crl_removes_not_assessed_claim(self):
+        historical = self.historical_ocsp_with_signer()
+        report = self.build_report_with_timestamp(
+            self.gen_time, self.crl, self.crl_file_hash, historical, self.ocsp_file_hash,
+            self.responder_result(), hashlib.sha256(b"responder result").hexdigest())
+        limitations = " ".join(report["limitations"]).lower()
+        self.assertNotIn("responder certificate revocation at gentime was not assessed", limitations)
+        self.assertIn("responder non-revocation finding covers only the supplied", limitations)
+        self.assertIn("does not prove that all applicable revocation sources", limitations)
+        self.assertIn("does not check a request nonce", limitations)
+
 if __name__ == "__main__": unittest.main()
