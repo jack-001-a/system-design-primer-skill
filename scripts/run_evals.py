@@ -14,7 +14,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from evaluate import load_cases
+try:
+    from .evaluate import load_cases
+except ImportError:  # Direct execution: python scripts/run_evals.py
+    from evaluate import load_cases
 
 
 def invoke_adapter(
