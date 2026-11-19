@@ -39,6 +39,14 @@ class ModelRunnerTests(unittest.TestCase):
         self.assertEqual(output, "sample:provider/model-v1")
         self.assertGreaterEqual(elapsed, 0)
 
+    def test_does_not_disclose_scoring_rubric_to_model(self) -> None:
+        source = "import json,sys\nrequest=json.load(sys.stdin)\nprint(json.dumps({'output': json.dumps(request, sort_keys=True)}))\n"
+        adapter = self.adapter(source)
+        output, _ = invoke_adapter(adapter, [], self.case, "model", 5)
+        request = json.loads(output)
+        self.assertNotIn("required_outputs", request)
+        self.assertNotIn("guardrails", request)
+        self.assertEqual(request["references"], self.case["references"])
     def test_rejects_non_json_stdout(self) -> None:
         adapter = self.adapter("print('not-json')\n")
         with self.assertRaisesRegex(RuntimeError, "one JSON object"):
