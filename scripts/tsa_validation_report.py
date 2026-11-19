@@ -233,7 +233,8 @@ def main() -> int:
         else:
             responder_result, responder_digest = None, None
         report = build_validation_report(args.gen_time, crl_result, crl_digest,
-                                         ocsp_result, ocsp_digest, responder_result, responder_digest,\n                                         timestamp_result, timestamp_digest)
+                                         ocsp_result, ocsp_digest, responder_result, responder_digest,
+                                         timestamp_result, timestamp_digest)
         report_digest = write_report(args.output, report)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
         print("ERROR: " + str(exc), file=sys.stderr)
