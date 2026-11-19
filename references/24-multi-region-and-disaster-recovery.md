@@ -2,6 +2,10 @@
 
 Multi-region architecture is a business continuity and latency decision, not a checkbox for availability. Begin with business impact analysis, failure scenarios, and tested recovery objectives.
 
+## Scope and boundaries
+
+This document owns regional topology, data ownership across regions, replication/failover/failback, and business recovery objectives. Use [service reliability](07-reliability-and-resilience.md) for service-level timeout, retry, degradation, and availability design; [storage and database references](03-data-and-storage.md) plus the engine-specific guides for local transaction semantics; and [incident management](61-incident-management-and-postmortems.md) for live incident command. DNS or traffic steering changes do not fence a former writer, and a regional recovery plan must prove data ownership and write safety independently of routing.
+
 ## Objectives and failure domains
 For each critical journey define RTO, RPO, availability target, error-budget policy, residency constraints, and dependencies that must recover together. Distinguish zone, region, provider, control-plane, account, and global dependency failures. A second region is not independent if both share identity, DNS, deployment, encryption-key, or quota dependencies.
 
