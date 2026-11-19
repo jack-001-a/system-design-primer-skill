@@ -18,6 +18,10 @@ class EvaluationEngineTests(unittest.TestCase):
                 "id": "example",
                 "required_outputs": ["design", "risks"],
                 "guardrails": ["no invented metrics"]
+            }, {
+                "id": "other",
+                "required_outputs": ["migration plan"],
+                "guardrails": ["preserve invariants"]
             }]
         }), encoding="utf-8")
         self.cases = load_cases(self.cases_path)
@@ -41,6 +45,15 @@ class EvaluationEngineTests(unittest.TestCase):
         self.assertEqual(metrics["required_output_score"], 0.75)
         self.assertEqual(metrics["guardrail_pass_rate"], 1.0)
         self.assertEqual(metrics["review_coverage"], 1.0)
+        self.assertEqual(metrics["fixture_coverage"], 0.5)
+        self.assertEqual(metrics["missing_case_ids"], ["other"])
+        self.assertEqual(metrics["case_results"]["example"]["required_outputs"], [
+            {"criterion": "design", "score": 2},
+            {"criterion": "risks", "score": 1},
+        ])
+        self.assertEqual(metrics["case_results"]["example"]["guardrails"], [
+            {"guardrail": "no invented metrics", "passed": True}
+        ])
         self.assertEqual(report["method"], "human_review_aggregation")
 
     def test_unreviewed_response_is_not_scored(self) -> None:
