@@ -262,7 +262,7 @@ def _workflow_security_errors(workflows_dir: Path) -> list[str]:
     for workflow in sorted(workflows_dir.glob("*.yml")):
         content = workflow.read_text(encoding="utf-8")
         for line_number, line in enumerate(content.splitlines(), 1):
-            match = re.match(r"^\\s*uses:\\s*([^\\s#]+)", line)
+            match = re.match(r"^\s*uses:\s*([^\s#]+)", line)
             if not match:
                 continue
             action = match.group(1)
@@ -272,7 +272,7 @@ def _workflow_security_errors(workflows_dir: Path) -> list[str]:
                 errors.append(
                     f"{workflow.name}:{line_number} action must be pinned to a full commit SHA: {action}"
                 )
-        if re.search(r"(?m)^\\s*permissions:\\s*write-all\\s*$", content):
+        if re.search(r"(?m)^\s*permissions:\s*write-all\s*$", content):
             errors.append(f"{workflow.name} must not grant write-all permissions")
         if workflow.name in {"release.yml", "npm-publish.yml"}:
             if "fetch-depth: 0" not in content:
@@ -280,7 +280,7 @@ def _workflow_security_errors(workflows_dir: Path) -> list[str]:
             if 'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main' not in content:
                 errors.append(f"{workflow.name} must require the tagged commit to be reachable from main")
         if workflow.name == "npm-publish.yml":
-            if not re.search(r"(?m)^\\s+id-token:\\s*write\\s*$", content):
+            if not re.search(r"(?m)^\s+id-token:\s*write\s*$", content):
                 errors.append("npm-publish.yml must grant job-scoped id-token: write for npm OIDC")
             if "NPM_TOKEN" in content or "NODE_AUTH_TOKEN" in content:
                 errors.append("npm-publish.yml must not depend on a long-lived npm publish token")
