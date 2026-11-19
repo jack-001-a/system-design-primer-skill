@@ -54,6 +54,10 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertFalse(result["execution_provenance_established"])
         self.assertFalse(result["historical_time_cryptographically_proven"])
         self.assertFalse(result["historically_valid"])
+        self.assertFalse(result["signature_existence_proven_by_trusted_timestamp"])
+        self.assertFalse(result["signature_existed_before_revocation"])
+        self.assertFalse(result["signature_existence_proven_before_key_not_before"])
+        self.assertEqual(result["historical_assessment"], "not_assessed_no_trusted_timestamp")
         self.assertTrue(result["signature_valid"])
         self.assertEqual(result["historical_validity_basis"],
                          "attester_asserted_attested_at_is_not_trusted_time")
@@ -125,6 +129,7 @@ class TsaAttestationTests(unittest.TestCase):
             request, response, ca, hashlib.sha256(b"fixture").hexdigest())
         self.assertTrue(result["signature_existence_proven_by_trusted_timestamp"])
         self.assertTrue(result["signature_existed_before_revocation"])
+        self.assertEqual(result["historical_assessment"], "signature_preexisted_revocation")
         self.assertTrue(result["historical_time_cryptographically_proven"])
         self.assertFalse(result["historically_valid"])
         timestamp.assert_called_once()
@@ -149,6 +154,7 @@ class TsaAttestationTests(unittest.TestCase):
         result = verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
             request, response, ca, hashlib.sha256(b"fixture").hexdigest())
         self.assertFalse(result["signature_existed_before_revocation"])
+        self.assertEqual(result["historical_assessment"], "timestamped_existence_only")
 
     @patch("scripts.tsa_attestation.verify_timestamp")
     def test_timestamp_before_not_before_proves_signature_preexisted_key_validity(self, timestamp):
@@ -169,6 +175,7 @@ class TsaAttestationTests(unittest.TestCase):
         result = verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
             request, response, ca, hashlib.sha256(b"fixture").hexdigest())
         self.assertTrue(result["signature_existence_proven_before_key_not_before"])
+        self.assertEqual(result["historical_assessment"], "signature_preexisted_key_validity")
         self.assertFalse(result["historically_valid"])
 
     def test_timestamp_arguments_must_be_supplied_as_a_complete_set(self):

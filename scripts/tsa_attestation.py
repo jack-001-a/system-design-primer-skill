@@ -202,12 +202,23 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     signature_existed_before_key_validity = (
         trusted_timestamp is not None and timestamp_gen_time < not_before
     )
+    # This enum is a compact evidence classification, not a historical-validity
+    # verdict. The independent booleans above retain simultaneous boundary facts.
+    if trusted_timestamp is None:
+        historical_assessment = "not_assessed_no_trusted_timestamp"
+    elif signature_existed_before_key_validity:
+        historical_assessment = "signature_preexisted_key_validity"
+    elif signature_existed_before_revocation:
+        historical_assessment = "signature_preexisted_revocation"
+    else:
+        historical_assessment = "timestamped_existence_only"
     return {"verified": True, "signature_valid": True, "historically_valid": False,
+            "historical_assessment": historical_assessment,
             "historical_validity_basis": "signature_creation_time_not_proven; RFC3161 proves existence no later than genTime only" if trusted_timestamp else "attester_asserted_attested_at_is_not_trusted_time",
             "historical_time_cryptographically_proven": trusted_timestamp is not None,
             "signature_existence_proven_by_trusted_timestamp": trusted_timestamp is not None,
-            "signature_existed_before_revocation": signature_existed_before_revocation,
-            "signature_existence_proven_before_key_not_before": signature_existed_before_key_validity,
+            "signature_existed_before_revocation": bool(signature_existed_before_revocation),
+            "signature_existence_proven_before_key_not_before": bool(signature_existed_before_key_validity),
             "trusted_signature_timestamp": trusted_timestamp,
             "currently_authorized": currently_authorized, "key_id": key_id,
             "attested_at": envelope["attested_at"], "report_sha256": report_digest,

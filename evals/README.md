@@ -886,6 +886,15 @@ window. A `genTime` at or after `not_before` does not prove when within that
 window the signature was created. The pre-revocation existence finding uses a
 strict comparison: a `genTime` equal to `revoked_at` is not classified as
 before revocation.
+The verifier also emits a machine-readable `historical_assessment` classification:
+`not_assessed_no_trusted_timestamp`, `signature_preexisted_key_validity`,
+`signature_preexisted_revocation`, or `timestamped_existence_only`.
+This is an evidence classification, never a `historically_valid` verdict.
+When multiple boundary facts apply, the independent boolean fields retain each
+fact; the enum uses the pre-`not_before` classification as its primary label.
+Without a trusted timestamp, every timestamp-derived boolean is explicitly
+false and the classification is `not_assessed_no_trusted_timestamp`.
+
 Without all four timestamp inputs (request, response, TSA CA bundle, and
 independent CA-bundle pin), the verifier reports no cryptographically proven
 signing time. TSA clock accuracy and trust policy remain external trust
