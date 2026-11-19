@@ -2,106 +2,108 @@
 
 ![CI](https://github.com/jack-001-a/system-design-primer-skill/actions/workflows/ci.yml/badge.svg) ![Latest Release](https://img.shields.io/github/v/release/jack-001-a/system-design-primer-skill)
 
-面向软件架构设计、架构审查、性能优化、技术选型和迁移规划的可安装 Agent Skill。以 Donne Martin 的 System Design Primer 为知识主题起点，并补充现代生产工程实践。
+An installable Agent Skill for software architecture design, architecture reviews, performance optimization, technology evaluation, and migration planning. It uses Donne Martin's System Design Primer as its knowledge foundation and adds modern production engineering practices.
 
-- **版本：** 1.2.0
-- **语言：** 中文说明，保留常用英文技术术语
-- **运行依赖：** Skill 本身无第三方运行依赖；安装/校验仅需 Bash、PowerShell 或 Python 3
+- **Version:** 1.2.0
+- **Language:** English, with standard technical terminology
+- **Runtime dependencies:** The Skill itself has no third-party runtime dependencies. Installation and validation require only Bash, PowerShell, or Python 3.
 
-## 内容结构
+## Repository structure
 
     system-design-primer/
     ├── SKILL.md
     ├── README.md / ATTRIBUTION.md / LICENSE / VERSION
-    ├── references/      13 份渐进式知识参考
-    ├── templates/       架构设计、架构审查、ADR 模板
-    └── scripts/         Linux/macOS、Windows 安装器和校验器
+    ├── references/      13 progressive knowledge references
+    ├── templates/       Architecture design, review, and ADR templates
+    └── scripts/         Linux/macOS and Windows installers and validators
 
-## 下载
+## Downloads
 
-推荐从 [GitHub Releases](https://github.com/jack-001-a/system-design-primer-skill/releases) 下载版本化 ZIP。仓库主分支源码 ZIP 也可从 [main.zip](https://github.com/jack-001-a/system-design-primer-skill/archive/refs/heads/main.zip) 获取。
+We recommend downloading the versioned ZIP from [GitHub Releases](https://github.com/jack-001-a/system-design-primer-skill/releases). You can also download the source ZIP from the [main branch](https://github.com/jack-001-a/system-design-primer-skill/archive/refs/heads/main.zip).
 
-发布 ZIP 内含 system-design-primer/ 目录、嵌入式 MANIFEST.sha256.json 和同名 .sha256 校验文件。校验文件按 SHA-256 生成；Release 只会在 Git tag 与 VERSION 一致、CI 通过后发布。
+The release ZIP contains a `system-design-primer/` directory, an embedded `MANIFEST.sha256.json`, and a matching `.sha256` checksum file. Checksums use SHA-256. A Release is published only after the Git tag matches `VERSION` and CI passes.
 
-## 通过 npm 安装
+## Install via npm
 
-本项目也发布为 npm 包，包名为 `system-design-primer-skill`。npm 包直接包含 `SKILL.md`、13 份参考文档、模板和跨平台安装脚本；不引入第三方运行依赖。
+This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 13 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies.
 
-在目标项目根目录执行：
+Run the following in the target project root:
 
     npm install --save-dev system-design-primer-skill skills
     npx skills experimental_sync --yes
 
-`skills experimental_sync` 会从已安装的 npm 依赖中发现包根目录的 `SKILL.md`，并将 Skill 链接到当前项目的 Agent Skill 目录。需要指定宿主时，可追加 `--agent codex`、`--agent claude-code` 或其他受支持的 Agent 标识。此同步命令目前属于 Skills CLI 的实验性功能，具体支持范围以其最新文档为准。
+`skills experimental_sync` discovers the `SKILL.md` at the root of installed npm dependencies and links the Skill into the current project's Agent Skill directory. To specify a host, append `--agent codex`, `--agent claude-code`, or another supported Agent identifier. This sync command is currently an experimental feature of the Skills CLI; consult its latest documentation for supported hosts and behavior.
 
-也可以直接从 GitHub 安装，无需 npm：
+You can also install directly from GitHub without npm:
 
     npx skills add jack-001-a/system-design-primer-skill
 
-npm 包页面：[system-design-primer-skill](https://www.npmjs.com/package/system-design-primer-skill)。
+npm package: [system-design-primer-skill](https://www.npmjs.com/package/system-design-primer-skill).
 
-## 支持的 Agent 目录
+## Supported Agent directories
 
-| Agent | 项目级目录 | 用户级目录 |
+| Agent | Project-level directory | User-level directory |
 |---|---|---|
-| OpenAI Codex | .agents/skills/ | ~/.agents/skills/ |
-| Claude Code | .claude/skills/ | ~/.claude/skills/ |
-| Cursor | .cursor/skills/ 或 .agents/skills/ | ~/.cursor/skills/ 或 ~/.agents/skills/ |
-| GitHub Copilot | .github/skills/、.claude/skills/ 或 .agents/skills/ | ~/.copilot/skills/ 或 ~/.agents/skills/ |
+| OpenAI Codex | `.agents/skills/` | `~/.agents/skills/` |
+| Claude Code | `.claude/skills/` | `~/.claude/skills/` |
+| Cursor | `.cursor/skills/` or `.agents/skills/` | `~/.cursor/skills/` or `~/.agents/skills/` |
+| GitHub Copilot | `.github/skills/`, `.claude/skills/`, or `.agents/skills/` | `~/.copilot/skills/` |
 
-Cursor Cloud Agents 个人 Skill 应安装到 `~/.cursor/skills/` 并在 Cursor Settings → Agents 中开启 Sync Skills。`~/.agents/skills/` 可用于本地 Cursor 兼容发现，但不会自动同步到 Cloud Agents。项目级 Skill 可放在仓库的 `.cursor/skills/` 或 `.agents/skills/`。GitHub Copilot Cloud Agent 的个人 Skill 则需要放入个人 dotfiles 仓库的 `.copilot/skills/`，并在 Copilot Cloud settings 中配置该 dotfiles 仓库；此方式适用于 cloud sandbox，不适用于 GitHub Actions 会话。参考 [Cursor Cloud Skills](https://cursor.com/docs/skills) 和 [GitHub Copilot Cloud sessions](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/personalize-cloud-sessions)。
+For Cursor Cloud Agents, install personal Skills in `~/.cursor/skills/` and enable **Sync Skills** in Cursor Settings → Agents. The `~/.agents/skills/` directory may be discovered by local Cursor installations for compatibility, but it does not automatically sync to Cloud Agents. Project-level Skills can live in `.cursor/skills/` or `.agents/skills/` in the repository.
 
-目录依据：[Codex Skill 指南](https://learn.chatgpt.com/docs/build-skills)、[Claude Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview)、[Cursor Skills](https://cursor.com/docs/skills)、[GitHub Copilot Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills)。
+For GitHub Copilot Cloud Agent, personal Skills must be placed in the `.copilot/skills/` directory of a personal dotfiles repository, and that dotfiles repository must be configured in Copilot Cloud settings. This applies to cloud sandboxes, not GitHub Actions sessions. See [Cursor Cloud Skills](https://cursor.com/docs/skills) and [GitHub Copilot Cloud sessions](https://docs.github.com/en/copilot/how-tos/copilot-on-github/customize-copilot/customize-cloud-agent/personalize-cloud-sessions).
 
-## 安装
+Directory references: [Codex Skills guide](https://learn.chatgpt.com/docs/build-skills), [Claude Agent Skills](https://platform.claude.com/docs/en/agents-and-tools/agent-skills/overview), [Cursor Skills](https://cursor.com/docs/skills), and [GitHub Copilot Skills](https://docs.github.com/en/copilot/how-tos/copilot-cli/customize-copilot/add-skills).
 
-先解压 ZIP。**在目标代码仓库根目录执行安装命令**；脚本会根据当前目录决定项目级安装位置。示例假设解压后的文件夹为 /opt/system-design-primer。
+## Installation
+
+Extract the ZIP first. **Run the installation command from the root of the target code repository**; the script determines the project-level installation location from the current directory. The examples below assume the extracted folder is `/opt/system-design-primer`.
 
 ### macOS / Linux
 
     cd /path/to/your-project
 
-    # 只装 Codex
+    # Install for Codex only
     bash /opt/system-design-primer/scripts/install.sh --agent codex --scope project
 
-    # 只装 Claude Code
+    # Install for Claude Code only
     bash /opt/system-design-primer/scripts/install.sh --agent claude --scope project
 
-    # 只装 Cursor（使用 Cursor 专用目录）
+    # Install for Cursor only (uses the Cursor-specific directory)
     bash /opt/system-design-primer/scripts/install.sh --agent cursor --scope project
 
-    # 只装 GitHub Copilot
+    # Install for GitHub Copilot only
     bash /opt/system-design-primer/scripts/install.sh --agent copilot --scope project
 
-    # 一次安装多种宿主目录
+    # Install for multiple hosts at once
     bash /opt/system-design-primer/scripts/install.sh --agent all --scope project
 
-    # 安装到当前用户目录
+    # Install into the current user's home directory
     bash /opt/system-design-primer/scripts/install.sh --agent all --scope user
 
 ### Windows PowerShell
 
     Set-Location C:\path\to\your-project
 
-    # 根据需要选择 codex、claude、cursor、copilot 或 all
+    # Choose codex, claude, cursor, copilot, or all as needed
     & C:\path\to\system-design-primer\scripts\install.ps1 -Agent codex -Scope project
 
-    # 安装到用户级目录
+    # Install into the user-level directory
     & C:\path\to\system-design-primer\scripts\install.ps1 -Agent all -Scope user
 
-## 安装器行为与安全
+## Installer behavior and security
 
-- 默认不覆盖已存在的 Skill；需要更新时显式使用 --force 或 -Force。
-- --dry-run / -WhatIf 仅预览目标路径，不创建或修改文件。
-- 安装器先检查全部目标，再使用同目录 staging 目录替换；失败时尽力恢复原目录。
-- 只复制 SKILL.md、references、templates、scripts、ATTRIBUTION.md、LICENSE 和 VERSION，不复制 .git、GitHub Actions、测试或开发工具。
-- --agent all 的项目级目标为 .agents/skills、.claude/skills、.github/skills；用户级目标为 ~/.agents/skills、~/.claude/skills、~/.copilot/skills。
-- Cursor 也会兼容发现 .agents/skills 和 .claude/skills。若同时启用多个宿主，建议用对应的单宿主安装参数，避免同一 Skill 被重复发现。
-- 安装脚本不会安装依赖，也不会自动执行 Skill 中的脚本。
+- Existing Skills are not overwritten by default. Use `--force` or `-Force` explicitly to update them.
+- `--dry-run` / `-WhatIf` previews target paths without creating or modifying files.
+- The installer checks all targets first, then stages replacements in a same-directory staging folder. If installation fails, it makes a best effort to restore the previous directory.
+- It copies only `SKILL.md`, `references`, `templates`, `scripts`, `ATTRIBUTION.md`, `LICENSE`, and `VERSION`. It does not copy `.git`, GitHub Actions, tests, or development tools.
+- With `--agent all`, project-level targets are `.agents/skills`, `.claude/skills`, and `.github/skills`; user-level targets are `~/.agents/skills`, `~/.claude/skills`, and `~/.copilot/skills`.
+- Cursor can also discover `.agents/skills` and `.claude/skills` for compatibility. If multiple hosts are enabled, prefer the corresponding single-host installation option to avoid duplicate discovery of the same Skill.
+- The installation scripts do not install dependencies or automatically execute scripts included in the Skill.
 
-## 校验与开发
+## Validation and development
 
-在仓库根目录运行：
+Run the following from the repository root:
 
     python scripts/validate.py
     python -m unittest discover -s tests -v
@@ -109,27 +111,28 @@ Cursor Cloud Agents 个人 Skill 应安装到 `~/.cursor/skills/` 并在 Cursor 
     bash tests/test_install.sh
     python tools/package.py --output-dir dist
 
-Windows 还可运行：
+On Windows, you can also run:
 
     .\tests\test_install.ps1
 
-GitHub Actions 会在 Ubuntu、macOS 和 Windows 上运行校验/测试。正式发布仅由版本 Tag 触发：先更新 VERSION 和 CHANGELOG.md，合并到 main 并等待 CI 通过，再创建与 VERSION 完全一致的 v* Tag。Release 工作流会在三个平台完成验证后构建 ZIP、SHA-256 并发布 GitHub Release；release/** 分支不会直接触发正式发布。
+GitHub Actions runs validation and tests on Ubuntu, macOS, and Windows. Formal releases are triggered only by version tags: update `VERSION` and `CHANGELOG.md`, merge into `main`, wait for CI to pass, and then create a `v*` tag that exactly matches `VERSION`. The Release workflow validates on all three platforms before building the ZIP, generating SHA-256 checksums, and publishing the GitHub Release. Branches matching `release/**` do not trigger formal releases directly.
 
-## 使用示例
+## Usage examples
 
-    使用 system-design-primer Skill 审查此仓库的整体架构。
-    重点分析关键业务流、数据模型、事务边界、缓存、异步任务、
-    可靠性、安全和可观测性。按严重程度排序，每条发现附文件证据。
-    先只审查，不要修改代码。
+    Use the system-design-primer Skill to review this repository's overall architecture.
+    Focus on critical business flows, data models, transaction boundaries, caching,
+    asynchronous jobs, reliability, security, and observability. Sort findings by
+    severity and include file-level evidence. Review only; do not modify code.
 
-    使用 system-design-primer Skill 设计多租户订阅计费系统。
-    先明确 FR/NFR、容量假设、数据模型、幂等、对账和失败恢复，
-    再给出架构图、替代方案、ADR 和分阶段上线计划。
+    Use the system-design-primer Skill to design a multi-tenant subscription billing system.
+    First clarify FRs/NFRs, capacity assumptions, data models, idempotency, reconciliation,
+    and failure recovery. Then provide an architecture diagram, alternatives, an ADR,
+    and a phased rollout plan.
 
-## 归属与许可
+## Attribution and license
 
-本项目为独立、非官方 Skill。知识主题参考 [Donne Martin/System Design Primer](https://github.com/donnemartin/system-design-primer)，并加入原创工作流与现代工程实践。原创说明、模板和参考文字采用 CC BY 4.0；第三方链接内容保留其各自版权和许可，详见 ATTRIBUTION.md。
+This is an independent, unofficial Skill. Its knowledge topics are based on [Donne Martin/System Design Primer](https://github.com/donnemartin/system-design-primer), with original workflows and modern engineering practices added. Original explanations, templates, and reference text are licensed under CC BY 4.0. Third-party linked content remains under its respective copyright and license; see [ATTRIBUTION.md](ATTRIBUTION.md) for details.
 
-AI 系统架构的深入内容见 [references/12-ai-systems-architecture.md](references/12-ai-systems-architecture.md)。
+For in-depth AI systems architecture, see [references/12-ai-systems-architecture.md](references/12-ai-systems-architecture.md).
 
-更多信息见 [CHANGELOG.md](CHANGELOG.md)、[CONTRIBUTING.md](CONTRIBUTING.md) 和 [SECURITY.md](SECURITY.md)。
+For more information, see [CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md).
