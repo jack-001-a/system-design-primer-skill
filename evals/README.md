@@ -886,8 +886,6 @@ window. A `genTime` at or after `not_before` does not prove when within that
 window the signature was created. The pre-revocation existence finding uses a
 strict comparison: a `genTime` equal to `revoked_at` is not classified as
 before revocation.
-**Accuracy-aware historical boundary checks:** the attestation verifier uses the RFC 3161 accuracy field as an uncertainty bound. It compares key not_before and revoked_at against genTime plus accuracy, not bare genTime. If the token omits accuracy, the verifier does not claim that signature existence preceded either boundary; it still reports that the signature existed no later than the token's stated genTime. The output exposes timestamp_accuracy_assessed and trusted_timestamp_upper_bound. This is conservative: a bound that overlaps a key event cannot prove which side of that event the signature existed on.
-
 The verifier also emits a machine-readable `historical_assessment` classification:
 `not_assessed_no_trusted_timestamp`, `signature_preexisted_key_validity`,
 `signature_preexisted_revocation`, or `timestamped_existence_only`.

@@ -183,6 +183,7 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     except Exception as exc:
         raise ValueError("Ed25519 attestation signature verification failed") from exc
     trusted_timestamp = None
+    timestamp_upper_bound = None
     if all(value is not None for value in timestamp_args):
         trusted_timestamp = verify_timestamp(
             attestation_path, timestamp_request_path, timestamp_response_path,
@@ -194,8 +195,6 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
         # RFC 3161 Accuracy is an uncertainty bound. Without an explicit value,
         # genTime alone is not used to prove existence preceded a key event.
         accuracy = trusted_timestamp.get("accuracy")
-        timestamp_accuracy = None
-        timestamp_upper_bound = None
         if accuracy is not None:
             if not isinstance(accuracy, dict) or not accuracy or set(accuracy) - {"seconds", "millis", "micros"}:
                 raise ValueError("RFC 3161 timestamp accuracy must be a non-empty seconds/millis/micros object")

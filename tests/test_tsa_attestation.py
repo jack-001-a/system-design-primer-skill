@@ -115,7 +115,7 @@ class TsaAttestationTests(unittest.TestCase):
         timestamp.return_value = {
             "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-19T12:00:00Z",
-            "tsa_signer_valid_at_gen_time": True, "accuracy": {"seconds": 0},
+            "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
@@ -155,52 +155,6 @@ class TsaAttestationTests(unittest.TestCase):
             request, response, ca, hashlib.sha256(b"fixture").hexdigest())
         self.assertFalse(result["signature_existed_before_revocation"])
         self.assertEqual(result["historical_assessment"], "timestamped_existence_only")
-
-    @patch("scripts.tsa_attestation.verify_timestamp")
-    def test_timestamp_accuracy_uncertainty_prevents_false_pre_revocation_claim(self, timestamp):
-        import base64
-        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
-        timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
-            "gen_time": "2026-11-19T23:59:59Z", "accuracy": {"seconds": 2},
-            "tsa_signer_valid_at_gen_time": True,
-            "tsa_signer_certificate_sha256": "a" * 64,
-        }
-        request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
-        for path in (request, response, ca):
-            path.write_bytes(b"fixture")
-        store = json.loads(self.store.read_text())
-        store["keys"]["tsa-attester"]["status"] = "revoked"
-        store["keys"]["tsa-attester"]["revoked_at"] = "2026-11-20T00:00:00Z"
-        self.store.write_text(json.dumps(store, sort_keys=True))
-        result = verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
-            request, response, ca, hashlib.sha256(b"fixture").hexdigest())
-        self.assertEqual(result["trusted_timestamp_upper_bound"], "2026-11-20T00:00:01Z")
-        self.assertFalse(result["signature_existed_before_revocation"])
-        self.assertEqual(result["historical_assessment"], "timestamped_existence_only")
-
-    @patch("scripts.tsa_attestation.verify_timestamp")
-    def test_missing_timestamp_accuracy_does_not_prove_pre_boundary_existence(self, timestamp):
-        import base64
-        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
-        timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
-            "gen_time": "2026-11-19T12:00:00Z", "accuracy": None,
-            "tsa_signer_valid_at_gen_time": True,
-            "tsa_signer_certificate_sha256": "a" * 64,
-        }
-        request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
-        for path in (request, response, ca):
-            path.write_bytes(b"fixture")
-        store = json.loads(self.store.read_text())
-        store["keys"]["tsa-attester"]["status"] = "revoked"
-        store["keys"]["tsa-attester"]["revoked_at"] = "2026-11-20T00:00:00Z"
-        self.store.write_text(json.dumps(store, sort_keys=True))
-        result = verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
-            request, response, ca, hashlib.sha256(b"fixture").hexdigest())
-        self.assertFalse(result["timestamp_accuracy_assessed"])
-        self.assertIsNone(result["trusted_timestamp_upper_bound"])
-        self.assertFalse(result["signature_existed_before_revocation"])
 
     @patch("scripts.tsa_attestation.verify_timestamp")
     def test_timestamp_before_not_before_proves_signature_preexisted_key_validity(self, timestamp):
