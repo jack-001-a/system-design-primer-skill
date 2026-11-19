@@ -203,6 +203,23 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "issuer_roots_sha256": require_digest(responder_revocation_result.get("issuer_roots_sha256"), "responder CRL issuer_roots_sha256"),
             "result_file_sha256": responder_revocation_result_sha256,
         }
+    if ocsp_section["provided"]:
+        if ocsp_section["historical_status_claim"]:
+            if ocsp_section["assessment"] == "revoked":
+                overall_assessment = "historical_crl_passed_but_historical_ocsp_reports_revoked"
+            elif ocsp_section["assessment"] == "unknown":
+                overall_assessment = "historical_crl_passed_but_historical_ocsp_status_unknown"
+            else:
+                overall_assessment = "historical_crl_passed_and_historical_ocsp_good_with_scope_limitations"
+        else:
+            if ocsp_section["assessment"] == "revoked":
+                overall_assessment = "historical_crl_passed_but_current_ocsp_reports_revoked"
+            elif ocsp_section["assessment"] == "unknown":
+                overall_assessment = "historical_crl_passed_but_current_ocsp_status_unknown"
+            else:
+                overall_assessment = "historical_crl_passed_current_ocsp_good_with_scope_limitations"
+    else:
+        overall_assessment = "historical_crl_passed_ocsp_not_provided_with_scope_limitations"
     return {
         "schema_version": 1,
         "report_type": "tsa_long_term_validation_evidence",
@@ -225,7 +242,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         },
         "current_ocsp_assessment": ocsp_section,
         "historical_ocsp_responder_revocation_assessment": responder_revocation_section,
-        "overall_assessment": "historical_crl_check_passed_with_scope_limitations",
+        "overall_assessment": overall_assessment,
         "limitations": [
             "This report does not independently verify the RFC 3161 token or derive genTime; it binds the caller-supplied time to the CRL result.",
             "The CRL result covers the supplied certificate path and CRL only; it does not prove that all applicable revocation sources or trust policies were supplied.",

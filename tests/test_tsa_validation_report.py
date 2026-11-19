@@ -87,6 +87,29 @@ class TsaValidationReportTests(unittest.TestCase):
         report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
         self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")
         self.assertEqual(report["current_ocsp_assessment"]["assessment"], "not_provided")
+    def test_overall_assessment_distinguishes_historical_ocsp_revoked(self):
+        historical = dict(self.ocsp, status="revoked",
+            scope="historical OCSP status validation at the supplied target time",
+            historical_at_time=self.gen_time, validation_time=self.gen_time,
+            produced_at="2026-11-19T11:59:00Z", this_update="2026-11-19T11:58:00Z")
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+            historical, self.ocsp_file_hash)
+        self.assertEqual(report["overall_assessment"],
+            "historical_crl_passed_but_historical_ocsp_reports_revoked")
+        self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")
+
+    def test_overall_assessment_distinguishes_current_ocsp_revoked(self):
+        current = dict(self.ocsp, status="revoked")
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+            current, self.ocsp_file_hash)
+        self.assertEqual(report["overall_assessment"],
+            "historical_crl_passed_but_current_ocsp_reports_revoked")
+        self.assertFalse(report["current_ocsp_assessment"]["historical_status_claim"])
+
+    def test_overall_assessment_marks_ocsp_not_provided(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        self.assertEqual(report["overall_assessment"],
+            "historical_crl_passed_ocsp_not_provided_with_scope_limitations")
     def test_ocsp_is_kept_separate_from_historical_status(self):
         report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
                                          self.ocsp, self.ocsp_file_hash)

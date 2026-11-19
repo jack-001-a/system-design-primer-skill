@@ -928,3 +928,13 @@ historical OCSP assessment and an exact responder-certificate fingerprint match.
 These checks prevent contradictory signed fields from being presented as a
 coherent assessment. They validate report consistency, not the truth of the
 underlying verifier assertions or the completeness of revocation sources.
+
+### Overall assessment semantics
+
+The report's `overall_assessment` is a scope-aware summary, not a universal
+certificate-validity verdict. It distinguishes a historical OCSP `revoked` or
+`unknown` result from a current-time OCSP result, and distinguishes both from
+OCSP evidence that was not supplied. A current-time OCSP result never changes
+the historical status at RFC 3161 `genTime`. The historical CRL finding remains
+separately visible; contradictory CRL and OCSP findings are preserved rather
+than silently collapsed into a single pass/fail value.
