@@ -382,5 +382,49 @@ class EvaluationEngineTests(unittest.TestCase):
         self.assertEqual(first["status"], "estimated")
         self.assertLessEqual(first["lower"], first["upper"])
 
+    def test_comparative_analysis_uses_paired_cases_and_reports_coverage(self) -> None:
+        from scripts.statistical_analysis import comparative_analysis
+        cases = {f"c{i}": {"required_outputs": ["x"], "guardrails": ["g"],
+                           "evaluation_weight": 2.0 if i == 0 else 1.0,
+                           "evaluation_stratum": "high" if i < 3 else "low"}
+                 for i in range(6)}
+        records = []
+        for i in range(6):
+            for model, score in (("a", 2), ("b", 1)):
+                records.append({"case_id": f"c{i}", "model": model,
+                                "review": {"required_outputs": [score], "guardrails": [True]}})
+        records = [item for item in records if not (item["model"] == "b" and item["case_id"] == "c5")]
+        result = comparative_analysis(records, cases)
+        self.assertEqual(result["model_coverage"][1]["coverage_status"], "incomplete")
+        metric = result["comparisons"][0]["metrics"][0]
+        self.assertEqual(metric["paired_case_count"], 5)
+        self.assertEqual(metric["status"], "estimated")
+        self.assertAlmostEqual(metric["weighted_mean_difference"], 0.5)
+        self.assertEqual(metric["stratum_counts"], {"high": 3, "low": 2})
+        self.assertIn("p_value_holm", metric)
+        self.assertIn("confidence_interval_95", metric)
+
+    def test_comparative_analysis_marks_small_pairs_insufficient(self) -> None:
+        from scripts.statistical_analysis import comparative_analysis
+        cases = {f"c{i}": {"required_outputs": ["x"], "guardrails": ["g"]} for i in range(4)}
+        records = []
+        for i in range(4):
+            for model in ("a", "b"):
+                records.append({"case_id": f"c{i}", "model": model,
+                                "review": {"required_outputs": [1], "guardrails": [True]}})
+        metric = comparative_analysis(records, cases)["comparisons"][0]["metrics"][0]
+        self.assertEqual(metric["status"], "insufficient_paired_sample")
+        self.assertIsNone(metric["p_value"])
+        self.assertIsNone(metric["confidence_interval_95"])
+
+    def test_load_cases_validates_positive_finite_evaluation_weights_and_strata(self) -> None:
+        invalid = {"cases": [{"id": "bad", "required_outputs": ["x"], "guardrails": ["g"],
+                              "evaluation_weight": 0}]}
+        path = self.root / "invalid-cases.json"
+        path.write_text(json.dumps(invalid), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "evaluation_weight"):
+            load_cases(path)
+
+
 if __name__ == "__main__":
     unittest.main()

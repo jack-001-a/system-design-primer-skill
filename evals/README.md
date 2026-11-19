@@ -368,3 +368,25 @@ observations (1,000 iterations by default); if too many resamples are mathematic
 undefined, the interval is marked unstable. Below 20 observations no interval is emitted.
 The interval summarizes uncertainty under the observed sample; repeated or clustered cases
 may violate independence and limit population-level interpretation.
+
+## Paired model comparison and sampling design
+
+The report adds `comparative_analysis`, separate from legacy per-model aggregates.
+Each model pair is compared only on the intersection of case IDs reviewed for both models.
+The report exposes per-model reviewed-case coverage, missing/unreviewed IDs, paired sample
+size, paired case IDs, and stratum counts so complete-case selection is auditable.
+
+Cases may optionally declare a positive finite `evaluation_weight` and a non-empty
+`evaluation_stratum`; defaults are weight 1 and stratum `default`. The weighted paired
+mean difference uses caller-supplied case weights. Strata are reported for audit, but the
+tool does not invent population proportions or silently perform post-stratification.
+Unequal coverage is flagged because complete-case pairing can still be selection-biased.
+
+For at least five paired cases, the report includes a paired sign-flip permutation p-value,
+a paired-case bootstrap 95% interval, a paired standardized effect size (dz) when defined,
+and Holm-adjusted p-values across all testable model-pair/metric comparisons. Exact sign
+flips are used for up to 16 pairs; larger samples use deterministic Monte Carlo sign flips.
+Statistical significance after Holm correction, a fixed 0.05 absolute practical-effect
+threshold, and minimum sample sufficiency are reported separately. These methods assume
+exchangeable paired differences and do not repair non-representative sampling, dependence,
+or unmeasured confounding. No human score or legacy aggregate is modified.

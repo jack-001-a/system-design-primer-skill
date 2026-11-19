@@ -21,11 +21,13 @@ try:
     from .review_provenance import validate_review_history
     from .review_consensus import validate_review_panel
     from .reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior, summarize_review_data_quality
+    from .statistical_analysis import comparative_analysis
 except ImportError:  # Direct execution: python scripts/evaluate.py
     from run_manifest import load_verified_manifest
     from review_provenance import validate_review_history
     from review_consensus import validate_review_panel
     from reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior, summarize_review_data_quality
+    from statistical_analysis import comparative_analysis
 
 
 AUDIT_CHAIN_VERSION = 1
@@ -112,6 +114,12 @@ def load_cases(path: Path) -> dict[str, dict[str, Any]]:
         for field in ("required_outputs", "guardrails"):
             if not isinstance(item.get(field), list) or not item[field]:
                 raise ValueError(f"case {case_id!r} must have a non-empty {field} array")
+        weight = item.get("evaluation_weight", 1.0)
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)) or not 0 < weight < float("inf"):
+            raise ValueError(f"case {case_id!r} evaluation_weight must be a finite positive number")
+        stratum = item.get("evaluation_stratum", "default")
+        if not isinstance(stratum, str) or not stratum.strip():
+            raise ValueError(f"case {case_id!r} evaluation_stratum must be a non-empty string")
         cases[case_id] = item
     return cases
 
@@ -353,6 +361,7 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             "incomplete_case_ids": incomplete,
             "violation_event_count": len(metrics.get("security_violation_events", [])),
         }
+    comparative = comparative_analysis(records, cases)
     return {
         "schema_version": 1,
         "method": "human_review_aggregation",
@@ -373,6 +382,7 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
         "reviewer_calibration": report_reviewer_metrics,
         "reviewer_behavior": reviewer_behavior,
         "review_data_quality": review_data_quality,
+        "comparative_analysis": comparative,
         "re_review_queue": re_review_queue,
         "models": models,
     }
