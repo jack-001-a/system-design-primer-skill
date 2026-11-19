@@ -79,8 +79,8 @@ def verify_timestamp(
         command.extend(["-untrusted", str(chain_path)])
     run_openssl(command)
     details = run_openssl(["ts", "-reply", "-in", str(response_path), "-text"])
-    gen_time = re.search(r"\bTime\s*:\s*(.+)", details)
-    policy = re.search(r"\bPolicy\s*:\s*(\S+)", details)
+    gen_time = re.search(r"\bTime(?: stamp)?\s*:\s*(.+)", details)
+    policy = re.search(r"\bPolicy(?: OID)?\s*:\s*(\S+)", details)
     serial = re.search(r"\bSerial number\s*:\s*(\S+)", details)
     if not gen_time:
         raise ValueError("verified timestamp token did not expose a generation time")

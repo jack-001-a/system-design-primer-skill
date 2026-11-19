@@ -21,7 +21,6 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.response = self.root / "response.tsr"
         self.ca = self.root / "tsa-ca.pem"
         self.ca.write_bytes(b"test CA bytes")
-        self.request.write_bytes(b"request")
         self.response.write_bytes(b"response")
 
     def tearDown(self):
@@ -35,19 +34,21 @@ class EvidenceTimestampTests(unittest.TestCase):
             load_signature(self.signature)
 
     def test_request_is_non_overwriting_and_binds_signature_digest(self):
+        output = self.root / "new-request.tsq"
         with patch("scripts.evidence_timestamp.run_openssl") as run:
-            result = create_request(self.signature, self.request)
+            result = create_request(self.signature, output)
         self.assertTrue(result["request_created"])
         self.assertEqual(run.call_args.args[0][0:3], ["ts", "-query", "-digest"])
-        self.request.write_bytes(b"created request")
+        output.write_bytes(b"created request")
         with self.assertRaisesRegex(ValueError, "overwrite"):
-            create_request(self.signature, self.request)
+            create_request(self.signature, output)
 
     def test_verification_requires_independent_ca_pin(self):
         with self.assertRaisesRegex(ValueError, "pin mismatch"):
             verify_timestamp(self.signature, self.request, self.response, self.ca, "0" * 64)
 
     def test_verification_binds_request_imprint_and_uses_pinned_ca(self):
+        self.request.write_bytes(b"request")
         import hashlib
         digest = hashlib.sha256(b"s" * 64).hexdigest()
         with patch("scripts.evidence_timestamp.run_openssl") as run:
@@ -63,6 +64,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(run.call_args_list[1].args[0][:3], ["ts", "-verify", "-queryfile"])
 
     def test_wrong_request_imprint_rejected_before_token_verification(self):
+        self.request.write_bytes(b"request")
         with patch("scripts.evidence_timestamp.run_openssl", return_value="Hash Algorithm: sha256\nMessage data: " + "0" * 64):
             with self.assertRaisesRegex(ValueError, "does not bind"):
                 import hashlib as h
