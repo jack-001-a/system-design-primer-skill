@@ -64,7 +64,7 @@ Severity must be evidence-based. Include likelihood and impact separately when u
 
 ## 4. Decision matrix
 
-Compare candidate options using criteria relevant to the workload: correctness, latency, throughput, availability, consistency, complexity, operational burden, cost, migration risk, ecosystem, team familiarity, and vendor lock-in. Weight criteria only when the user supplies priorities or explain the weights as assumptions.
+Use the structured architecture decision process in `13-architecture-intelligence.md`. Separate hard constraints from weighted preferences; compare the simplest viable baseline with credible alternatives; assess performance, consistency, reliability, security, TCO, operational complexity, team capability, migration/exit cost, and ecosystem risk. Attach evidence and confidence to each assessment, test sensitivity to uncertain assumptions, and record revisit triggers in an ADR. Never let an aggregate score compensate for a violated hard constraint.
 
 ## 5. Architecture debt and evolution triggers
 
