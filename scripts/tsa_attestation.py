@@ -247,7 +247,7 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
             "signature_existence_proven_before_key_not_before": bool(signature_existed_before_key_validity),
             "trusted_signature_timestamp": trusted_timestamp,
             "trusted_timestamp_upper_bound": (
-                timestamp_upper_bound.isoformat(timespec="microseconds").rstrip("0").rstrip(".").replace("+00:00", "Z")
+                timestamp_upper_bound.isoformat(timespec="microseconds").replace("+00:00", "Z")
                 if timestamp_upper_bound is not None else None
             ),
             "timestamp_accuracy_assessed": timestamp_accuracy_assessed,

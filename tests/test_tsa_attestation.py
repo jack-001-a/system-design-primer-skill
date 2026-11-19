@@ -153,7 +153,7 @@ class TsaAttestationTests(unittest.TestCase):
         self.store.write_text(json.dumps(store, sort_keys=True))
         result = verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
             request, response, ca, hashlib.sha256(b"fixture").hexdigest())
-        self.assertEqual(result["trusted_timestamp_upper_bound"], "2026-11-20T00:00:00Z")
+        self.assertEqual(result["trusted_timestamp_upper_bound"], "2026-11-20T00:00:00.000000Z")
         self.assertTrue(result["timestamp_accuracy_assessed"])
         self.assertFalse(result["signature_existed_before_revocation"])
         self.assertEqual(result["historical_assessment"], "timestamped_existence_only")
@@ -178,7 +178,7 @@ class TsaAttestationTests(unittest.TestCase):
         self.store.write_text(json.dumps(store, sort_keys=True))
         result = verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
             request, response, ca, hashlib.sha256(b"fixture").hexdigest())
-        self.assertEqual(result["trusted_timestamp_upper_bound"], "2026-11-19T23:59:59.9001Z")
+        self.assertEqual(result["trusted_timestamp_upper_bound"], "2026-11-19T23:59:59.900100Z")
         self.assertTrue(result["signature_existed_before_revocation"])
 
     @patch("scripts.tsa_attestation.verify_timestamp")
