@@ -1,5 +1,9 @@
 # Data modeling, databases, and storage scaling
 
+## Scope and boundaries
+
+This document owns vendor-neutral data modeling, storage selection, transaction boundaries, durability, and consistency requirements. Use [PostgreSQL internals](34-postgresql-internals-and-performance.md) and [MySQL/InnoDB](35-mysql-innodb-and-performance.md) for engine-specific isolation, locking, indexing, and query-plan behavior; use [sharding and Distributed SQL](36-sharding-and-distributed-sql.md) for partition ownership and online resharding; use [consensus and distributed transactions](37-consensus-and-distributed-transactions.md) for cross-resource coordination. Do not infer portable behavior from an isolation-level name alone.
+
 ## 1. Choose by access patterns and invariants
 
 Select storage after defining entities, queries, update patterns, consistency, transaction boundaries, retention, and operational skills. “SQL vs NoSQL” is not a speed contest.
