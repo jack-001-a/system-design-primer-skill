@@ -32,7 +32,7 @@ class PackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workflows = Path(tmp)
             (workflows / "ci.yml").write_text(
-                "steps:\\n  - uses: actions/checkout@v4\\n", encoding="utf-8"
+                "steps:\n  - uses: actions/checkout@v4\n", encoding="utf-8"
             )
             errors = _workflow_security_errors(workflows)
             self.assertTrue(any("pinned to a full commit SHA" in item for item in errors))
@@ -42,8 +42,8 @@ class PackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workflows = Path(tmp)
             (workflows / "release.yml").write_text(
-                "steps:\\n  - uses: actions/checkout@"
-                + "a" * 40 + "\\n", encoding="utf-8"
+                "steps:\n  - uses: actions/checkout@"
+                + "a" * 40 + "\n", encoding="utf-8"
             )
             errors = _workflow_security_errors(workflows)
             self.assertTrue(any("reachable from main" in item for item in errors))
@@ -54,12 +54,12 @@ class PackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             workflows = Path(tmp)
             content = (
-                "permissions:\\n  id-token: write\\n"
-                "steps:\\n  - uses: actions/checkout@" + "a" * 40 + "\\n"
+                "permissions:\n  id-token: write\n"
+                "steps:\n  - uses: actions/checkout@" + "a" * 40 + "\n"
                 "  - run: git merge-base --is-ancestor "
-                + '"$GITHUB_SHA" refs/remotes/origin/main' + "\\n"
-                "  - run: npm stage publish --provenance\\n"
-                "  - with:\\n      fetch-depth: 0\\n"
+                + '"$GITHUB_SHA" refs/remotes/origin/main' + "\n"
+                "  - run: npm stage publish --provenance\n"
+                "  - with:\n      fetch-depth: 0\n"
             )
             (workflows / "npm-publish.yml").write_text(content, encoding="utf-8")
             self.assertEqual(_workflow_security_errors(workflows), [])
@@ -290,7 +290,7 @@ class PackageTests(unittest.TestCase):
             refs = root / "references"
             refs.mkdir()
             (refs / "69-task-routing-and-evidence.md").write_text(
-                "| Task | Start here | Add when relevant |\\n|---|---|---|\\n",
+                "| Task | Start here | Add when relevant |\n|---|---|---|\n",
                 encoding="utf-8",
             )
             errors = validate(root)
