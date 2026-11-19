@@ -116,7 +116,7 @@ REQUIRED_TEMPLATES = {
     "edge-computing-readiness-template.md",
 }
 PACKAGE_ENTRIES = (
-    "SKILL.md", "references", "templates", "scripts",
+    "SKILL.md", "README.md", "references", "templates", "scripts", "evals",
     "ATTRIBUTION.md", "LICENSE", "VERSION",
 )
 LOCAL_LINK_RE = re.compile(r"\]\(([^)]+)\)")
