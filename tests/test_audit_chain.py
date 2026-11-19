@@ -36,7 +36,7 @@ class AuditChainTests(unittest.TestCase):
         self.sealed.write_text(lines[1] + "\n" + lines[0] + "\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "link mismatch"):
             verify_audit_chain(self.sealed)
-    def test_unsealed_or_empty_file_is_rejected(self) -> None:
+    def test_external_head_anchor_detects_tail_truncation(self) -> None:\n        seal_audit_chain(self.source, self.sealed)\n        head = verify_audit_chain(self.sealed)["head_hash"]\n        lines = self.sealed.read_text(encoding="utf-8").splitlines()\n        self.sealed.write_text(lines[0] + "\\n", encoding="utf-8")\n        with self.assertRaisesRegex(ValueError, "external anchor"):\n            verify_audit_chain(self.sealed, head)\n\n    def test_unsealed_or_empty_file_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "metadata"):
             verify_audit_chain(self.source)
         empty = self.root / "empty.jsonl"
