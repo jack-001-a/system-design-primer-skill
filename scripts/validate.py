@@ -80,8 +80,6 @@ REQUIRED_REFERENCES = {
     "65-cloud-networking-and-connectivity.md",
     "66-edge-computing-architecture.md",
     "67-storage-infrastructure-and-storage-systems.md",
-    "37-consensus-and-distributed-transactions.md",
-    "56-distributed-tracing-and-context-propagation.md",
     "68-tcp-quic-and-network-performance.md",
     "69-task-routing-and-evidence.md",
 }
@@ -248,6 +246,14 @@ def _markdown_anchors(markdown_text: str) -> set[str]:
     return anchors
 
 
+def _undiscoverable_templates(skill_content: str, template_names: set[str]) -> list[str]:
+    """Return templates that exist but have no explicit path in the Skill entry point."""
+    return sorted(
+        filename for filename in template_names
+        if f"`templates/{filename}`" not in skill_content
+    )
+
+
 def validate(root: Path) -> list[str]:
     errors: list[str] = []
     root = root.resolve()
@@ -317,6 +323,8 @@ def validate(root: Path) -> list[str]:
         actual_templates = {p.name for p in templates_dir.glob("*.md")}
         for filename in sorted(REQUIRED_TEMPLATES - actual_templates):
             errors.append(f"required template is missing: templates/{filename}")
+        for filename in _undiscoverable_templates(content, actual_templates):
+            errors.append(f"template is not discoverable from SKILL.md: templates/{filename}")
 
     markdown_files = {
         path.resolve(): path
