@@ -26,7 +26,7 @@ def invoke_adapter(
     case: dict[str, Any],
     model: str,
     timeout: int,
- ) -> tuple[str, int, list[dict[str, Any]]]:
+ ) -> tuple[str, int, list[dict[str, Any]] | None]:
     request = {
         "schema_version": 1,
         "case_id": case["id"],
@@ -57,11 +57,12 @@ def invoke_adapter(
         raise RuntimeError("adapter stdout must contain one JSON object") from exc
     if not isinstance(response, dict) or not isinstance(response.get("output"), str):
         raise RuntimeError("adapter response must be an object with a string 'output' field")
-    trace = response.get("tool_trace", [])
-    try:
-        validate_tool_trace(trace)
-    except ValueError as exc:
-        raise RuntimeError(f"adapter returned invalid tool_trace: {exc}") from exc
+    trace = response.get("tool_trace")
+    if trace is not None:
+        try:
+            validate_tool_trace(trace)
+        except ValueError as exc:
+            raise RuntimeError(f"adapter returned invalid tool_trace: {exc}") from exc
     if not response["output"].strip():
         raise RuntimeError("adapter returned an empty output")
     return response["output"], elapsed_ms, trace
@@ -103,8 +104,9 @@ def main() -> int:
                     "task": case["task"],
                     "output": output,
                     "duration_ms": elapsed_ms,
-                    "tool_trace": tool_trace,
                 }
+                if tool_trace is not None:
+                    record["tool_trace"] = tool_trace
                 stream.write(json.dumps(record, ensure_ascii=False) + "\n")
                 stream.flush()
                 print(f"Completed {case['id']} ({elapsed_ms} ms)", file=sys.stderr)
