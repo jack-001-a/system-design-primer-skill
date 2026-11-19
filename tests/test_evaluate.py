@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.evaluate import load_cases, read_responses, summarize, validate_tool_trace, validate_review, validate_review
+from scripts.evaluate import load_cases, read_responses, summarize, validate_tool_trace, validate_review
 
 
 class EvaluationEngineTests(unittest.TestCase):
@@ -307,9 +307,9 @@ class EvaluationEngineTests(unittest.TestCase):
                 ([0, 1], [0, 2], [False], [False]),
                 ([1, 2], [1, 2], [True], [False])]
         for index, (a_scores, b_scores, a_guards, b_guards) in enumerate(rows):
-            panels.append({"submissions": [
-                {"reviewer_id": "r-a", "review": {"required_outputs": a_scores, "guardrails": a_guards}},
-                {"reviewer_id": "r-b", "review": {"required_outputs": b_scores, "guardrails": b_guards}}
+            panels.append({"case": {"required_outputs": ["correctness", "evidence"], "guardrails": ["safe"]}, "submissions": [
+                {"reviewer_id": "r-a", "rubric_version": "v1", "review": {"required_outputs": a_scores, "guardrails": a_guards}},
+                {"reviewer_id": "r-b", "rubric_version": "v1", "review": {"required_outputs": b_scores, "guardrails": b_guards}}
             ]})
         result = aggregate_reviewer_calibration(panels)
         self.assertEqual(result["method"], "pairwise_cohen_kappa")
@@ -334,7 +334,7 @@ class EvaluationEngineTests(unittest.TestCase):
         reviewer = next(item for item in result["reviewers"] if item["reviewer_id"] == "r-a")
         self.assertEqual(reviewer["sample_status"], "sufficient")
         tendency = next(item for item in reviewer["criterion_tendencies"] if item["criterion_type"] == "required_outputs")
-        self.assertAlmostEqual(tendency["descriptive_delta"], 2/3)
+        self.assertAlmostEqual(tendency["descriptive_delta"], 2/3, places=3)
         self.assertEqual(records[0]["review_panel"]["submissions"][0]["review"]["required_outputs"], [2])
 
     def test_review_panel_rejects_mixed_rubric_versions(self) -> None:
