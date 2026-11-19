@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.9.0 — 2026-11-19
+
+- Add API gateway and edge architecture guidance for routing, trust boundaries, deadlines, resilience, and operations.
+- Add REST API lifecycle, GraphQL governance, and gRPC/Protobuf contract guidance for correctness, compatibility, authorization, and streaming.
+- Add WebSocket/SSE real-time architecture and collaboration guidance covering connection lifecycle, backpressure, replay, OT, and CRDT trade-offs.
+- Add API security and abuse-prevention guidance for multi-dimensional rate limits, tenant isolation, load shedding, and distributed enforcement.
+- Add API architecture, real-time system, and API security review templates; extend package validation and tests.
+
+
 ## 1.8.0 — 2026-11-19
 
 - Add PostgreSQL internals guidance for MVCC, vacuum, WAL, query plans, indexing, pooling, replication, and PITR.
