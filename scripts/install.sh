@@ -59,7 +59,7 @@ for parent in "${PARENTS[@]}"; do
   fi
 done
 PACKAGE_ITEMS=(SKILL.md references templates evals ATTRIBUTION.md LICENSE VERSION)
-SCRIPT_ITEMS=(install.sh install.ps1 validate.py)
+SCRIPT_ITEMS=(install.sh install.ps1)
 for item in "${PACKAGE_ITEMS[@]}"; do
   [[ -e "$SOURCE/$item" ]] || fail "required package entry is missing: $item"
 done
