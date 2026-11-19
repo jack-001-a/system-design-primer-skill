@@ -16,6 +16,8 @@ Document producer acknowledgements, replication factor, minimum in-sync replicas
 
 Consumers should be idempotent and tolerate duplicates, retries, rebalances, and replay. Commit offsets only after the corresponding side effect is durable, or use an atomic pattern that binds offset progress to output effects. A broker transaction does not automatically make an external database or API side effect exactly once.
 
+For Apache Kafka, distinguish producer idempotence from transactions. In Kafka 4.0, producer idempotence is enabled by default only when no conflicting configuration disables it; it suppresses duplicates caused by producer retries within a producer session, not arbitrary application-level resends or effects in another system. A transactional producer requires a stable, appropriately unique `transactional.id`; consumers must use `read_committed` to hide aborted transactional records. End-to-end exactly-once processing across Kafka and an external sink still requires a sink/offset integration or an application-level idempotency and reconciliation design. Re-check defaults and constraints against the deployed client/broker version; see the [Kafka producer API](https://kafka.apache.org/40/javadoc/org/apache/kafka/clients/producer/KafkaProducer.html) and [producer configuration](https://kafka.apache.org/40/generated/producer_config.html).
+
 ## Consumer operations
 Bound poll batches, processing concurrency, in-flight records, and retry duration. Preserve per-key ordering when parallelizing. Distinguish retryable transient errors from poison events; use bounded retries, delayed retry topics or queues, and a dead-letter workflow with alerting, ownership, replay controls, and audit. Avoid hot retry loops.
 
