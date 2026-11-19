@@ -133,6 +133,14 @@ REQUIRED_SCOPE_BOUNDARIES = {
     "08-api-security-observability.md",
     "24-multi-region-and-disaster-recovery.md",
     "27-production-observability-and-slo.md",
+    "19-agent-security-and-permissions.md",
+    "20-agent-state-and-memory.md",
+    "49-iam-rbac-abac-rebac.md",
+    "51-secrets-kms-pki-and-key-management.md",
+    "54-privacy-engineering-and-data-governance.md",
+    "55-opentelemetry-and-instrumentation.md",
+    "59-capacity-planning-and-performance-modeling.md",
+    "67-storage-infrastructure-and-storage-systems.md",
 }
 SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
 
