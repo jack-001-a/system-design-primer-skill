@@ -610,3 +610,22 @@ python scripts/evidence_signing.py verify --report evals/report.json --signature
 ```
 
 The digest pin detects Trust Store replacement only when the expected digest is obtained independently; a digest stored beside the Trust Store provides no authenticity by itself. Update the pin through a separately authenticated key-management process during rotation. The verifier does not infer a trusted historical revocation time from the current local clock: `revoked_at` is an administrator assertion in the pinned trust policy. For high-assurance historical time claims, use an independently verifiable TSA token and preserve it with the signature.
+
+## RFC 3161 trusted timestamps for detached signatures
+
+A signer-generated `signed_at` field is only a signed assertion. For independently verifiable time evidence, create an RFC 3161 timestamp request over the raw 64-byte Ed25519 signature (SHA-256 imprint), submit that request to an independently selected TSA, and archive the exact request and response token beside the report signature. The repository does not contact a TSA or select a provider.
+
+The timestamp helper requires the OpenSSL command-line tool in addition to the optional Python signing dependency:
+
+```bash
+python scripts/evidence_timestamp.py request --signature evals/report.signature.json --output evals/report.signature.tsq
+# Submit the .tsq to your approved TSA using its documented transport and save the DER response as .tsr.
+python scripts/evidence_timestamp.py verify --signature evals/report.signature.json \\
+  --request evals/report.signature.tsq --response evals/report.signature.tsr \\
+  --tsa-ca trusted-tsa-roots.pem --tsa-ca-sha256 EXPECTED_CA_BUNDLE_SHA256 \\
+  --tsa-chain tsa-intermediates.pem
+```
+
+Verification pins the exact TSA CA bundle bytes using a digest obtained independently, checks that the request's SHA-256 message imprint matches the supplied Ed25519 signature, and delegates RFC 3161/CMS token, request nonce, and TSA certificate-chain verification to OpenSSL. Preserve the request, response token, CA bundle, any intermediate certificates, and the independently recorded CA digest together in controlled archival storage. A valid token proves that the TSA attested to possession of the signature bytes no later than its stated `genTime`; it does not prove the report's truth or the signer's identity.
+
+This helper does not fetch CRLs/OCSP responses, establish historical certificate status indefinitely, or guarantee future algorithm strength. For long-term validation, archive applicable TSA certificate-chain and revocation evidence at issuance, record the TSA policy and trust-anchor provenance, and periodically renew evidence before cryptographic algorithms or certificates become obsolete. OpenSSL CLI behavior and certificate policy are part of the verifier's trusted computing base; use a maintained OpenSSL release and an independently governed TSA trust policy.
