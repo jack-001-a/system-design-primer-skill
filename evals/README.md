@@ -412,3 +412,22 @@ than five common reviewed cases, or fewer than two models, yields an explicit in
 sample status. Bootstrap stability is conditional on the observed complete-case sample and
 does not correct selection bias, dependent cases, or non-representative sampling. The fixed
 1,000-iteration bootstrap is deterministic for reproducible diagnostics.
+
+
+## Strict report evidence verification (sidecar schema v2)
+
+Report sidecars now distinguish byte integrity from chain and manifest verification.
+Verification always checks the exact report and response-file SHA-256 values. When the
+sidecar records an audit-chain head, the verifier also replays the response JSONL chain and
+checks that its computed head equals the sidecar value; a report's own `audit_chain`
+metadata must agree. When the sidecar is manifest-bound, `--manifest` is mandatory and
+the sealed manifest, run ID, sidecar, and report metadata must all agree. Supplying a
+manifest for an unbound sidecar is rejected rather than silently ignored.
+
+A sidecar without an audit-chain head means chain verification was not performed; it is
+not equivalent to a verified chain. A sidecar without a manifest binding means the run
+manifest was not verified. The verifier reports `audit_chain_checked` and
+`manifest_checked` separately. Sidecar schema v2 intentionally rejects older v1
+sidecars; regenerate them from the original report and response files. SHA-256 hashes and
+self-contained chain heads provide tamper evidence only when the sidecar/head is retained
+independently; they are not digital signatures or proof of external model execution.
