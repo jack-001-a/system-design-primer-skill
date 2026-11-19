@@ -17,8 +17,10 @@ from typing import Any
 
 try:
     from .run_manifest import load_verified_manifest
+    from .review_provenance import validate_review_history
 except ImportError:  # Direct execution: python scripts/evaluate.py
     from run_manifest import load_verified_manifest
+    from review_provenance import validate_review_history
 
 
 AUDIT_CHAIN_VERSION = 1
@@ -185,10 +187,14 @@ def read_responses(
         seen.add(key)
         review = item.get("review")
         trace = item.get("tool_trace")
+        review_history = item.get("review_history")
+        review_provenance = None
         if trace is not None:
             validate_tool_trace(trace, line_number)
         if review is not None:
             validate_review(review, cases[case_id], line_number)
+            if review_history is not None:
+                review_provenance = validate_review_history(review_history, review, line_number)
             findings = review.get("tool_trace_findings", [])
             if not isinstance(findings, list):
                 raise ValueError(f"line {line_number}: review.tool_trace_findings must be an array")
@@ -207,7 +213,7 @@ def read_responses(
                     raise ValueError(f"line {line_number}: review.tool_trace_guardrails must assess every guardrail in order")
                 if any(type(value) is not bool for value in trace_scores):
                     raise ValueError(f"line {line_number}: tool trace guardrail assessments must be booleans")
-        records.append({"case_id": case_id, "model": model.strip(), "output": output, "review": review, "tool_trace": trace, "run_id": item.get("run_id"), "manifest_sha256": item.get("manifest_sha256")})
+        records.append({"case_id": case_id, "model": model.strip(), "output": output, "review": review, "tool_trace": trace, "run_id": item.get("run_id"), "manifest_sha256": item.get("manifest_sha256"), "review_provenance": review_provenance})
     return records
 
 
@@ -246,6 +252,8 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             review = item["review"]
             case_results[item["case_id"]] = {
                 "reviewed": review is not None,
+                "review_provenance": item.get("review_provenance"),
+                "review_provenance_status": "verified" if item.get("review_provenance") else ("unattested" if review is not None else "unreviewed"),
                 "run_id": item.get("run_id"),
                 "manifest_sha256": item.get("manifest_sha256"),
                 "tool_trace": item.get("tool_trace"),
