@@ -32,8 +32,10 @@ python scripts/run_evals.py \
   --output evals/responses.jsonl
 ```
 
-The adapter receives `schema_version`, `case_id`, `model`, `task`,
-`expected_mode`, `references`, `required_outputs`, and `guardrails`. It must
+The adapter receives only model-facing fields: `schema_version`, `case_id`, `model`,
+`task`, `expected_mode`, and `references`. The scoring rubric (`required_outputs` and
+`guardrails`) is deliberately withheld from the model to reduce evaluation leakage; it
+remains available to the human reviewer and aggregator. The adapter must
 return `{"output": "complete model response"}` on stdout. Adapter diagnostics belong
 on stderr. Repeat `--adapter-arg VALUE` to pass adapter-specific arguments. The
 runner uses the current Python interpreter, enforces a 180-second per-case timeout by
