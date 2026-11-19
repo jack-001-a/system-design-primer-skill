@@ -4,7 +4,7 @@
 
 An installable Agent Skill for software architecture design, architecture reviews, performance optimization, technology evaluation, and migration planning. It uses Donne Martin's System Design Primer as its knowledge foundation and adds modern production engineering practices.
 
-- **Version:** 1.6.0
+- **Version:** 1.7.0
 - **Language:** English, with standard technical terminology
 - **Runtime dependencies:** The Skill itself has no third-party runtime dependencies. Installation and validation require only Bash, PowerShell, or Python 3.
 
@@ -13,8 +13,8 @@ An installable Agent Skill for software architecture design, architecture review
     system-design-primer/
     ├── SKILL.md
     ├── README.md / ATTRIBUTION.md / LICENSE / VERSION
-    ├── references/      28 progressive knowledge references
-    ├── templates/       Design, review, ADR, decision, scorecard, failure, agent, production-readiness, disaster-recovery, and FinOps templates
+    ├── references/      34 progressive knowledge references
+    ├── templates/       Design, review, ADR, decision, scorecard, failure, agent, production-readiness, disaster-recovery, FinOps, event-streaming, event-sourcing, and CDC templates
     └── scripts/         Linux/macOS and Windows installers and validators
 
 ## Downloads
@@ -25,7 +25,7 @@ The release ZIP contains a `system-design-primer/` directory, an embedded `MANIF
 
 ## Install via npm
 
-This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 28 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies.
+This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 34 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies.
 
 Run the following in the target project root:
 
@@ -153,5 +153,7 @@ Architecture decision matrices, evidence-based review scorecards, API/data contr
 For in-depth AI systems architecture, see [references/12-ai-systems-architecture.md](references/12-ai-systems-architecture.md). Agent-specific architecture guidance is split into [multi-agent architecture](references/16-multi-agent-architecture.md), [agent harness and runtime](references/17-agent-harness-and-runtime.md), [MCP architecture](references/18-mcp-architecture.md), [agent security and permissions](references/19-agent-security-and-permissions.md), [agent state and memory](references/20-agent-state-and-memory.md), and [agent evaluation and observability](references/21-agent-evaluation-and-observability.md). Use the matching templates in `templates/` to create a system design, security review, or evaluation plan.
 
 Production architecture guidance covers [Kubernetes and container platforms](references/22-kubernetes-and-container-platforms.md), [service mesh and traffic management](references/23-service-mesh-and-traffic-management.md), [multi-region architecture and disaster recovery](references/24-multi-region-and-disaster-recovery.md), [platform engineering](references/25-platform-engineering-and-developer-experience.md), [FinOps and cloud cost](references/26-finops-and-cloud-cost.md), and [production observability and SLOs](references/27-production-observability-and-slo.md). Matching templates support production readiness reviews, multi-region recovery plans, and cloud cost models.
+
+Data-intensive and event-driven architecture guidance covers [Kafka and Pulsar event streaming](references/28-event-streaming-and-kafka-pulsar.md), [Event Sourcing and CQRS](references/29-event-sourcing-and-cqrs.md), [CDC and Debezium](references/30-change-data-capture-and-debezium.md), [data lakehouse and stream/batch processing](references/31-data-lakehouse-and-stream-batch.md), [durable workflow orchestration](references/32-workflow-orchestration-and-temporal.md), and [schema registry and event governance](references/33-schema-registry-and-event-governance.md). Matching templates support event-streaming designs, event-sourced domains, and CDC data pipelines.
 
 For more information, see [CHANGELOG.md](CHANGELOG.md), [CONTRIBUTING.md](CONTRIBUTING.md), and [SECURITY.md](SECURITY.md).

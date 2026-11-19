@@ -1,7 +1,7 @@
 {
   "name": "system-design-primer-skill",
-  "version": "1.6.0",
-  "description": "A portable System Design Agent Skill for architecture design, cloud-native platforms, production operations, cost, reliability, and AI systems.",
+  "version": "1.7.0",
+  "description": "A portable System Design Agent Skill for software architecture, event-driven systems, data platforms, cloud-native production operations, and AI systems.",
   "license": "CC-BY-4.0",
   "repository": {
     "type": "git",

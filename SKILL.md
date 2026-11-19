@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "1.6.0"
+  version: "1.7.0"
   language: "en"
 ---
 
@@ -201,6 +201,34 @@ Define user-centered SLIs, SLOs, measurement windows, exclusions, error-budget p
 
 Before launch, review workload and capacity evidence, SLOs, failure behavior, security controls, recovery exercises, deployment/rollback, on-call ownership, telemetry, cost forecast, and unresolved risks. Record Ready / Ready with actions / Not ready, blocking issues, owners, and due dates. Use `templates/production-readiness-checklist-template.md`.
 
+## Data-intensive and event-driven architecture workflows
+
+Use these patterns only when durability, replay, independent consumers, data freshness, or long-running coordination justify their operational costs.
+
+### Event streaming platforms
+
+Evaluate Kafka, Pulsar, managed streams, and task queues against throughput, ordering scope, replay, retention, multi-tenancy, operational ownership, and total cost. Define topic ownership, partition keys, hot-key risk, replication, producer acknowledgements, consumer offset commits, idempotency, bounded retries, dead-letter handling, and lag-age SLOs. Distinguish per-partition ordering from global ordering and broker transactions from external side-effect atomicity. See `references/28-event-streaming-and-kafka-pulsar.md` and `templates/event-streaming-design-template.md`.
+
+### Event Sourcing and CQRS
+
+Adopt event sourcing only when the event history is a domain requirement, not merely because events are useful for integration. Define aggregate invariants, expected-version concurrency, command idempotency, immutable event semantics, schema evolution, projection checkpoints, rebuilds, read staleness, snapshots, privacy, and deletion obligations. CQRS does not require microservices or separate databases. See `references/29-event-sourcing-and-cqrs.md` and `templates/event-sourcing-cqrs-template.md`.
+
+### Change Data Capture and Debezium
+
+Model source logs, connector offsets, snapshots, schema history, broker delivery, ordering, transaction metadata, duplicates, tombstones, and source retention. Distinguish CDC persistence changes from domain events. For migrations, define snapshot boundaries, catch-up, semantic consistency checks, write ownership, cutover, rollback, and old-source retirement. See `references/30-change-data-capture-and-debezium.md` and `templates/cdc-data-pipeline-template.md`.
+
+### Data lakehouse and stream/batch processing
+
+Design data layers, dataset contracts, table formats/catalogs, event-time semantics, watermarks, late data, checkpoints, replay, schema evolution, data quality, lineage, and access controls. Choose batch or streaming from freshness requirements and total cost; a unified processing API does not erase different execution semantics. See `references/31-data-lakehouse-and-stream-batch.md`.
+
+### Durable workflow orchestration
+
+Choose a queue, scheduler, state machine, or durable workflow engine based on process duration, human interaction, recovery, and compensation needs. Define deterministic workflow code, idempotent activities, retries, deadlines, cancellation, versioning, history retention, payload limits, and recovery. A timeout does not prove an external side effect did not happen. See `references/32-workflow-orchestration-and-temporal.md`.
+
+### Schema registry and event governance
+
+Define event ownership, semantic meaning, schema identity, compatibility policy, subject lifecycle, authorization, PII classification, and consumer inventory. Use expand-migrate-contract and test both structural compatibility and semantic behavior. A schema registry is not a substitute for data governance or consumer contract tests. See `references/33-schema-registry-and-event-governance.md`.
+
 ## Progressive reference loading
 
 - Requirements and estimation: `references/01-requirements-and-capacity.md`
@@ -231,8 +259,14 @@ Before launch, review workload and capacity evidence, SLOs, failure behavior, se
 - Platform engineering and developer experience: `references/25-platform-engineering-and-developer-experience.md`
 - FinOps and cloud cost: `references/26-finops-and-cloud-cost.md`
 - Production observability and SLOs: `references/27-production-observability-and-slo.md`
+- Event streaming and Kafka/Pulsar: `references/28-event-streaming-and-kafka-pulsar.md`
+- Event Sourcing and CQRS: `references/29-event-sourcing-and-cqrs.md`
+- Change Data Capture and Debezium: `references/30-change-data-capture-and-debezium.md`
+- Data lakehouse and stream/batch processing: `references/31-data-lakehouse-and-stream-batch.md`
+- Durable workflow orchestration: `references/32-workflow-orchestration-and-temporal.md`
+- Schema registry and event governance: `references/33-schema-registry-and-event-governance.md`
 
-When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, and cloud cost modeling.
+When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, cloud cost modeling, event streaming, event sourcing/CQRS, and CDC/data pipelines.
 
 ## Tools, evidence, and untrusted-input boundaries
 

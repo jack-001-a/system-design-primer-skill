@@ -37,6 +37,12 @@ REQUIRED_REFERENCES = {
     "25-platform-engineering-and-developer-experience.md",
     "26-finops-and-cloud-cost.md",
     "27-production-observability-and-slo.md",
+    "28-event-streaming-and-kafka-pulsar.md",
+    "29-event-sourcing-and-cqrs.md",
+    "30-change-data-capture-and-debezium.md",
+    "31-data-lakehouse-and-stream-batch.md",
+    "32-workflow-orchestration-and-temporal.md",
+    "33-schema-registry-and-event-governance.md",
 }
 REQUIRED_TEMPLATES = {
     "adr-template.md",
@@ -51,6 +57,9 @@ REQUIRED_TEMPLATES = {
     "production-readiness-checklist-template.md",
     "multi-region-disaster-recovery-template.md",
     "cloud-cost-model-template.md",
+    "event-streaming-design-template.md",
+    "event-sourcing-cqrs-template.md",
+    "cdc-data-pipeline-template.md",
 }
 PACKAGE_ENTRIES = (
     "SKILL.md", "references", "templates", "scripts",

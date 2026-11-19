@@ -1,0 +1,27 @@
+# Event Streaming Architecture: Kafka and Pulsar
+
+Choose an event-streaming platform based on durability, ordering, replay, throughput, multi-tenancy, operations, and ecosystem requirements—not brand popularity. Compare Kafka, Pulsar, managed cloud streams, and simpler queues.
+
+## Domain and topic design
+Define event ownership, topic purpose, key, partitioning strategy, retention, compaction, schema, compatibility, and access policy. Use stable business keys when per-entity ordering matters. Partition count determines parallelism and affects ordering, storage, and reassignment cost. Hot keys can bottleneck a partition even when cluster capacity is available.
+
+Treat events as immutable facts about something that happened. Separate event time, ingestion time, and processing time. Include event ID, type, schema version, aggregate/entity key, producer identity, correlation/causation IDs, timestamp semantics, and trace context. Do not put secrets or unnecessary personal data in event payloads.
+
+## Delivery and ordering semantics
+Document producer acknowledgements, replication factor, minimum in-sync replicas, leader election behavior, idempotent producer settings, transaction scope, consumer offset commits, and failure behavior. Understand the limits of ordering: ordering is generally scoped to a partition or key, not a whole topic or multiple topics.
+
+Consumers should be idempotent and tolerate duplicates, retries, rebalances, and replay. Commit offsets only after the corresponding side effect is durable, or use an atomic pattern that binds offset progress to output effects. A broker transaction does not automatically make an external database or API side effect exactly once.
+
+## Consumer operations
+Bound poll batches, processing concurrency, in-flight records, and retry duration. Preserve per-key ordering when parallelizing. Distinguish retryable transient errors from poison events; use bounded retries, delayed retry topics or queues, and a dead-letter workflow with alerting, ownership, replay controls, and audit. Avoid hot retry loops.
+
+Monitor consumer lag and lag age, throughput, rebalance frequency, fetch latency, partition skew, under-replicated partitions, ISR shrink, disk capacity, request errors, produce latency, and broker/controller health. Lag alone is insufficient: measure the age of the oldest unprocessed business event.
+
+## Platform and topology
+Design broker placement across zones, replication, rack awareness, storage, network throughput, quotas, TLS, authentication, ACLs, tenant isolation, schema registry, and control-plane availability. For Kafka, account for partition leadership, controller quorum, log retention, compaction, and replication. For Pulsar, account for brokers, BookKeeper storage/quorums, metadata store, namespace policies, and tiered storage. Verify implementation-specific semantics against the selected release's official docs.
+
+## Capacity and recovery
+Estimate bytes/sec, peak multiplier, retention bytes, replication factor, compaction overhead, consumer fan-out, network egress, and recovery/replay throughput. Plan disk and network headroom for broker failure, partition reassignment, rolling upgrades, and consumer catch-up. Test broker loss, zone loss, disk pressure, network partition, credential expiry, schema incompatibility, and poison messages. Back up configuration and critical metadata; retained logs are not a substitute for application-level backup.
+
+## Decision gate
+Use streaming when multiple consumers, durable replay, high sustained throughput, or event-time processing justify it. Use a task queue for work dispatch and a database outbox for reliable publication where appropriate. Document operational ownership, SLOs, upgrade policy, cost, and exit path.

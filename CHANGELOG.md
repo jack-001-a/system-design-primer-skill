@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.0 — 2026-11-19
+
+- Add event-streaming architecture guidance for Kafka, Pulsar, partitioning, ordering, delivery semantics, consumer recovery, and broker operations.
+- Add Event Sourcing and CQRS guidance for aggregate invariants, optimistic concurrency, projections, replay, snapshots, schema evolution, and privacy.
+- Add CDC and Debezium guidance for log-based capture, snapshots, offsets, ordering, tombstones, schema governance, and migration cutover.
+- Add data lakehouse and stream/batch architecture guidance for table formats, event time, data quality, lineage, governance, and cost.
+- Add durable workflow orchestration guidance for deterministic execution, idempotent activities, retries, cancellation, versioning, and recovery.
+- Add schema registry and event governance guidance for compatibility, ownership, security, and contract evolution.
+- Add event-streaming, event-sourcing/CQRS, and CDC pipeline templates; extend package validation and tests.
+
 ## 1.6.0 — 2026-11-19
 
 - Add Kubernetes and container-platform architecture guidance for workload isolation, scheduling, autoscaling, delivery, security, and cluster operations.
