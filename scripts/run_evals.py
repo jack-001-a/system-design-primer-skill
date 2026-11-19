@@ -26,7 +26,7 @@ def invoke_adapter(
     case: dict[str, Any],
     model: str,
     timeout: int,
-) -> tuple[str, int]:
+ ) -> tuple[str, int, list[dict[str, Any]]]:
     request = {
         "schema_version": 1,
         "case_id": case["id"],
@@ -57,9 +57,12 @@ def invoke_adapter(
         raise RuntimeError("adapter stdout must contain one JSON object") from exc
     if not isinstance(response, dict) or not isinstance(response.get("output"), str):
         raise RuntimeError("adapter response must be an object with a string 'output' field")
+    trace = response.get("tool_trace", [])
+    if not isinstance(trace, list):
+        raise RuntimeError("adapter tool_trace must be an array when provided")
     if not response["output"].strip():
         raise RuntimeError("adapter returned an empty output")
-    return response["output"], elapsed_ms
+    return response["output"], elapsed_ms, trace
 
 
 def main() -> int:
@@ -86,7 +89,7 @@ def main() -> int:
         with args.output.open("x", encoding="utf-8", newline="\n") as stream:
             for case in cases.values():
                 try:
-                    output, elapsed_ms = invoke_adapter(
+                    output, elapsed_ms, tool_trace = invoke_adapter(
                         args.adapter, args.adapter_arg, case, args.model, args.timeout
                     )
                 except RuntimeError as exc:
@@ -98,6 +101,7 @@ def main() -> int:
                     "task": case["task"],
                     "output": output,
                     "duration_ms": elapsed_ms,
+                    "tool_trace": tool_trace,
                 }
                 stream.write(json.dumps(record, ensure_ascii=False) + "\n")
                 stream.flush()
