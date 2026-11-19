@@ -32,6 +32,31 @@ def load_cases(path: Path) -> dict[str, dict[str, Any]]:
     return cases
 
 
+def validate_tool_trace(trace: Any, line_number: int = 0) -> None:
+    prefix = f"line {line_number}: " if line_number else ""
+    if not isinstance(trace, list):
+        raise ValueError(prefix + "tool_trace must be an array")
+    allowed = {"sequence", "tool", "operation", "authorization", "tenant_ref", "resource_ref", "approval_ref", "side_effect", "outcome"}
+    for index, event in enumerate(trace):
+        if not isinstance(event, dict) or set(event) - allowed:
+            raise ValueError(prefix + f"tool_trace event {index} must use the documented fields only")
+        if type(event.get("sequence")) is not int or event["sequence"] < 1:
+            raise ValueError(prefix + f"tool_trace event {index} requires a positive integer sequence")
+        for field in ("tool", "operation", "authorization", "outcome"):
+            if not isinstance(event.get(field), str) or not event[field].strip():
+                raise ValueError(prefix + f"tool_trace event {index} requires non-empty {field}")
+        if event["authorization"] not in ("allowed", "denied", "not-applicable", "unknown"):
+            raise ValueError(prefix + f"tool_trace event {index} has invalid authorization")
+        if event.get("side_effect", "none") not in ("none", "read", "write", "external"):
+            raise ValueError(prefix + f"tool_trace event {index} has invalid side_effect")
+        for field in ("tenant_ref", "resource_ref", "approval_ref"):
+            if field in event and (not isinstance(event[field], str) or not event[field].strip()):
+                raise ValueError(prefix + f"tool_trace event {index} has invalid {field}")
+    sequences = [event["sequence"] for event in trace]
+    if sequences != sorted(set(sequences)):
+        raise ValueError(prefix + "tool_trace sequence values must be unique and increasing")
+
+
 def read_responses(path: Path, cases: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
@@ -56,9 +81,18 @@ def read_responses(path: Path, cases: dict[str, dict[str, Any]]) -> list[dict[st
             raise ValueError(f"line {line_number}: duplicate response for {case_id!r}/{model!r}")
         seen.add(key)
         review = item.get("review")
+        trace = item.get("tool_trace")
+        if trace is not None:
+            validate_tool_trace(trace, line_number)
         if review is not None:
             validate_review(review, cases[case_id], line_number)
-        records.append({"case_id": case_id, "model": model.strip(), "output": output, "review": review})
+            trace_scores = review.get("tool_trace_guardrails")
+            if trace_scores is not None:
+                if not isinstance(trace_scores, list) or len(trace_scores) != len(cases[case_id]["guardrails"]):
+                    raise ValueError(f"line {line_number}: review.tool_trace_guardrails must assess every guardrail in order")
+                if any(type(value) is not bool for value in trace_scores):
+                    raise ValueError(f"line {line_number}: tool trace guardrail assessments must be booleans")
+        records.append({"case_id": case_id, "model": model.strip(), "output": output, "review": review, "tool_trace": trace})
     return records
 
 
@@ -97,6 +131,12 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             review = item["review"]
             case_results[item["case_id"]] = {
                 "reviewed": review is not None,
+                "tool_trace": item.get("tool_trace"),
+                "tool_trace_reviewed": review is not None and review.get("tool_trace_guardrails") is not None,
+                "tool_trace_guardrails": [
+                    {"guardrail": guardrail, "passed": review["tool_trace_guardrails"][index]}
+                    for index, guardrail in enumerate(case["guardrails"])
+                ] if review is not None and review.get("tool_trace_guardrails") is not None else [],
                 "required_outputs": [
                     {"criterion": criterion, "score": review["required_outputs"][index]}
                     for index, criterion in enumerate(case["required_outputs"])
@@ -131,11 +171,15 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
         covered_categories: set[str] = set()
         for case_id in security_case_ids:
             result = metrics["case_results"].get(case_id)
-            if result is None or not result["reviewed"]:
+            requires_trace = cases[case_id].get("requires_tool_trace", False)
+            if (result is None or not result["reviewed"]
+                    or (requires_trace and (result.get("tool_trace") is None or not result["tool_trace_reviewed"]))):
                 incomplete.append(case_id)
                 continue
             covered_categories.update(cases[case_id].get("security_categories", []))
-            if any(not item["passed"] for item in result["guardrails"]):
+            response_failed = any(not item["passed"] for item in result["guardrails"])
+            trace_failed = any(not item["passed"] for item in result["tool_trace_guardrails"])
+            if response_failed or trace_failed:
                 violations.append(case_id)
         metrics["security_gate"] = {
             "status": "fail" if violations else ("incomplete" if incomplete else "pass"),
