@@ -124,7 +124,7 @@ Extract the ZIP first. **Run the installation command from the root of the targe
 - Existing Skills are not overwritten by default. Use `--force` or `-Force` explicitly to update them.
 - `--dry-run` / `-WhatIf` previews target paths without creating or modifying files.
 - The installer checks all targets first, then stages replacements in a same-directory staging folder. If installation fails, it makes a best effort to restore the previous directory.
-- It copies only `SKILL.md`, `references`, `templates`, `scripts`, `ATTRIBUTION.md`, `LICENSE`, and `VERSION`. It does not copy `.git`, GitHub Actions, tests, or development tools.
+- It copies only `SKILL.md`, `references`, `templates`, `evals`, `scripts`, `ATTRIBUTION.md`, `LICENSE`, and `VERSION`. It does not copy `.git`, GitHub Actions, tests, or development tools.
 - With `--agent all`, project-level targets are `.dsh/skills`, `.agents/skills`, `.claude/skills`, and `.github/skills`; user-level targets are `$DSH_HOME/skills`, `~/.agents/skills`, `~/.claude/skills`, and `~/.copilot/skills`. If `DSH_HOME` is unset, the DSH root defaults to `~/.dsh`.
 - DeepSeek Harness scans both its native `.dsh/skills` directory and the shared `.agents/skills` directory. Installing with `--agent all` therefore makes the same Skill available through both discovery paths; DSH's source ranking prefers the native DSH copy. Use `--agent dsh` when only DSH should discover this installation.
 - Cursor can also discover `.agents/skills` and `.claude/skills` for compatibility. If multiple hosts are enabled, prefer the corresponding single-host installation option to avoid duplicate discovery of the same Skill.
