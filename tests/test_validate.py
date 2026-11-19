@@ -179,6 +179,31 @@ class PackageTests(unittest.TestCase):
                 for item in errors
             ))
 
+
+    def test_cross_domain_references_require_scope_boundaries(self):
+        required = {
+            "03-data-and-storage.md",
+            "08-api-security-observability.md",
+            "24-multi-region-and-disaster-recovery.md",
+            "27-production-observability-and-slo.md",
+        }
+        for filename in required:
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "SKILL.md").write_text(
+                    "---\\nname: example-skill\\ndescription: test\\n---\\nbody\\n",
+                    encoding="utf-8",
+                )
+                refs = root / "references"
+                refs.mkdir()
+                (refs / filename).write_text("# Example\\n\\n## Details\\n", encoding="utf-8")
+                errors = validate(root)
+                self.assertTrue(any(
+                    "missing its required scope boundary section" in item
+                    and filename in item
+                    for item in errors
+                ))
+
     def test_task_routing_index_rejects_escaped_newlines(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
