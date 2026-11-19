@@ -55,12 +55,17 @@ class EvidenceTimestampTests(unittest.TestCase):
             run.side_effect = [
                 "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\n",
                 "",
-                "Time stamp: Nov 19 12:00:00 2026 GMT\nPolicy OID: 1.2.3\nSerial number: 01\n",
+                "Time stamp: Nov 19 12:00:00 2026 GMT\nPolicy OID: 1.2.3\nSerial number: 01\nHash Algorithm: sha256\nMessage data: 0x" + digest + "\nAccuracy: 1 seconds, 2 millis, 3 micros\nOrdering: no\nNonce: 0x1234\n",
             ]
             import hashlib as h
             result = verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
         self.assertTrue(result["verified"])
-        self.assertEqual(result["gen_time"], "Nov 19 12:00:00 2026 GMT")
+        self.assertEqual(result["gen_time"], "2026-11-19T12:00:00Z")
+        self.assertEqual(result["policy_oid"], "1.2.3")
+        self.assertEqual(result["accuracy"], {"seconds": 1, "millis": 2, "micros": 3})
+        self.assertTrue(result["nonce_present"])
+        self.assertEqual(len(result["request_sha256"]), 64)
+        self.assertEqual(len(result["response_sha256"]), 64)
         self.assertEqual(run.call_args_list[1].args[0][:3], ["ts", "-verify", "-queryfile"])
 
     def test_wrong_request_imprint_rejected_before_token_verification(self):

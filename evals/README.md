@@ -757,3 +757,12 @@ The verifier inspects the target certificate serial-number entry. It rejects dup
 The result records the CRL signature algorithm OID, signer certificate fingerprint, signature policy, and serial-specific entry assessment. The unified TSA report refuses legacy/incomplete CRL result JSON that lacks strict direct-CRL scope, signer identity, signature-policy evidence, or a serial-specific non-revoked-at-genTime assessment. These JSON fields remain assertions from the verifier output: retain original CRL bytes, pinned trust inputs, verifier executable/version, and independently protected result digest in the evidence archive.
 
 References: [RFC 5280 Sections 5.3.1–5.3.2 and 6.3](https://www.rfc-editor.org/rfc/rfc5280.html#section-5.3.1) and [OpenSSL verification options](https://docs.openssl.org/master/man1/openssl-verification-options/).
+
+
+### RFC 3161 timestamp verification output
+
+The timestamp verifier normalizes the signed token `genTime` to RFC 3339 UTC (`Z`) so it can be passed without manual reformatting to historical CRL/OCSP checks and the unified report. It requires the token's policy OID and serial number, independently checks the response's SHA-256 message-imprint algorithm and value against the Ed25519 signature, and records request/response byte digests, accuracy, ordering, and nonce presence. OpenSSL verifies the CMS token signature, trust chain, request binding, and nonce equality when the original request contains a nonce. The verifier does not infer an ordering guarantee when the token's `ordering` field is absent or false.
+
+The reported accuracy is the TSA's declared uncertainty, not proof that the TSA clock was correct. Preserve the original DER request/response and pinned CA material; output hashes are identifiers unless independently retained or signed. RFC 3161 requires checking the token imprint, algorithm identifier, signature, policy, and freshness evidence; a valid token remains an assertion by the TSA under its policy, not an independent audit of the TSA's clock source.
+
+References: [RFC 3161 Sections 2.2 and 2.4](https://www.rfc-editor.org/rfc/rfc3161.html) and [OpenSSL `ts` command](https://docs.openssl.org/1.1.1/man1/ts/).

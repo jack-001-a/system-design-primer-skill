@@ -8,6 +8,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -56,6 +57,34 @@ def create_request(signature_path: Path, output_path: Path) -> dict[str, str]:
     return {"request_created": True, "signature_sha256": digest, "output": str(output_path)}
 
 
+
+def parse_openssl_gen_time(value: str) -> str:
+    value = value.strip()
+    for pattern in ("%b %d %H:%M:%S %Y GMT", "%b %d %H:%M:%S.%f %Y GMT"):
+        try:
+            parsed = datetime.strptime(value, pattern).replace(tzinfo=timezone.utc)
+            precision = "microseconds" if parsed.microsecond else "seconds"
+            return parsed.isoformat(timespec=precision).replace("+00:00", "Z")
+        except ValueError:
+            pass
+    raise ValueError("timestamp token genTime is not a supported UTC GeneralizedTime")
+
+
+def parse_accuracy(details: str) -> dict[str, int] | None:
+    match = re.search(r"^Accuracy:\\s*(.+)$", details, re.I | re.M)
+    if not match:
+        return None
+    result: dict[str, int] = {}
+    for amount, unit in re.findall(r"(\\d+)\\s*(seconds?|millis(?:econds?)?|micros(?:econds?)?)", match.group(1), re.I):
+        key = "seconds" if unit.lower().startswith("second") else ("millis" if unit.lower().startswith("milli") else "micros")
+        if key in result:
+            raise ValueError("timestamp token contains duplicate accuracy components")
+        result[key] = int(amount)
+    if not result or any(v < 1 or v > 999 for k, v in result.items() if k != "seconds") or result.get("seconds", 0) < 0:
+        raise ValueError("timestamp token accuracy field is malformed")
+    return result
+
+
 def verify_timestamp(
     signature_path: Path, request_path: Path, response_path: Path,
     tsa_ca_path: Path, expected_ca_sha256: str, chain_path: Path | None = None,
@@ -79,19 +108,34 @@ def verify_timestamp(
         command.extend(["-untrusted", str(chain_path)])
     run_openssl(command)
     details = run_openssl(["ts", "-reply", "-in", str(response_path), "-text"])
-    gen_time = re.search(r"\bTime(?: stamp)?\s*:\s*(.+)", details)
-    policy = re.search(r"\bPolicy(?: OID)?\s*:\s*(\S+)", details)
-    serial = re.search(r"\bSerial number\s*:\s*(\S+)", details)
+    gen_time = re.search(r"^Time(?: stamp)?\\s*:\\s*(.+)$", details, re.I | re.M)
+    policy = re.search(r"^Policy OID\\s*:\\s*(\\S+)", details, re.I | re.M)
+    serial = re.search(r"^Serial number\\s*:\\s*(\\S+)", details, re.I | re.M)
+    response_algorithm = re.search(r"^Hash Algorithm:\\s*([A-Za-z0-9-]+)", details, re.I | re.M)
+    response_imprint = re.search(r"^Message data:\\s*(?:0x)?([0-9a-fA-F]+)", details, re.I | re.M)
     if not gen_time:
         raise ValueError("verified timestamp token did not expose a generation time")
+    if not policy or not serial:
+        raise ValueError("verified timestamp token is missing its mandatory policy OID or serial number")
+    if not response_algorithm or response_algorithm.group(1).lower().replace("-", "") != "sha256":
+        raise ValueError("timestamp token message-imprint algorithm is not SHA-256")
+    if not response_imprint or response_imprint.group(1).lower() != expected_imprint:
+        raise ValueError("timestamp token message imprint does not bind the supplied Ed25519 signature")
+    ordering = re.search(r"^Ordering:\\s*(yes|no)", details, re.I | re.M)
+    nonce = re.search(r"^Nonce:\\s*(\\S+)", details, re.I | re.M)
     return {
         "verified": True,
         "signature_sha256": expected_imprint,
-        "gen_time": gen_time.group(1).strip(),
-        "policy": policy.group(1) if policy else None,
-        "serial_number": serial.group(1) if serial else None,
+        "gen_time": parse_openssl_gen_time(gen_time.group(1)),
+        "policy_oid": policy.group(1),
+        "serial_number": serial.group(1),
+        "accuracy": parse_accuracy(details),
+        "ordering": ordering.group(1).lower() == "yes" if ordering else False,
+        "nonce_present": nonce is not None,
+        "request_sha256": hashlib.sha256(request_path.read_bytes()).hexdigest(),
+        "response_sha256": hashlib.sha256(response_path.read_bytes()).hexdigest(),
         "tsa_ca_sha256": actual_ca_sha256,
-        "verification": "OpenSSL RFC 3161 CMS, imprint, nonce, and TSA chain verification",
+        "verification": "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), and TSA chain verification",
     }
 
 
