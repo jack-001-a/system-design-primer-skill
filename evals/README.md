@@ -431,3 +431,34 @@ manifest was not verified. The verifier reports `audit_chain_checked` and
 sidecars; regenerate them from the original report and response files. SHA-256 hashes and
 self-contained chain heads provide tamper evidence only when the sidecar/head is retained
 independently; they are not digital signatures or proof of external model execution.
+
+
+## Dataset and rubric change governance
+
+Use \`scripts/evaluation_catalog.py\` to create a deterministic catalog fingerprint and
+to classify changes between two dataset revisions:
+
+\`\`\`bash
+python scripts/evaluation_catalog.py fingerprint --dataset evals/system-design-cases.json
+python scripts/evaluation_catalog.py compare --left evals/revisions/cases-v1.json --right evals/system-design-cases.json
+\`\`\`
+
+The fingerprint reports both the exact source-file SHA-256 and a canonical JSON content
+SHA-256, plus a separate rubric SHA-256 over stable case IDs and the required-output,
+guardrail, and security-category definitions. Retain this output with the run manifest.
+Use the exact source-file digest as \`configuration.dataset_sha256\`; record the rubric
+fingerprint in the manifest's caller-controlled \`run_config.evaluation_catalog.rubric_sha256\`
+and the human-managed \`rubric_version\`. The tool does not silently rewrite an existing
+manifest or infer a rubric version.
+
+Dataset comparison identifies added and removed case IDs, per-case rubric changes,
+task/mode/reference/tool-trace context changes, and other metadata changes. Case scope,
+rubric, or prompt/context changes set \`strictly_comparable=false\`. A metadata-only change
+is disclosed but does not automatically block score comparison. A changed rubric should
+receive a new \`rubric_version\`; a changed case set or task/context should receive a new
+dataset revision. Never overwrite historical dataset revisions used by completed runs.
+
+The comparison is structural, not semantic: it cannot determine whether two differently
+worded criteria mean the same thing, whether a rubric change is more difficult, or whether
+scores can be statistically equated. Review the detailed field-level diff and preserve the
+original dataset bytes, fingerprint output, manifest, responses, and report together.
