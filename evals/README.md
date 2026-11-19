@@ -242,3 +242,31 @@ metadata only: they do not guarantee deterministic model outputs, identical prov
 infrastructure, or reproducibility when an external model revision is unavailable.
 Keep manifests with their response files and reports, and retain sealed fingerprints in
 independently controlled storage when tamper evidence is required.
+
+
+## Binding responses to a sealed run
+
+When using a sealed manifest, pass it to the runner so every generated response carries
+both the immutable `run_id` and the full `manifest_sha256`:
+
+```bash
+python scripts/run_evals.py --adapter adapters/example.py --model provider/model-v1 \
+  --manifest evals/run-manifest.sealed.json --output evals/responses.jsonl
+```
+
+Pass the same sealed manifest to aggregation:
+
+```bash
+python scripts/evaluate.py --responses evals/responses.jsonl \
+  --manifest evals/run-manifest.sealed.json --output evals/report.json
+```
+
+Aggregation verifies the manifest fingerprint and rejects every response whose run ID or
+manifest fingerprint is missing or different. This deliberately prevents combining legacy,
+unbound responses or responses from another run under a supplied manifest. The report records
+the verified run ID, full manifest fingerprint, configuration fingerprint, and successful
+response-binding status. Tool traces and human review annotations remain inside their
+response record and therefore inherit the same run binding; changing a review does not change
+the manifest, so use the audit-chain sealing step when you also need tamper evidence for the
+response/review file. Without `--manifest`, the historical unbound workflow remains available
+and the report explicitly marks the manifest as not supplied.
