@@ -270,3 +270,21 @@ response record and therefore inherit the same run binding; changing a review do
 the manifest, so use the audit-chain sealing step when you also need tamper evidence for the
 response/review file. Without `--manifest`, the historical unbound workflow remains available
 and the report explicitly marks the manifest as not supplied.
+
+
+## Report and review evidence integrity
+
+The response audit chain covers complete JSONL records, including human review annotations.
+After aggregation, create a separate report sidecar to bind the final report and exact
+response/review source bytes:
+
+```bash
+python scripts/evaluate.py --responses evals/responses.sealed.jsonl --verify-chain --manifest evals/run-manifest.sealed.json --output evals/report.json --integrity-sidecar evals/report.integrity.json
+python scripts/report_integrity.py verify --report evals/report.json --responses evals/responses.sealed.jsonl --sidecar evals/report.integrity.json --manifest evals/run-manifest.sealed.json
+```
+
+The sidecar records SHA-256 digests for the report and response file, plus the verified
+audit-chain head and manifest/run identity when supplied. Verification detects later edits
+to either file. Sidecars are created exclusively and never overwritten. Store the sidecar or
+its digest independently to protect against replacement of both artifacts. This is an
+integrity check, not a digital signature or proof of provider-side execution.
