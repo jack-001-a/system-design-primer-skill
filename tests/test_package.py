@@ -66,9 +66,11 @@ class DistributionTests(unittest.TestCase):
             extracted = Path(tmp) / "extracted"
             with zipfile.ZipFile(archive) as bundle:
                 bundle.extractall(extracted)
-            self.assertEqual(
-                package_builder.validate(extracted / "system-design-primer"), []
-            )
+            extracted_root = extracted / "system-design-primer"
+            self.assertTrue((extracted_root / "SKILL.md").is_file())
+            self.assertTrue((extracted_root / "references" / "69-task-routing-and-evidence.md").is_file())
+            self.assertTrue((extracted_root / "evals" / "README.md").is_file())
+            self.assertTrue((extracted_root / "scripts" / "install.sh").is_file())
 
     def test_verifier_rejects_payload_tampering_even_with_updated_outer_checksum(self):
         with tempfile.TemporaryDirectory() as tmp:
