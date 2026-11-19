@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "1.9.0"
+  version: "2.0.0"
   language: "en"
 ---
 
@@ -256,6 +256,31 @@ Threat-model object/function authorization failures, enumeration, replay, creden
 
 For API designs, use `templates/api-architecture-design-template.md`. Compare REST, GraphQL, gRPC, and asynchronous messaging against actual client and operational constraints; do not prescribe one protocol universally.
 
+## Security architecture and identity workflows
+
+Security is a system property spanning identity, application behavior, infrastructure, delivery pipelines, and data lifecycle. Start from assets, trust boundaries, attacker capabilities, and business impact; do not treat a checklist or product choice as proof of security.
+
+### OAuth, OIDC, and passkeys
+Separate authentication from delegated authorization. Select secure flows by client type; enforce PKCE, state, nonce, issuer/audience validation, redirect allowlists, token lifecycle, and robust account recovery. Treat passkeys as phishing-resistant authentication, not as elimination of recovery risk. See `references/48-oauth-oidc-and-passkeys.md`.
+
+### IAM and authorization models
+Choose RBAC, ABAC, ReBAC, or a deliberate combination based on resource relationships and policy complexity. Specify default-deny, policy precedence, tenant isolation, delegation, cache invalidation, revocation latency, and object-level enforcement. See `references/49-iam-rbac-abac-rebac.md` and `templates/identity-and-access-architecture-template.md`.
+
+### Zero Trust and workload identity
+Do not infer trust from network location. Authenticate workloads with short-lived identities, constrain audience and authority, and authorize each service operation. Design mTLS, trust distribution, certificate rotation, policy propagation, and failure modes as operational dependencies. See `references/50-zero-trust-and-workload-identity.md`.
+
+### Secrets, KMS, and PKI
+Inventory credentials and cryptographic keys, prefer dynamic credentials, separate data keys from key-encryption keys, and define rotation, revocation, recovery, and audit. Model KMS/secret-store outages and key-loss recovery; key rotation alone does not re-encrypt historical data. See `references/51-secrets-kms-pki-and-key-management.md`.
+
+### Software supply chain security
+Threat-model source, dependencies, build runners, attestations, artifact registries, signing keys, and deployment promotion. Generate SBOMs, verify provenance and signatures at consumption boundaries, isolate builders, and rehearse dependency/build compromise response. See `references/52-supply-chain-security-sbom-slsa.md` and `templates/supply-chain-security-review-template.md`.
+
+### Threat modeling
+Map assets, actors, entry points, data flows, trust boundaries, and control planes. Apply STRIDE and attack trees to concrete attacker paths; prioritize by business impact and evidence, assign mitigation owners, and retest after architecture changes. See `references/53-threat-modeling-stride-and-attack-trees.md` and `templates/security-threat-model-template.md`.
+
+### Privacy engineering and data governance
+Trace sensitive data through collection, processing, derived data, logs, analytics, replicas, indexes, and backups. Define purpose, minimization, access, retention, deletion propagation, residency, lineage, and accountable ownership. Obtain qualified legal review for jurisdiction-specific obligations. See `references/54-privacy-engineering-and-data-governance.md` and `templates/privacy-data-governance-template.md`.
+
 ## Progressive reference loading
 
 - Requirements and estimation: `references/01-requirements-and-capacity.md`
@@ -299,8 +324,15 @@ For API designs, use `templates/api-architecture-design-template.md`. Compare RE
 - WebSocket, SSE, and real-time systems: `references/45-websocket-sse-and-realtime-systems.md`
 - Real-time collaboration, OT, and CRDT: `references/46-realtime-collaboration-ot-crdt.md`
 - API security, rate limiting, and abuse: `references/47-api-security-rate-limiting-and-abuse.md`
+- OAuth, OIDC, and passkeys: `references/48-oauth-oidc-and-passkeys.md`
+- IAM, RBAC, ABAC, and ReBAC: `references/49-iam-rbac-abac-rebac.md`
+- Zero Trust and workload identity: `references/50-zero-trust-and-workload-identity.md`
+- Secrets management, KMS, and PKI: `references/51-secrets-kms-pki-and-key-management.md`
+- Supply chain security, SBOM, and SLSA: `references/52-supply-chain-security-sbom-slsa.md`
+- Threat modeling, STRIDE, and attack trees: `references/53-threat-modeling-stride-and-attack-trees.md`
+- Privacy engineering and data governance: `references/54-privacy-engineering-and-data-governance.md`
 
-When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, cloud cost modeling, event streaming, event sourcing/CQRS, and CDC/data pipelines.
+When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, cloud cost modeling, event streaming, event sourcing/CQRS, CDC/data pipelines, API and real-time systems, identity and access architecture, threat modeling, supply chain security, and privacy governance.
 
 ## Tools, evidence, and untrusted-input boundaries
 
