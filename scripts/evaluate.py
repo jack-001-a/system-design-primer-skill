@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from collections import defaultdict
 from pathlib import Path
@@ -27,26 +28,36 @@ def audit_record_hash(record: dict[str, Any], previous_hash: str | None) -> str:
     return hashlib.sha256(canonical_json(payload)).hexdigest()
 
 def seal_audit_chain(source: Path, destination: Path) -> int:
+    # Validate and construct the complete snapshot before creating the destination.
+    # This prevents malformed input from leaving an unusable partial sealed file.
+    records: list[dict[str, Any]] = []
+    for line_number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"line {line_number}: invalid JSON: {exc.msg}") from exc
+        if not isinstance(record, dict) or AUDIT_FIELD in record:
+            raise ValueError(f"line {line_number}: expected an unsealed JSON object")
+        records.append(record)
+    if not records:
+        raise ValueError("cannot seal an empty JSONL file")
+    sealed: list[str] = []
     previous_hash: str | None = None
-    count = 0
+    for record in records:
+        digest = audit_record_hash(record, previous_hash)
+        item = dict(record)
+        item[AUDIT_FIELD] = {"version": AUDIT_CHAIN_VERSION, "previous_hash": previous_hash, "record_hash": digest}
+        sealed.append(json.dumps(item, ensure_ascii=False, sort_keys=True))
+        previous_hash = digest
     with destination.open("x", encoding="utf-8", newline="\n") as output:
-        for line_number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
-            if not line.strip():
-                continue
-            try:
-                record = json.loads(line)
-            except json.JSONDecodeError as exc:
-                raise ValueError(f"line {line_number}: invalid JSON: {exc.msg}") from exc
-            if not isinstance(record, dict) or AUDIT_FIELD in record:
-                raise ValueError(f"line {line_number}: expected an unsealed JSON object")
-            digest = audit_record_hash(record, previous_hash)
-            record[AUDIT_FIELD] = {"version": AUDIT_CHAIN_VERSION, "previous_hash": previous_hash, "record_hash": digest}
-            output.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
-            previous_hash = digest
-            count += 1
-    return count
+        output.write("\n".join(sealed) + "\n")
+    return len(sealed)
 
 def verify_audit_chain(path: Path, expected_head_hash: str | None = None) -> dict[str, Any]:
+    if expected_head_hash is not None and not re.fullmatch(r"[0-9a-f]{64}", expected_head_hash):
+        raise ValueError("expected head hash must be a 64-character lowercase SHA-256 hex digest")
     previous_hash: str | None = None
     count = 0
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
