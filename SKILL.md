@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "2.2.0"
+  version: "2.3.0"
   language: "en"
 ---
 
@@ -26,6 +26,14 @@ This Skill follows the topic structure of Donne Martin's [System Design Primer](
 Quick Design (small-scope design; prioritize the minimum viable solution and key trade-offs); Design (new systems or major features); Review (evidence-based codebase review); Optimize (measurement-driven optimization); Migration (migration and evolution); Decision (option comparison and ADR); Interview (system-design interview practice).
 
 Select a mode automatically based on the task; users do not need to issue fixed commands. First assess task size and risk: use concise output for simple questions and a complete design for major architectural changes. Do not add irrelevant sections just to fill a template.
+
+### Task routing and evidence discipline
+
+Before loading deep references, classify the request by its primary decision or failure domain. Load the smallest relevant set first; add adjacent references only when repository evidence or the task requires them. Use `references/69-task-routing-and-evidence.md` as the routing index. Do not summarize every topic in every answer.
+
+For repository reviews, establish the inspection boundary and trace at least one critical path end to end: entry point → authorization → domain logic → persistence or external dependency → response/event. Record concrete file/symbol evidence and distinguish Confirmed, Likely, and Unknown. Draw dependency or data-flow diagrams only from inspected evidence; mark inferred edges and missing visibility explicitly. Static inspection cannot prove production traffic, runtime topology, actual capacity, or operational behavior.
+
+For designs and decisions, separate user-provided facts, repository evidence, assumptions, estimates, and unresolved questions. Every estimate must show its formula and inputs. Every recommendation must include the condition that would invalidate it. Use the evaluation cases in `evals/system-design-cases.json` as regression prompts when changing routing or output behavior.
 
 ## Core principles
 
