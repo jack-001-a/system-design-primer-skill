@@ -202,7 +202,7 @@ def _heading_slug(heading: str) -> str:
     value = re.sub(r"\s+", "-", value)
     value = "".join(
         char for char in value
-        if char == "-" or not unicodedata.category(char).startswith("P")
+        if char == "-" or not unicodedata.category(char).startswith(("P", "S"))
     )
     return re.sub(r"-+", "-", value).strip("-")
 
