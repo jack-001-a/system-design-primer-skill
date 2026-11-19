@@ -362,7 +362,7 @@ def validate(root: Path) -> list[str]:
         files = package.get("files", [])
         required_npm_files = {
             "SKILL.md", "README.md", "ATTRIBUTION.md", "LICENSE", "VERSION",
-            "references/", "templates/", "scripts/",
+            "references/", "templates/", "scripts/", "evals/",
         }
         if not isinstance(files, list) or not required_npm_files.issubset(set(files)):
             errors.append("package.json files must include the Skill, references, templates, scripts, and license files")
