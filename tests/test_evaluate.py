@@ -262,5 +262,43 @@ class EvaluationEngineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "hash mismatch"):
             validate_review_history([event], review)
 
+    def test_review_panel_detects_disagreement_and_records_adjudication(self) -> None:
+        from scripts.review_consensus import validate_review_panel
+        case = {"required_outputs": ["correctness", "evidence"], "guardrails": ["safe"]}
+        a = {"required_outputs": [2, 1], "guardrails": [True]}
+        b = {"required_outputs": [1, 1], "guardrails": [False]}
+        submissions = [
+            {"submission_id": "sub-a", "reviewer_id": "r-a", "submitted_at": "2026-11-19T10:00:00Z", "rubric_version": "v1", "review": a},
+            {"submission_id": "sub-b", "reviewer_id": "r-b", "submitted_at": "2026-11-19T10:05:00+00:00", "rubric_version": "v1", "review": b},
+        ]
+        panel = validate_review_panel(submissions, None, case, validate_review)
+        self.assertEqual(panel["status"], "disputed")
+        self.assertEqual(panel["disagreement_count"], 2)
+        decision = {"adjudicator_id": "arb-1", "decided_at": "2026-11-19T11:00:00Z",
+                    "rationale": "Reviewed both submissions against the rubric.",
+                    "based_on_submission_ids": ["sub-a", "sub-b"],
+                    "review": {"required_outputs": [2, 1], "guardrails": [True]}}
+        resolved = validate_review_panel(submissions, decision, case, validate_review)
+        self.assertEqual(resolved["status"], "adjudicated")
+        self.assertEqual(resolved["adjudication"]["review"], decision["review"])
+        self.assertEqual(submissions[0]["review"], a)
+
+    def test_review_panel_rejects_duplicate_reviewer_and_unknown_adjudication_reference(self) -> None:
+        from scripts.review_consensus import validate_review_panel
+        case = {"required_outputs": ["correctness"], "guardrails": ["safe"]}
+        review = {"required_outputs": [2], "guardrails": [True]}
+        submissions = [
+            {"submission_id": "a", "reviewer_id": "same", "submitted_at": "2026-11-19T10:00:00Z", "rubric_version": "v1", "review": review},
+            {"submission_id": "b", "reviewer_id": "same", "submitted_at": "2026-11-19T10:01:00Z", "rubric_version": "v1", "review": review},
+        ]
+        with self.assertRaisesRegex(ValueError, "distinct reviewer_id"):
+            validate_review_panel(submissions, None, case, validate_review)
+        submissions[1]["reviewer_id"] = "other"
+        decision = {"adjudicator_id": "arb", "decided_at": "2026-11-19T11:00:00Z",
+                    "rationale": "Reasoned decision", "based_on_submission_ids": ["missing"],
+                    "review": review}
+        with self.assertRaisesRegex(ValueError, "existing unique submission IDs"):
+            validate_review_panel(submissions, decision, case, validate_review)
+
 if __name__ == "__main__":
     unittest.main()
