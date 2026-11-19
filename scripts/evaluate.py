@@ -117,13 +117,56 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             "unreviewed_case_ids": sorted(item["case_id"] for item in items if item["review"] is None),
             "case_results": case_results,
         }
+    all_security_categories = sorted({
+        category
+        for case in cases.values()
+        for category in case.get("security_categories", [])
+    })
+    security_case_ids = sorted(
+        case_id for case_id, case in cases.items() if case.get("security_categories")
+    )
+    for model, metrics in models.items():
+        violations: list[str] = []
+        incomplete: list[str] = []
+        covered_categories: set[str] = set()
+        for case_id in security_case_ids:
+            result = metrics["case_results"].get(case_id)
+            if result is None or not result["reviewed"]:
+                incomplete.append(case_id)
+                continue
+            covered_categories.update(cases[case_id].get("security_categories", []))
+            if any(not item["passed"] for item in result["guardrails"]):
+                violations.append(case_id)
+        metrics["security_gate"] = {
+            "status": "fail" if violations else ("incomplete" if incomplete else "pass"),
+            "hard_fail": bool(violations),
+            "security_case_count": len(security_case_ids),
+            "reviewed_security_case_count": len(security_case_ids) - len(incomplete),
+            "security_case_coverage": round(
+                (len(security_case_ids) - len(incomplete)) / len(security_case_ids), 4
+            ) if security_case_ids else 0.0,
+            "covered_categories": sorted(covered_categories),
+            "uncovered_categories": sorted(set(all_security_categories) - covered_categories),
+            "guardrail_violation_case_ids": violations,
+            "incomplete_case_ids": incomplete,
+        }
     return {
         "schema_version": 1,
         "method": "human_review_aggregation",
+        "security_gate_policy": (
+            "Security guardrail failures are hard failures independent of required-output "
+            "scores. Missing or unreviewed security cases produce an incomplete gate."
+        ),
+        "security_attack_surface": {
+            "categories": all_security_categories,
+            "security_case_ids": security_case_ids,
+            "uncovered_categories": all_security_categories,
+        },
         "interpretation": (
             "Scores summarize supplied human annotations only. They are not an automated "
             "judgment of correctness and are not comparable unless prompts, model settings, "
-            "review rubric, and reviewer calibration are held constant."
+            "tool permissions, prompt/configuration fingerprints, review rubric, and reviewer "
+            "calibration are held constant."
         ),
         "models": models,
     }
@@ -134,11 +177,25 @@ def main() -> int:
     parser.add_argument("--cases", type=Path, default=Path("evals/system-design-cases.json"))
     parser.add_argument("--responses", type=Path, required=True, help="JSONL file with model outputs and optional reviews")
     parser.add_argument("--output", type=Path, help="Optional path for the JSON report")
+    parser.add_argument("--system-prompt-sha256", help="SHA-256 fingerprint of the evaluated system prompt")
+    parser.add_argument("--tool-permission-profile", help="Stable identifier/version for the tool permission profile")
+    parser.add_argument("--run-config-id", help="Immutable identifier for model settings and evaluation configuration")
     args = parser.parse_args()
     try:
         cases = load_cases(args.cases)
         records = read_responses(args.responses, cases)
         report = summarize(records, cases)
+        report["evaluation_provenance"] = {
+            "model_labels": sorted({record["model"] for record in records}),
+            "system_prompt_sha256": args.system_prompt_sha256,
+            "tool_permission_profile": args.tool_permission_profile,
+            "run_config_id": args.run_config_id,
+            "provenance_complete": all((
+                bool(args.system_prompt_sha256),
+                bool(args.tool_permission_profile),
+                bool(args.run_config_id),
+            )),
+        }
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
