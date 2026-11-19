@@ -883,9 +883,13 @@ If the TSA `genTime` is earlier than `not_before`, the verifier separately
 reports `signature_existence_proven_before_key_not_before: true`, which is
 positive evidence that the signature already existed before the key's validity
 window. A `genTime` at or after `not_before` does not prove when within that
-window the signature was created. The pre-revocation existence finding uses a
-strict comparison: a `genTime` equal to `revoked_at` is not classified as
-before revocation.
+window the signature was created. The pre-revocation existence finding uses a conservative upper bound:
+when the token supplies Accuracy, the verifier computes `genTime + Accuracy`
+and requires that upper bound to be strictly earlier than `revoked_at`.
+If Accuracy is absent, no pre-revocation or pre-`not_before` existence claim
+is made. Equality between the upper bound and the key-event time is not
+classified as before that event. Accuracy is the TSA-declared uncertainty
+interval, not independent evidence that its clock was correct.
 The verifier also emits a machine-readable `historical_assessment` classification:
 `not_assessed_no_trusted_timestamp`, `signature_preexisted_key_validity`,
 `signature_preexisted_revocation`, or `timestamped_existence_only`.
