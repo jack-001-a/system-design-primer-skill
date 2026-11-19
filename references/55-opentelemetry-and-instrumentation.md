@@ -1,5 +1,9 @@
 # OpenTelemetry Architecture and Instrumentation
 
+## Scope and boundaries
+
+This document owns OpenTelemetry APIs/SDKs, semantic conventions, collectors, processors, exporters, and telemetry pipeline operations. Use [distributed tracing](56-distributed-tracing-and-context-propagation.md) for trace context, baggage, propagation, and sampling semantics; [production observability](27-production-observability-and-slo.md) for SLIs/SLOs and service-level interpretation; and [privacy engineering](54-privacy-engineering-and-data-governance.md) for data classification and retention policy. Instrumentation can be dropped, sampled, delayed, or misconfigured; absence of telemetry is not evidence that an operation did not occur.
+
 ## Purpose and scope
 OpenTelemetry (OTel) provides vendor-neutral APIs, SDKs, semantic conventions, and telemetry pipelines for traces, metrics, and logs. Treat it as an instrumentation and data-delivery architecture, not as an observability product or a guarantee that telemetry is correct.
 
