@@ -812,9 +812,15 @@ python scripts/tsa_attestation.py verify \
   --trust-store-sha256 TRUST_STORE_SHA256_FROM_INDEPENDENT_CHANNEL
 ```
 
-The detached signature binds the exact report bytes, a canonical digest of its
-TSA validation claims, the declared verifier package/source digest, verifier
-identity label, attester key ID, and attestation time. Verification uses the
+The detached signature binds the exact report bytes, a canonical digest of
+the **entire report object**, the declared verifier package/source digest,
+verifier identity label, attester key ID, and attestation time. The canonical
+claims digest includes every report field, including `overall_assessment` and
+the evidence-dependent `limitations` list. The signer and verifier recompute
+that list from the OCSP and responder-revocation evidence and reject stale,
+omitted, or contradictory limitation text. Both report and claims digests
+therefore cover the complete report, while the semantic check prevents signing
+a limitations list that misstates the evidence scope. Verification uses the
 existing Trust Store v2 lifecycle policy and requires its SHA-256 pin from an
 independent channel. The envelope never supplies its own trusted public key.
 

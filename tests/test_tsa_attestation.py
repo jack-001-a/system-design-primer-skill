@@ -6,6 +6,7 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from unittest.mock import patch
 from scripts.tsa_attestation import create_attestation, verify_attestation, digest_file
+from scripts.tsa_validation_report import _build_limitations
 
 class TsaAttestationTests(unittest.TestCase):
     def setUp(self):
@@ -30,7 +31,10 @@ class TsaAttestationTests(unittest.TestCase):
             "current_ocsp_assessment": {"provided": False, "assessment": "not_provided", "historical_status_claim": False},
             "historical_ocsp_responder_revocation_assessment": {
                 "status": "not_assessed", "reason": "No responder CRL evidence was supplied."
-            }
+            },
+            "limitations": _build_limitations(
+                {"provided": False, "historical_status_claim": False},
+                {"status": "not_assessed"})
         }, sort_keys=True), encoding="utf-8")
         self.key = Ed25519PrivateKey.generate()
         self.private = self.root / "private.pem"
@@ -98,6 +102,21 @@ class TsaAttestationTests(unittest.TestCase):
                 hashlib.sha256(b"verifier package").hexdigest(),
                 "system-design-primer TSA verifier release")
 
+    def test_attestation_claims_digest_covers_complete_report_including_limitations(self):
+        result = self.verify()
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        canonical = json.dumps(report, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        self.assertEqual(result["claims_sha256"], hashlib.sha256(canonical).hexdigest())
+
+    def test_attestation_rejects_stale_or_omitted_dynamic_limitations(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["limitations"] = ["No OCSP was supplied."]
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "limitations do not match"):
+            create_attestation(self.report, self.private, "tsa-attester",
+                hashlib.sha256(b"verifier package").hexdigest(),
+                "system-design-primer TSA verifier release")
+
     def test_attestation_rejects_historical_crl_time_mismatch(self):
         report = json.loads(self.report.read_text(encoding="utf-8"))
         report["historical_revocation_assessment"]["validation_time"] = "2026-11-18T12:00:00Z"
@@ -147,6 +166,9 @@ class TsaAttestationTests(unittest.TestCase):
             "responder_certificate_sha256": "d" * 64, "crl_sha256": "e" * 64,
             "issuer_roots_sha256": "f" * 64, "result_file_sha256": "1" * 64
         }
+        report["limitations"] = _build_limitations(
+            report["current_ocsp_assessment"],
+            report["historical_ocsp_responder_revocation_assessment"])
         self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
         self.assertTrue(create_attestation(self.report, self.private, "tsa-attester",
             hashlib.sha256(b"verifier package").hexdigest(), "system-design-primer TSA verifier release"))
