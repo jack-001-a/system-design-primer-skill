@@ -21,7 +21,7 @@ An installable Agent Skill for software architecture design, architecture review
 
 Version 2.3.0 adds an evidence-first task-routing guide, explicit reference-loading paths, repository-review traceability rules, and a compact regression case set for design, review, optimization, security, and migration tasks. The validator checks the evaluation dataset structure and keeps the README, Skill metadata, package manifest, changelog, and VERSION aligned.
 
-The evaluation workflow now includes a provider-neutral model runner and a dependency-free human-review aggregator. Run the nine fixture prompts through a user-supplied Python adapter, then review and aggregate the responses:
+The evaluation workflow now includes a provider-neutral model runner and a dependency-free human-review aggregator. Run the ten fixture prompts through a user-supplied Python adapter, then review and aggregate the responses:
 
     python scripts/run_evals.py --adapter ./adapter.py --model provider/model-and-version --output evals/responses.jsonl
     python scripts/evaluate.py --responses evals/responses.jsonl --output evals/report.json
