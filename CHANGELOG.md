@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.3.0 — 2026-11-19
+
+- Add task-routing and evidence-discipline guidance so agents load only relevant references and distinguish repository facts, assumptions, inferences, and unknowns.
+- Add end-to-end critical-path tracing expectations for architecture reviews, including explicit inspection boundaries and evidence-backed dependency diagrams.
+- Add a structured regression case set for design, review, optimization, security, and migration workflows.
+- Extend package validation to check evaluation-case structure and keep README, Skill metadata, package manifest, changelog, and VERSION aligned.
+
 ## 2.2.0 — 2026-11-19
 
 - Add DNS and service discovery guidance covering namespaces, TTLs, resolver behavior, endpoint health, security, and failure modes.
