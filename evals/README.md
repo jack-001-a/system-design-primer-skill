@@ -23,7 +23,7 @@ answer = call_your_model(
 print(json.dumps({"output": answer}))
 ```
 
-Run all ten fixtures sequentially:
+Run all thirteen fixtures sequentially:
 
 ```bash
 python scripts/run_evals.py \
