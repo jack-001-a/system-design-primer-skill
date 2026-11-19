@@ -58,7 +58,7 @@ def validate_tool_trace(trace: Any, line_number: int = 0) -> None:
         if parent_id is not None and (parent_id not in seen_events or seen_events[parent_id]["session_id"] != event["session_id"]):
             raise ValueError(prefix + f"tool_trace event {index} has an unknown or cross-session parent_event_id")
         approval_id = event.get("approval_ref")
-        if approval_id is not None and (approval_id not in seen_events or seen_events[approval_id]["operation"] != "approval" or seen_events[approval_id]["outcome"] != "approved"):
+        if approval_id is not None and (approval_id not in seen_events or seen_events[approval_id]["operation"] != "approval" or seen_events[approval_id]["outcome"] != "approved" or seen_events[approval_id]["session_id"] != event["session_id"]):
             raise ValueError(prefix + f"tool_trace event {index} has no preceding approved approval_ref")
         if event["authorization"] not in ("allowed", "denied", "not-applicable", "unknown"):
             raise ValueError(prefix + f"tool_trace event {index} has invalid authorization")
