@@ -2,6 +2,10 @@
 
 An agent is not a security principal with inherent authority. The application must bind each action to an authenticated principal, tenant, resource, and policy decision. Prompt instructions and model refusals are not authorization controls.
 
+## Scope and boundaries
+
+This document owns the security model for model-driven agents: principal binding, tool permissions, prompt-injection containment, execution isolation, and approval controls. Use [IAM](49-iam-rbac-abac-rebac.md) for reusable authorization policy semantics; [workload identity](50-zero-trust-and-workload-identity.md) for service-to-service identity and trust; [secrets and key management](51-secrets-kms-pki-and-key-management.md) for credential lifecycle; and [privacy engineering](54-privacy-engineering-and-data-governance.md) for data-purpose and retention obligations. Tool allowlists and model refusals do not replace resource-owner authorization at execution time.
+
 ## 1. Threat model
 
 Include:
