@@ -322,11 +322,11 @@ def validate(root: Path) -> list[str]:
             )
         if version_file.is_file() and (root / "README.md").is_file():
             readme_text = (root / "README.md").read_text(encoding="utf-8")
-            if not re.search(r"(?m)^- \\*\\*Version:\\*\\* " + re.escape(version) + r"$", readme_text):
+            if not re.search(r"(?m)^- \*\*Version:\*\* " + re.escape(version) + r"$", readme_text):
                 errors.append(f"README version must match VERSION {version!r}")
         changelog_file = root / "CHANGELOG.md"
         if changelog_file.is_file():
-            first_version = re.search(r"(?m)^## \\s*([^ —]+)", changelog_file.read_text(encoding="utf-8"))
+            first_version = re.search(r"(?m)^##\s*([^ —]+)", changelog_file.read_text(encoding="utf-8"))
             if not first_version or first_version.group(1) != version:
                 errors.append(f"latest CHANGELOG version must match VERSION {version!r}")
         repository = package.get("repository", {})
