@@ -698,11 +698,17 @@ After verifying the RFC 3161 token and extracting its signed `genTime`, run the 
 python scripts/tsa_validation_report.py \
   --gen-time 2026-11-19T12:00:00Z \
   --timestamp-result verified-timestamp-result.json \
+  --timestamp-result-sha256 INDEPENDENTLY_RECORDED_TIMESTAMP_RESULT_SHA256 \
   --crl-result tsa-crl-result.json \
+  --crl-result-sha256 INDEPENDENTLY_RECORDED_CRL_RESULT_SHA256 \
   --ocsp-result tsa-ocsp-result.json \
+  --ocsp-result-sha256 INDEPENDENTLY_RECORDED_OCSP_RESULT_SHA256 \
   --ocsp-responder-revocation-result tsa-ocsp-responder-crl-result.json \
+  --ocsp-responder-revocation-result-sha256 INDEPENDENTLY_RECORDED_RESPONDER_CRL_RESULT_SHA256 \
   --output tsa-validation-report.json
 ```
+
+The report requires an independently recorded SHA-256 pin for every supplied result JSON: timestamp, CRL, and (when present) OCSP and responder-CRL results. It checks each file's actual bytes against the corresponding pin before parsing or trusting any fields. Do not calculate the expected pin from the same untrusted file at report-generation time; retain it through a separate trusted channel (for example, a signed release record or controlled evidence log). This detects replacement and post-review tampering but does not by itself prove who produced the JSON or which verifier binary ran. The verifier JSON must still be produced by the reviewed scripts against the archived raw evidence and pinned trust inputs.
 
 The report refuses to combine a CRL result whose validation time differs from the supplied token `genTime`, requires explicit successful CRL status and SHA-256 bindings, and requires any OCSP result to identify the same TSA certificate. It retains exact result-file digests and source-object digests. OCSP remains a separate current-time assessment and can never upgrade or replace the historical CRL finding. Omitting OCSP is permitted and reported as `not_provided`.
 

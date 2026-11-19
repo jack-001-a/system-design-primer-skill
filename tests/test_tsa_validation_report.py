@@ -4,7 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from scripts.tsa_validation_report import build_validation_report as build_report, write_report
+from scripts.tsa_validation_report import build_validation_report as build_report, load_json, write_report
 
 class TsaValidationReportTests(unittest.TestCase):
     def setUp(self):
@@ -201,6 +201,17 @@ class TsaValidationReportTests(unittest.TestCase):
         revoked = dict(self.crl, revocation_entry={"present": True, "status_at_time": "revoked"})
         with self.assertRaisesRegex(ValueError, "does not establish a non-revoked status"):
             self.build_report_with_timestamp(self.gen_time, revoked, self.crl_file_hash)
+
+    def test_load_json_requires_independent_digest_pin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "result.json"
+            path.write_text('{"verified":true}', encoding="utf-8")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            value, actual = load_json(path, digest)
+            self.assertEqual(value, {"verified": True})
+            self.assertEqual(actual, digest)
+            with self.assertRaisesRegex(ValueError, "independently supplied pin"):
+                load_json(path, hashlib.sha256(b"other").hexdigest())
 
     def test_report_is_non_overwriting_and_hashable(self):
         with tempfile.TemporaryDirectory() as directory:
