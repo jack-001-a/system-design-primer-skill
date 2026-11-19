@@ -13,7 +13,8 @@ class TsaAttestationTests(unittest.TestCase):
         h = lambda value: hashlib.sha256(value).hexdigest()
         self.report = self.root / "report.json"
         self.report.write_text(json.dumps({
-            "schema_version": 1, "report_type": "tsa_long_term_validation_evidence",\n            "gen_time": "2026-11-19T12:00:00Z",
+            "schema_version": 1, "report_type": "tsa_long_term_validation_evidence",
+            "gen_time": "2026-11-19T12:00:00Z",
             "tsa_certificate_sha256": h(b"cert"),
             "timestamp_result_sha256": h(b"timestamp"),
             "historical_revocation_assessment": {"status": "not_revoked_at_gen_time", "crl_sha256": h(b"crl")},
@@ -49,7 +50,10 @@ class TsaAttestationTests(unittest.TestCase):
     def test_valid_attestation_binds_report_and_verifier_digest(self):
         result = self.verify()
         self.assertTrue(result["verified"])
-        self.assertFalse(result["execution_provenance_established"])\n        self.assertFalse(result["historical_time_cryptographically_proven"])\n        self.assertEqual(result["historical_validity_basis"],\n                         "attester_asserted_attested_at_without_trusted_timestamp")
+        self.assertFalse(result["execution_provenance_established"])
+        self.assertFalse(result["historical_time_cryptographically_proven"])
+        self.assertEqual(result["historical_validity_basis"],
+                         "attester_asserted_attested_at_without_trusted_timestamp")
         self.assertEqual(result["verifier_bundle_sha256"], hashlib.sha256(b"verifier package").hexdigest())
 
     def test_report_replacement_rejected(self):
@@ -75,7 +79,21 @@ class TsaAttestationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "pin mismatch"):
             verify_attestation(self.report, self.attestation, self.store, "0" * 64)
 
-    def test_revoked_key_requires_effective_time(self):\n        store = json.loads(self.store.read_text())\n        store["keys"]["tsa-attester"]["status"] = "revoked"\n        self.store.write_text(json.dumps(store, sort_keys=True), encoding="utf-8")\n        with self.assertRaisesRegex(ValueError, "must declare revoked_at"):\n            self.verify()\n\n    def test_non_rfc3339_attestation_time_rejected(self):\n        value = json.loads(self.attestation.read_text())\n        value["attested_at"] = "2026-11-19Z"\n        self.attestation.write_text(json.dumps(value), encoding="utf-8")\n        with self.assertRaisesRegex(ValueError, "RFC3339 UTC"):\n            self.verify()\n\n    def test_unknown_key_rejected(self):
+    def test_revoked_key_requires_effective_time(self):
+        store = json.loads(self.store.read_text())
+        store["keys"]["tsa-attester"]["status"] = "revoked"
+        self.store.write_text(json.dumps(store, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "must declare revoked_at"):
+            self.verify()
+
+    def test_non_rfc3339_attestation_time_rejected(self):
+        value = json.loads(self.attestation.read_text())
+        value["attested_at"] = "2026-11-19Z"
+        self.attestation.write_text(json.dumps(value), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "RFC3339 UTC"):
+            self.verify()
+
+    def test_unknown_key_rejected(self):
         value = json.loads(self.attestation.read_text())
         value["key_id"] = "unknown"
         self.attestation.write_text(json.dumps(value))

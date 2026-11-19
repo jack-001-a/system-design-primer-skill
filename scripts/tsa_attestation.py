@@ -18,10 +18,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
 SCHEMA_VERSION = 1
-DOMAIN = b"system-design-primer-tsa-validation-attestation-v1\\0"
+DOMAIN = b"system-design-primer-tsa-validation-attestation-v1\0"
 KEY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
-UTC_RE = re.compile(r"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$")
+UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 ENVELOPE_FIELDS = {"schema_version", "algorithm", "key_id", "attested_at",
                    "report_sha256", "verifier_bundle_sha256", "verifier_identity",
                    "claims_sha256", "signature"}
@@ -211,7 +211,7 @@ def main() -> int:
                                         args.verifier_bundle_sha256, args.verifier_identity)
             if args.output.exists():
                 raise FileExistsError(args.output)
-            args.output.write_text(json.dumps(result, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+            with args.output.open("x", encoding="utf-8", newline="") as stream:\n                stream.write(json.dumps(result, sort_keys=True, indent=2) + "\n")
             output = {"signed": True, "key_id": result["key_id"],
                       "report_sha256": result["report_sha256"], "output": str(args.output)}
         else:
