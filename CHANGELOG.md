@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.4.0 — 2026-11-19
+
+- Add an architecture decision matrix with hard-constraint gates, evidence/confidence, sensitivity analysis, and explicit TCO/team/migration criteria.
+- Add an evidence-based architecture review scorecard across eight dimensions; prohibit misleading aggregate health percentages.
+- Add API and data contract guidance for ownership, idempotency, versioning, compatibility, and expand-migrate-contract schema evolution.
+- Add failure-analysis guidance for blast radius, degradation, reconciliation, recovery, and business-defined RTO/RPO.
+- Add decision matrix, review scorecard, and failure-analysis templates; extend package validation and tests.
+
+
 ## 1.3.1 — 2026-11-19
 
 - Respect the `DSH_HOME` environment variable for user-level DSH installs on Bash and PowerShell; retain `~/.dsh` as the default.

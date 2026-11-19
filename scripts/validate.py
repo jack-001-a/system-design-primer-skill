@@ -22,11 +22,17 @@ REQUIRED_REFERENCES = {
     "10-workflows-and-checklists.md",
     "11-case-studies.md",
     "12-ai-systems-architecture.md",
+    "13-architecture-intelligence.md",
+    "14-api-and-data-contracts.md",
+    "15-failure-analysis.md",
 }
 REQUIRED_TEMPLATES = {
     "adr-template.md",
     "architecture-design-template.md",
     "architecture-review-template.md",
+    "architecture-decision-matrix-template.md",
+    "architecture-review-scorecard-template.md",
+    "failure-analysis-template.md",
 }
 PACKAGE_ENTRIES = (
     "SKILL.md", "references", "templates", "scripts",
