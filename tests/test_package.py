@@ -22,6 +22,14 @@ class DistributionTests(unittest.TestCase):
             )
             self.assertEqual(checksum_a.read_text(), checksum_b.read_text())
 
+    def test_npm_package_includes_documented_evaluation_workflow(self):
+        package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+        self.assertIn("evals/", package.get("files", []))
+        self.assertTrue((ROOT / "evals" / "README.md").is_file())
+        self.assertTrue((ROOT / "evals" / "system-design-cases.json").is_file())
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("[evals/README.md](evals/README.md)", readme)
+
     def test_manifest_covers_every_distributed_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             archive, checksum = package_builder.build(Path(tmp))
