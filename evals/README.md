@@ -824,3 +824,20 @@ and these declarations. Strong execution provenance requires a separately
 verified CI/build attestation, trusted runner identity, or reproducible-build
 and deployment controls. Keep signing keys outside the repository and retain
 the attestation and trust-store pin independently.
+
+
+#### Attestation signing-time limits
+
+The envelope's `attested_at` is generated from the signing host's local
+clock and is covered by the Ed25519 signature, but it is **not a trusted
+timestamp**. The verifier reports
+`historical_time_cryptographically_proven: false`: `historically_valid`
+means only that the signature verifies and the key was valid at the
+attester-asserted time. A party holding a compromised signing key can backdate
+a new signature unless an independent trusted timestamp proves when that
+signature existed. A revoked key entry must therefore include `revoked_at`;
+without an effective revocation time, historical authorization cannot be
+evaluated. For trusted signing-time evidence, obtain and independently verify
+an RFC 3161 timestamp over the exact detached signature bytes, and retain the
+original timestamp request/response and TSA trust material. This still does
+not establish that the declared verifier binary actually executed.

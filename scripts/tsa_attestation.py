@@ -21,6 +21,7 @@ SCHEMA_VERSION = 1
 DOMAIN = b"system-design-primer-tsa-validation-attestation-v1\\0"
 KEY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
+UTC_RE = re.compile(r"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d{1,6})?Z$")
 ENVELOPE_FIELDS = {"schema_version", "algorithm", "key_id", "attested_at",
                    "report_sha256", "verifier_bundle_sha256", "verifier_identity",
                    "claims_sha256", "signature"}
@@ -37,8 +38,8 @@ def digest_file(path: Path) -> str:
 
 
 def parse_utc(value: Any, field: str) -> datetime:
-    if not isinstance(value, str) or not value.endswith("Z"):
-        raise ValueError(field + " must be a UTC RFC3339 timestamp ending in Z")
+    if not isinstance(value, str) or not UTC_RE.fullmatch(value):
+        raise ValueError(field + " must be an RFC3339 UTC timestamp ending in Z (up to microsecond precision)")
     try:
         result = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
@@ -59,12 +60,17 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
                 "historical_revocation_assessment", "current_ocsp_assessment",
                 "historical_ocsp_responder_revocation_assessment")
     missing = [name for name in required if name not in report]
+    if report.get("schema_version") != 1 or report.get("report_type") != "tsa_long_term_validation_evidence":
+        raise ValueError("unsupported TSA validation report schema or type")
     if missing:
         raise ValueError("TSA report missing required attestation fields: " + ", ".join(missing))
+    parse_utc(report["gen_time"], "gen_time")
     require_sha256(report["tsa_certificate_sha256"], "tsa_certificate_sha256")
     require_sha256(report["timestamp_result_sha256"], "timestamp_result_sha256")
-    if not isinstance(report["historical_revocation_assessment"], dict):
-        raise ValueError("historical_revocation_assessment must be an object")
+    for name in ("historical_revocation_assessment", "current_ocsp_assessment",
+                 "historical_ocsp_responder_revocation_assessment"):
+        if not isinstance(report[name], dict):
+            raise ValueError(name + " must be an object")
     return {name: report[name] for name in required}
 
 
@@ -124,8 +130,18 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     if require_sha256(envelope["report_sha256"], "report_sha256") != report_digest:
         raise ValueError("attestation report SHA-256 mismatch")
     require_sha256(envelope["verifier_bundle_sha256"], "verifier_bundle_sha256")
-    if not isinstance(envelope["verifier_identity"], str) or not envelope["verifier_identity"].strip():
+    if (not isinstance(envelope["verifier_identity"], str)
+            or not envelope["verifier_identity"].strip()
+            or len(envelope["verifier_identity"]) > 256):
         raise ValueError("invalid verifier_identity")
+    if not isinstance(envelope["signature"], str):
+        raise ValueError("signature must be base64 text")
+    try:
+        signature_bytes = base64.b64decode(envelope["signature"], validate=True)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("signature must be valid base64") from exc
+    if len(signature_bytes) != 64:
+        raise ValueError("Ed25519 signature must decode to exactly 64 bytes")
     claims_digest = hashlib.sha256(canonical_json(claims)).hexdigest()
     if require_sha256(envelope["claims_sha256"], "claims_sha256") != claims_digest:
         raise ValueError("attestation claims digest mismatch")
@@ -146,6 +162,8 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     if not_before >= not_after:
         raise ValueError("key validity interval must have not_before < not_after")
     revoked_at = None if entry["revoked_at"] is None else parse_utc(entry["revoked_at"], "revoked_at")
+    if entry["status"] == "revoked" and revoked_at is None:
+        raise ValueError("revoked trust-store keys must declare revoked_at for historical evaluation")
     if not_before > attested_time or attested_time > not_after:
         raise ValueError("attestation timestamp is outside key validity interval")
     if revoked_at is not None and attested_time >= revoked_at:
@@ -161,6 +179,8 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     currently_authorized = (entry["status"] == "active" and not_before <= now <= not_after
                             and (revoked_at is None or now < revoked_at))
     return {"verified": True, "historically_valid": True,
+            "historical_validity_basis": "attester_asserted_attested_at_without_trusted_timestamp",
+            "historical_time_cryptographically_proven": False,
             "currently_authorized": currently_authorized, "key_id": key_id,
             "attested_at": envelope["attested_at"], "report_sha256": report_digest,
             "verifier_bundle_sha256": envelope["verifier_bundle_sha256"],
