@@ -129,6 +129,10 @@ REQUIRED_SCOPE_BOUNDARIES = {
     "32-workflow-orchestration-and-temporal.md",
     "60-chaos-engineering-and-resilience-experiments.md",
     "61-incident-management-and-postmortems.md",
+    "03-data-and-storage.md",
+    "08-api-security-observability.md",
+    "24-multi-region-and-disaster-recovery.md",
+    "27-production-observability-and-slo.md",
 }
 SEMVER_RE = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?")
 
