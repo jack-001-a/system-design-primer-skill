@@ -1,7 +1,7 @@
 {
   "name": "system-design-primer-skill",
-  "version": "2.2.0",
-  "description": "A portable System Design Agent Skill covering architecture, distributed systems, security, identity, APIs, data platforms, AI systems, observability, performance, networking, edge computing, and resilience.",
+  "version": "2.3.0",
+  "description": "A portable System Design Agent Skill with evidence-first task routing, architecture design and review, distributed systems, security, data platforms, AI systems, observability, performance, networking, and resilience.",
   "license": "CC-BY-4.0",
   "repository": {
     "type": "git",
@@ -57,7 +57,11 @@
     "cloud-networking",
     "storage-architecture",
     "tcp",
-    "quic"
+    "quic",
+    "architecture-evaluation",
+    "evidence-based-review",
+    "task-routing",
+    "system-design-evals"
   ],
   "files": [
     "SKILL.md",
