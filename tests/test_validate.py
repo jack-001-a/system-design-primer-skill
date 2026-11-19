@@ -307,6 +307,48 @@ class PackageTests(unittest.TestCase):
             errors = validate(root)
             self.assertTrue(any("must not contain symlinks" in item for item in errors))
 
+    def test_markdown_heading_slugs_handle_duplicates_and_explicit_ids(self):
+        from validate import _markdown_anchors
+        anchors = _markdown_anchors(
+            "# API Design\n"
+            "## API Design\n"
+            "## OAuth/OIDC & Passkeys\n"
+            '<a id="custom-anchor"></a>\n'
+            "## Example `code` Heading\n"
+            "```md\n"
+            "## not-an-anchor\n"
+            "```\n"
+        )
+        self.assertTrue({"api-design", "api-design-1", "oauthoidc--passkeys",
+                         "custom-anchor", "example-code-heading"}.issubset(anchors))
+        self.assertNotIn("not-an-anchor", anchors)
+
+    def test_local_markdown_anchor_must_exist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SKILL.md").write_text(
+                "---\nname: example-skill\ndescription: test\n---\n"
+                "[valid](guide.md#existing-heading) [invalid](guide.md#missing-heading)\n",
+                encoding="utf-8",
+            )
+            (root / "guide.md").write_text("# Existing Heading\n", encoding="utf-8")
+            errors = validate(root)
+            self.assertTrue(any("broken local Markdown anchor" in error
+                                and "missing-heading" in error for error in errors))
+            self.assertFalse(any("existing-heading" in error for error in errors))
+
+    def test_same_file_fragment_is_validated(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SKILL.md").write_text(
+                "---\nname: example-skill\ndescription: test\n---\n"
+                "[valid](#body) [invalid](#missing)\n\n## Body\n",
+                encoding="utf-8",
+            )
+            errors = validate(root)
+            self.assertTrue(any("broken local Markdown anchor" in error
+                                and "#missing" in error for error in errors))
+
     def test_local_link_cannot_escape_package_root(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp) / "package"
