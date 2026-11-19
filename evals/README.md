@@ -322,3 +322,15 @@ existing `review` field. A disputed panel without adjudication remains `disputed
 adjudicated panel is labeled `adjudicated`, while the underlying disagreement remains
 visible. The existing `review` remains the input to legacy aggregate scoring; the adjudication
 is provenance evidence until an explicit downstream policy chooses to consume it.
+
+## Reviewer calibration and agreement diagnostics
+
+The multi-review panel exposes raw pairwise criterion comparisons. For cross-case reviewer
+calibration, `scripts/reviewer_calibration.py` provides pairwise Cohen's kappa for nominal
+guardrail decisions and quadratic-weighted kappa for ordinal 0–2 required-output scores.
+These metrics are kept separate from model quality scores and must be computed across
+multiple independently reviewed cases; one observation per criterion is insufficient for
+meaningful kappa inference. Degenerate expected agreement yields a null kappa rather than
+an invented value. The helper reports low-agreement reviewer/criterion pairs below 0.60
+only when at least two observations exist; treat this as a review-queue signal, not an
+automatic judgment of reviewer competence. Reviewer IDs remain caller-declared metadata.
