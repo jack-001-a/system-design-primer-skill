@@ -292,10 +292,10 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             "unreviewed_case_ids": sorted(item["case_id"] for item in items if item["review"] is None),
             "case_results": case_results,
         }
-    calibration_panels = [{"submissions": item["review_panel"]["submissions"]} for item in records if item.get("review_panel")]
+    calibration_panels = [{"submissions": item["review_panel"]["submissions"], "case": cases[item["case_id"]]} for item in records if item.get("review_panel")]
     report_reviewer_metrics = aggregate_reviewer_calibration(calibration_panels)
     reviewer_behavior = summarize_reviewer_behavior(records, cases)
-    low_pairs = {tuple(item["reviewer_ids"]) for item in report_reviewer_metrics["low_agreement_pairs"]}
+    low_pairs = {(item["rubric_version"], tuple(item["reviewer_ids"])) for item in report_reviewer_metrics["low_agreement_pairs"]}
     re_review_queue = []
     for record in records:
         panel = record.get("review_panel")
@@ -303,7 +303,8 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             continue
         reviewers = panel.get("submissions", [])
         pair_ids = {tuple(sorted((a["reviewer_id"], b["reviewer_id"]))) for a, b in combinations(reviewers, 2)}
-        flagged_pairs = sorted([list(pair) for pair in pair_ids if pair in low_pairs])
+        panel_rubric = reviewers[0]["rubric_version"] if reviewers else None
+        flagged_pairs = sorted([list(pair) for pair in pair_ids if (panel_rubric, pair) in low_pairs])
         if panel.get("status") == "disputed" or flagged_pairs:
             re_review_queue.append({"case_id": record["case_id"], "model": record["model"],
                                     "reason": "panel_disagreement" if panel.get("status") == "disputed" else "low_historical_reviewer_agreement",
