@@ -80,6 +80,8 @@ REQUIRED_REFERENCES = {
     "65-cloud-networking-and-connectivity.md",
     "66-edge-computing-architecture.md",
     "67-storage-infrastructure-and-storage-systems.md",
+    "37-consensus-and-distributed-transactions.md",
+    "56-distributed-tracing-and-context-propagation.md",
     "68-tcp-quic-and-network-performance.md",
     "69-task-routing-and-evidence.md",
 }
