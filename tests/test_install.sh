@@ -13,7 +13,7 @@ mkdir -p "$TMP/project" "$TMP/home" "$TMP/custom-dsh"
   DEST=".agents/skills/system-design-primer"
   [[ -f "$DEST/SKILL.md" && -d "$DEST/references" && -f "$DEST/evals/README.md" && -f "$DEST/evals/system-design-cases.json" ]]
   [[ ! -e "$DEST/.git" && ! -e "$DEST/.github" ]]
-  [[ ! -e "$DEST/scripts/__pycache__" && ! -e "$DEST/scripts/test_install.sh" ]]
+  [[ ! -e "$DEST/scripts/__pycache__" && ! -e "$DEST/scripts/test_install.sh" && ! -e "$DEST/scripts/validate.py" ]]
   if bash "$SCRIPT" --agent codex --scope project >/dev/null 2>&1; then
     echo "Expected existing-target guard to fail" >&2; exit 1
   fi
