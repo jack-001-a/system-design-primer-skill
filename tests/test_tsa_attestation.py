@@ -65,7 +65,7 @@ class TsaAttestationTests(unittest.TestCase):
         value = json.loads(self.attestation.read_text())
         value["signature"] = "AA=="
         self.attestation.write_text(json.dumps(value))
-        with self.assertRaisesRegex(ValueError, "signature verification failed"):
+        with self.assertRaisesRegex(ValueError, "signature must decode to exactly 64 bytes"):
             self.verify()
 
     def test_verifier_digest_tampering_rejected(self):
