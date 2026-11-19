@@ -69,5 +69,26 @@ class ModelRunnerTests(unittest.TestCase):
         self.assertNotIn("sensitive-token", str(error.exception))
 
 
+    def test_adapter_tool_trace_is_preserved_in_jsonl(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from scripts.run_evals import invoke_adapter
+        with tempfile.TemporaryDirectory() as directory:
+            adapter = Path(directory) / "adapter.py"
+            adapter.write_text(
+                "import json\\nprint(json.dumps({'output':'ok','tool_trace':["
+                "{'sequence':1,'tool':'db.read','operation':'read',"
+                "'authorization':'allowed','outcome':'success'}]}))\\n",
+                encoding="utf-8",
+            )
+            output, elapsed, trace = invoke_adapter(
+                adapter, [], {"id":"case","task":"task"}, "model-a", 5
+            )
+        self.assertEqual(output, "ok")
+        self.assertGreaterEqual(elapsed, 0)
+        self.assertEqual(trace[0]["tool"], "db.read")
+
+
 if __name__ == "__main__":
     unittest.main()
