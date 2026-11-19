@@ -4,7 +4,7 @@
 
 An installable Agent Skill for software architecture design, architecture reviews, performance optimization, technology evaluation, and migration planning. It uses Donne Martin's System Design Primer as its knowledge foundation and adds modern production engineering practices.
 
-- **Version:** 2.0.0
+- **Version:** 2.1.0
 - **Language:** English, with standard technical terminology
 - **Runtime dependencies:** The Skill itself has no third-party runtime dependencies. Installation and validation require only Bash, PowerShell, or Python 3.
 
@@ -13,9 +13,13 @@ An installable Agent Skill for software architecture design, architecture review
     system-design-primer/
     ├── SKILL.md
     ├── README.md / ATTRIBUTION.md / LICENSE / VERSION
-    ├── references/      55 progressive knowledge references
-    ├── templates/       Design, review, ADR, decision, scorecard, failure, agent, production-readiness, disaster-recovery, FinOps, event-streaming, event-sourcing, CDC, database architecture, sharding, zero-downtime migration, API architecture, real-time systems, identity, threat modeling, supply chain, and privacy templates
+    ├── references/      62 progressive knowledge references
+    ├── templates/       Design, review, ADR, decision, scorecard, failure, agent, production-readiness, disaster-recovery, FinOps, event-streaming, event-sourcing, CDC, database architecture, sharding, zero-downtime migration, API architecture, real-time systems, identity, threat modeling, supply chain, privacy, observability, performance testing, chaos engineering, and incident response templates
     └── scripts/         Linux/macOS and Windows installers and validators
+
+## Observability and performance engineering
+
+Version 2.1.0 adds OpenTelemetry instrumentation and Collector architecture, distributed tracing and context propagation, continuous profiling, realistic load/stress/soak workload models, capacity planning, controlled chaos experiments, and incident management/postmortems. Four templates support observability architecture, performance test plans, chaos experiments, and incident postmortems.
 
 ## Downloads
 
@@ -25,7 +29,7 @@ The release ZIP contains a `system-design-primer/` directory, an embedded `MANIF
 
 ## Install via npm
 
-This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 34 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies.
+This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 62 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies.
 
 Run the following in the target project root:
 

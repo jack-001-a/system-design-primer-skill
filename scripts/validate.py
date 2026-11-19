@@ -64,6 +64,13 @@ REQUIRED_REFERENCES = {
     "52-supply-chain-security-sbom-slsa.md",
     "53-threat-modeling-stride-and-attack-trees.md",
     "54-privacy-engineering-and-data-governance.md",
+    "55-opentelemetry-and-instrumentation.md",
+    "56-distributed-tracing-and-context-propagation.md",
+    "57-continuous-profiling-and-performance-diagnostics.md",
+    "58-load-stress-soak-testing-and-workload-modeling.md",
+    "59-capacity-planning-and-performance-modeling.md",
+    "60-chaos-engineering-and-resilience-experiments.md",
+    "61-incident-management-and-postmortems.md",
 }
 REQUIRED_TEMPLATES = {
     "adr-template.md",
@@ -91,6 +98,10 @@ REQUIRED_TEMPLATES = {
     "security-threat-model-template.md",
     "supply-chain-security-review-template.md",
     "privacy-data-governance-template.md",
+    "observability-architecture-template.md",
+    "performance-test-plan-template.md",
+    "chaos-experiment-template.md",
+    "incident-postmortem-template.md",
 }
 PACKAGE_ENTRIES = (
     "SKILL.md", "references", "templates", "scripts",

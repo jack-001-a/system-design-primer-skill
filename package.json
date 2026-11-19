@@ -1,7 +1,7 @@
 {
   "name": "system-design-primer-skill",
-  "version": "2.0.0",
-  "description": "A portable System Design Agent Skill covering security architecture, identity, privacy, APIs, real-time systems, databases, distributed systems, cloud-native operations, and AI systems.",
+  "version": "2.1.0",
+  "description": "A portable System Design Agent Skill covering architecture, distributed systems, security, identity, APIs, data platforms, AI systems, observability, performance engineering, and resilience.",
   "license": "CC-BY-4.0",
   "repository": {
     "type": "git",
@@ -40,7 +40,15 @@
     "sbom",
     "slsa",
     "threat-modeling",
-    "privacy-engineering"
+    "privacy-engineering",
+    "opentelemetry",
+    "distributed-tracing",
+    "continuous-profiling",
+    "performance-testing",
+    "capacity-planning",
+    "chaos-engineering",
+    "incident-management",
+    "sre"
   ],
   "files": [
     "SKILL.md",
