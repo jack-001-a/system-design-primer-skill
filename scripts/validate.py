@@ -50,6 +50,13 @@ REQUIRED_REFERENCES = {
     "38-search-architecture-elasticsearch-opensearch.md",
     "39-vector-databases-and-hybrid-retrieval.md",
     "40-zero-downtime-database-migrations.md",
+    "41-api-gateway-and-edge-architecture.md",
+    "42-rest-api-design-and-lifecycle.md",
+    "43-graphql-architecture-and-governance.md",
+    "44-grpc-and-service-contracts.md",
+    "45-websocket-sse-and-realtime-systems.md",
+    "46-realtime-collaboration-ot-crdt.md",
+    "47-api-security-rate-limiting-and-abuse.md",
 }
 REQUIRED_TEMPLATES = {
     "adr-template.md",
@@ -70,6 +77,9 @@ REQUIRED_TEMPLATES = {
     "database-architecture-review-template.md",
     "sharding-distributed-sql-design-template.md",
     "zero-downtime-database-migration-template.md",
+    "api-architecture-design-template.md",
+    "realtime-system-design-template.md",
+    "api-security-and-rate-limit-review-template.md",
 }
 PACKAGE_ENTRIES = (
     "SKILL.md", "references", "templates", "scripts",
