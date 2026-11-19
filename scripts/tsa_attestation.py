@@ -17,7 +17,7 @@ from typing import Any
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 from scripts.evidence_timestamp import verify_timestamp
-from scripts.tsa_validation_report import _build_limitations
+from scripts.tsa_validation_report import _build_limitations, _build_overall_assessment
 
 SCHEMA_VERSION = 1
 DOMAIN = b"system-design-primer-tsa-validation-attestation-v1\0"
@@ -61,7 +61,7 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
     required = ("gen_time", "tsa_certificate_sha256", "timestamp_result_sha256",
                 "result_digest_policy", "timestamp_signer_serial_number",
                 "historical_revocation_assessment", "current_ocsp_assessment",
-                "historical_ocsp_responder_revocation_assessment", "limitations")
+                "historical_ocsp_responder_revocation_assessment", "overall_assessment", "limitations")
     missing = [name for name in required if name not in report]
     if report.get("schema_version") != 1 or report.get("report_type") != "tsa_long_term_validation_evidence":
         raise ValueError("unsupported TSA validation report schema or type")
@@ -147,6 +147,9 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
             require_sha256(responder.get(field), "historical_ocsp_responder_revocation_assessment." + field)
     else:
         raise ValueError("historical OCSP responder revocation has an unsupported status")
+    expected_overall_assessment = _build_overall_assessment(current)
+    if report.get("overall_assessment") != expected_overall_assessment:
+        raise ValueError("TSA report overall_assessment contradicts its CRL/OCSP evidence scope or status")
     limitations = report.get("limitations")
     if (not isinstance(limitations, list)
             or any(not isinstance(item, str) or not item.strip() for item in limitations)):

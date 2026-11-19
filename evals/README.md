@@ -938,6 +938,8 @@ coherent assessment. They validate report consistency, not the truth of the
 underlying verifier assertions or the completeness of revocation sources.
 
 ### Overall assessment semantics
+The report builder derives this field from the exact OCSP `provided`, `historical_status_claim`, and status values. The attestation signer and verifier independently recompute the same scope-aware classification and reject a signed report whose summary disagrees with its evidence fields. In particular, an OCSP `revoked` or `unknown` result cannot be relabeled as `good`, and current-time evidence cannot be labeled as a historical result.
+
 
 The report's `overall_assessment` is a scope-aware summary, not a universal
 certificate-validity verdict. It distinguishes a historical OCSP `revoked` or

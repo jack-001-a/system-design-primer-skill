@@ -76,6 +76,33 @@ def _build_limitations(ocsp: dict[str, Any], responder: dict[str, Any]) -> list[
     return limitations
 
 
+def _build_overall_assessment(ocsp: dict[str, Any]) -> str:
+    """Derive the summary strictly from the declared OCSP scope and status."""
+    if not isinstance(ocsp, dict) or type(ocsp.get("provided")) is not bool:
+        raise ValueError("OCSP assessment must declare a boolean provided field")
+    if not ocsp["provided"]:
+        if ocsp.get("assessment") != "not_provided" or ocsp.get("historical_status_claim") is not False:
+            raise ValueError("omitted OCSP evidence must be classified not_provided with no historical claim")
+        return "historical_crl_passed_ocsp_not_provided_with_scope_limitations"
+    status = ocsp.get("assessment")
+    if status not in ("good", "revoked", "unknown"):
+        raise ValueError("provided OCSP assessment must be good, revoked, or unknown")
+    historical = ocsp.get("historical_status_claim")
+    if type(historical) is not bool:
+        raise ValueError("OCSP historical_status_claim must be a boolean")
+    if historical:
+        return {
+            "good": "historical_crl_passed_and_historical_ocsp_good_with_scope_limitations",
+            "revoked": "historical_crl_passed_but_historical_ocsp_reports_revoked",
+            "unknown": "historical_crl_passed_but_historical_ocsp_status_unknown",
+        }[status]
+    return {
+        "good": "historical_crl_passed_current_ocsp_good_with_scope_limitations",
+        "revoked": "historical_crl_passed_but_current_ocsp_reports_revoked",
+        "unknown": "historical_crl_passed_but_current_ocsp_status_unknown",
+    }[status]
+
+
 def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                             crl_result_sha256: str, ocsp_result: dict[str, Any] | None = None,
                             ocsp_result_sha256: str | None = None,
@@ -243,23 +270,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "issuer_roots_sha256": require_digest(responder_revocation_result.get("issuer_roots_sha256"), "responder CRL issuer_roots_sha256"),
             "result_file_sha256": responder_revocation_result_sha256,
         }
-    if ocsp_section["provided"]:
-        if ocsp_section["historical_status_claim"]:
-            if ocsp_section["assessment"] == "revoked":
-                overall_assessment = "historical_crl_passed_but_historical_ocsp_reports_revoked"
-            elif ocsp_section["assessment"] == "unknown":
-                overall_assessment = "historical_crl_passed_but_historical_ocsp_status_unknown"
-            else:
-                overall_assessment = "historical_crl_passed_and_historical_ocsp_good_with_scope_limitations"
-        else:
-            if ocsp_section["assessment"] == "revoked":
-                overall_assessment = "historical_crl_passed_but_current_ocsp_reports_revoked"
-            elif ocsp_section["assessment"] == "unknown":
-                overall_assessment = "historical_crl_passed_but_current_ocsp_status_unknown"
-            else:
-                overall_assessment = "historical_crl_passed_current_ocsp_good_with_scope_limitations"
-    else:
-        overall_assessment = "historical_crl_passed_ocsp_not_provided_with_scope_limitations"
+    overall_assessment = _build_overall_assessment(ocsp_section)
     return {
         "schema_version": 1,
         "report_type": "tsa_long_term_validation_evidence",

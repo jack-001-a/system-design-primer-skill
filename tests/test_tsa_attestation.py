@@ -29,6 +29,7 @@ class TsaAttestationTests(unittest.TestCase):
                 "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": h(b"crl-result")
             },
             "current_ocsp_assessment": {"provided": False, "assessment": "not_provided", "historical_status_claim": False},
+            "overall_assessment": "historical_crl_passed_ocsp_not_provided_with_scope_limitations",
             "historical_ocsp_responder_revocation_assessment": {
                 "status": "not_assessed", "reason": "No responder CRL evidence was supplied."
             },
@@ -403,6 +404,54 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertFalse(result["historically_valid"])
         self.assertFalse(result["signature_existence_proven_by_trusted_timestamp"])
         self.assertFalse(result["currently_authorized"])
+
+    def test_attestation_rejects_overall_assessment_inconsistent_with_omitted_ocsp(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["overall_assessment"] = "historical_crl_passed_current_ocsp_good_with_scope_limitations"
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "overall_assessment contradicts"):
+            create_attestation(self.report, self.private, "tsa-attester",
+                hashlib.sha256(b"verifier package").hexdigest(),
+                "system-design-primer TSA verifier release")
+
+    def test_attestation_recomputes_current_and_historical_ocsp_assessments(self):
+        from scripts.tsa_validation_report import _build_overall_assessment
+        for historical, status, expected in (
+            (False, "good", "historical_crl_passed_current_ocsp_good_with_scope_limitations"),
+            (False, "revoked", "historical_crl_passed_but_current_ocsp_reports_revoked"),
+            (False, "unknown", "historical_crl_passed_but_current_ocsp_status_unknown"),
+            (True, "good", "historical_crl_passed_and_historical_ocsp_good_with_scope_limitations"),
+            (True, "revoked", "historical_crl_passed_but_historical_ocsp_reports_revoked"),
+            (True, "unknown", "historical_crl_passed_but_historical_ocsp_status_unknown"),
+        ):
+            with self.subTest(historical=historical, status=status):
+                section = {"provided": True, "assessment": status,
+                           "historical_status_claim": historical}
+                self.assertEqual(_build_overall_assessment(section), expected)
+
+    def test_attestation_rejects_overall_assessment_that_hides_historical_revocation(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["current_ocsp_assessment"] = {
+            "provided": True, "assessment": "revoked",
+            "historical_status_claim": True,
+            "scope": "historical OCSP status validation at the supplied target time",
+            "nonce_checked": False, "response_sha256": hashlib.sha256(b"response").hexdigest(),
+            "issuer_roots_sha256": hashlib.sha256(b"roots").hexdigest(),
+            "result_file_sha256": hashlib.sha256(b"result").hexdigest(),
+            "validation_time": "2026-11-19T12:00:00Z",
+            "produced_at": "2026-11-19T11:59:00Z",
+            "this_update": "2026-11-19T11:58:00Z",
+            "next_update": "2026-11-19T12:10:00Z",
+            "historical_at_time": "2026-11-19T12:00:00Z",
+        }
+        report["overall_assessment"] = "historical_crl_passed_and_historical_ocsp_good_with_scope_limitations"
+        report["limitations"] = _build_limitations(
+            report["current_ocsp_assessment"], report["historical_ocsp_responder_revocation_assessment"])
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "overall_assessment contradicts"):
+            create_attestation(self.report, self.private, "tsa-attester",
+                hashlib.sha256(b"verifier package").hexdigest(),
+                "system-design-primer TSA verifier release")
 
 if __name__ == "__main__":
     unittest.main()
