@@ -319,7 +319,7 @@ class PackageTests(unittest.TestCase):
             "## not-an-anchor\n"
             "```\n"
         )
-        self.assertTrue({"api-design", "api-design-1", "oauthoidc--passkeys",
+        self.assertTrue({"api-design", "api-design-1", "oauthoidc-passkeys",
                          "custom-anchor", "example-code-heading"}.issubset(anchors))
         self.assertNotIn("not-an-anchor", anchors)
 
