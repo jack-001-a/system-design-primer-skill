@@ -1,5 +1,9 @@
 # Capacity Planning and Performance Modeling
 
+## Scope and boundaries
+
+This document owns workload modeling, demand/capacity estimates, queue stability, headroom, failure capacity, and scaling thresholds. Use [load and stress testing](58-load-stress-soak-testing-and-workload-modeling.md) for experimental workload design and measured test results; [production observability](27-production-observability-and-slo.md) for live SLI/SLO signals; and [FinOps](26-finops-and-cloud-cost.md) for cost allocation and economic trade-offs. A capacity estimate is conditional on workload mix, service-time distribution, topology, quotas, and failure assumptions; benchmark throughput or replica count alone does not establish production headroom.
+
 ## Planning inputs
 Use measured traffic and growth where available. Record average/peak arrival rates, concurrency, request mix, payload sizes, CPU time/request, memory/request, database queries/request, connection occupancy, queue arrival/service rates, storage growth, replication, retention, and failure scenarios. Mark forecasts and assumptions explicitly.
 
