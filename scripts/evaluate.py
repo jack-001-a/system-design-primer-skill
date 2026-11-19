@@ -46,7 +46,7 @@ def seal_audit_chain(source: Path, destination: Path) -> int:
             count += 1
     return count
 
-def verify_audit_chain(path: Path) -> dict[str, Any]:
+def verify_audit_chain(path: Path, expected_head_hash: str | None = None) -> dict[str, Any]:
     previous_hash: str | None = None
     count = 0
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -71,7 +71,7 @@ def verify_audit_chain(path: Path) -> dict[str, Any]:
         count += 1
     if count == 0:
         raise ValueError("audit chain contains no records")
-    return {"verified": True, "records": count, "chain_version": AUDIT_CHAIN_VERSION, "head_hash": previous_hash}
+    if expected_head_hash is not None and previous_hash != expected_head_hash:\n        raise ValueError("audit chain head hash does not match the external anchor")\n    return {"verified": True, "records": count, "chain_version": AUDIT_CHAIN_VERSION, "head_hash": previous_hash, "external_anchor_checked": expected_head_hash is not None}
 
 def load_cases(path: Path) -> dict[str, dict[str, Any]]:
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -314,7 +314,7 @@ def main() -> int:
     parser.add_argument("--cases", type=Path, default=Path("evals/system-design-cases.json"))
     parser.add_argument("--responses", type=Path, required=True, help="JSONL file with model outputs and optional reviews")
     parser.add_argument("--output", type=Path, help="Optional path for the JSON report")
-    parser.add_argument("--verify-chain", action="store_true", help="Require and verify a versioned SHA-256 chain on the input JSONL")
+    parser.add_argument("--verify-chain", action="store_true", help="Require and verify a versioned SHA-256 chain on the input JSONL")\n    parser.add_argument("--expected-chain-head-hash", help="Optional independently retained SHA-256 head hash for detecting tail truncation or full-chain replacement")
     parser.add_argument("--system-prompt-sha256", help="SHA-256 fingerprint of the evaluated system prompt")
     parser.add_argument("--tool-permission-profile", help="Stable identifier/version for the tool permission profile")
     parser.add_argument("--run-config-id", help="Immutable identifier for model settings and evaluation configuration")
@@ -323,7 +323,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         cases = load_cases(args.cases)
-        chain_status = verify_audit_chain(args.responses) if args.verify_chain else None
+        if args.expected_chain_head_hash and not args.verify_chain:\n            raise ValueError("--expected-chain-head-hash requires --verify-chain")\n        chain_status = verify_audit_chain(args.responses, args.expected_chain_head_hash) if args.verify_chain else None
         records = read_responses(args.responses, cases)
         report = summarize(records, cases)
         report["audit_chain"] = chain_status or {"verified": False, "status": "not-checked"}
