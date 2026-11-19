@@ -62,6 +62,31 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         timestamp_result.get("tsa_signer_certificate_sha256"),
         "timestamp tsa_signer_certificate_sha256",
     )
+    # Accept only the complete, versioned output contract emitted by
+    # evidence_timestamp.verify_timestamp; a hand-written "verified": true
+    # flag without the underlying evidence identifiers is insufficient.
+    for field in ("signature_sha256", "request_sha256", "response_sha256", "tsa_ca_sha256"):
+        require_digest(timestamp_result.get(field), "timestamp " + field)
+    for field in ("policy_oid", "serial_number", "tsa_signer_serial_number"):
+        value = timestamp_result.get(field)
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError("timestamp " + field + " is missing or invalid")
+    if timestamp_result.get("verification") != (
+        "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), and TSA chain verification"
+    ):
+        raise ValueError("timestamp verification method provenance is missing or unsupported")
+    if type(timestamp_result.get("ordering")) is not bool or type(timestamp_result.get("nonce_present")) is not bool:
+        raise ValueError("timestamp ordering and nonce_present must be explicit booleans")
+    accuracy = timestamp_result.get("accuracy")
+    if accuracy is not None:
+        allowed_accuracy_fields = {"seconds", "millis", "micros"}
+        if not isinstance(accuracy, dict) or not accuracy or set(accuracy) - allowed_accuracy_fields:
+            raise ValueError("timestamp accuracy must be null or a non-empty RFC 3161 accuracy object")
+        for field, value in accuracy.items():
+            if type(value) is not int or value < 0:
+                raise ValueError("timestamp accuracy components must be non-negative integers")
+            if field in {"millis", "micros"} and not 1 <= value <= 999:
+                raise ValueError("timestamp millis and micros must be between 1 and 999")
     if timestamp_result.get("tsa_signer_valid_at_gen_time") is not True:
         raise ValueError("timestamp signer certificate is not established valid at genTime")
     if timestamp_result.get("tsa_signer_identity_source") != "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer":

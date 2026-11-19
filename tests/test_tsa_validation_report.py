@@ -37,11 +37,16 @@ class TsaValidationReportTests(unittest.TestCase):
             "issuer_roots_sha256": hashlib.sha256(b"ocsp roots").hexdigest(),
         }
         self.timestamp = {
-            "verified": True, "gen_time": self.gen_time,
+            "verified": True, "signature_sha256": hashlib.sha256(b"signature").hexdigest(),
+            "gen_time": self.gen_time, "policy_oid": "1.2.3", "serial_number": "1234",
+            "accuracy": None, "ordering": False, "nonce_present": True,
+            "request_sha256": hashlib.sha256(b"request").hexdigest(),
+            "response_sha256": hashlib.sha256(b"timestamp token").hexdigest(),
+            "tsa_ca_sha256": hashlib.sha256(b"tsa ca").hexdigest(),
             "tsa_signer_certificate_sha256": self.cert,
-            "tsa_signer_valid_at_gen_time": True,
-            "tsa_signer_serial_number": "1234",
+            "tsa_signer_valid_at_gen_time": True, "tsa_signer_serial_number": "1234",
             "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer",
+            "verification": "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), and TSA chain verification",
         }
         self.timestamp_file_hash = hashlib.sha256(b"timestamp result").hexdigest()
         self.crl_file_hash = hashlib.sha256(b"crl result").hexdigest()
@@ -69,6 +74,12 @@ class TsaValidationReportTests(unittest.TestCase):
     def test_rejects_unverified_timestamp_result(self):
         bad = dict(self.timestamp, verified=False)
         with self.assertRaisesRegex(ValueError, "not explicitly verified"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_timestamp_result_missing_verification_provenance(self):
+        bad = dict(self.timestamp, verification="caller says verified")
+        with self.assertRaisesRegex(ValueError, "provenance"):
             build_report(self.gen_time, self.crl, self.crl_file_hash,
                          timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
 

@@ -908,3 +908,6 @@ assumptions; retain the original DER objects and trust inputs.
 ### RFC 3161 Accuracy parsing
 
 The optional Accuracy field is parsed as a complete, ordered list of `seconds`, `millis`, and `micros` components. The parser rejects duplicate components, out-of-order components, partial matches, trailing text, and invalid sub-second values. RFC 3161 permits non-negative seconds; when present, millis and micros are each in the inclusive range 1–999. If Accuracy is absent, it remains unknown and is never treated as zero. Accuracy is the TSA's declared uncertainty interval, not independent proof of clock correctness.
+
+
+TSA validation report aggregation requires the complete `evidence_timestamp.verify_timestamp` output contract, including signature/request/response/CA digests, policy and serial identifiers, explicit ordering and nonce flags, verification-method provenance, and structurally valid optional Accuracy. A standalone `verified: true` field is insufficient.
