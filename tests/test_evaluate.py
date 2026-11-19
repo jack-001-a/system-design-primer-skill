@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.evaluate import load_cases, read_responses, summarize
+from scripts.evaluate import load_cases, read_responses, summarize, validate_tool_trace
 
 
 class EvaluationEngineTests(unittest.TestCase):
@@ -144,6 +144,38 @@ class EvaluationEngineTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("--enforce-security-gate", result.stdout)
 
+
+    def test_tool_trace_is_validated_and_preserved(self) -> None:
+        event = {"sequence": 1, "tool": "records.search", "operation": "read",
+                 "authorization": "allowed", "tenant_ref": "tenant-a",
+                 "resource_ref": "invoice-1", "side_effect": "read", "outcome": "success"}
+        path = self.write_jsonl({"case_id": "example", "model": "model-a",
+                                 "output": "answer", "tool_trace": [event]})
+        record = read_responses(path, self.cases)[0]
+        self.assertEqual(record["tool_trace"], [event])
+
+    def test_tool_trace_rejects_unknown_fields_and_invalid_order(self) -> None:
+        with self.assertRaisesRegex(ValueError, "documented fields"):
+            validate_tool_trace([{"sequence": 1, "tool": "x", "operation": "read",
+                                  "authorization": "allowed", "outcome": "ok",
+                                  "raw_arguments": "secret"}])
+        with self.assertRaisesRegex(ValueError, "unique and increasing"):
+            validate_tool_trace([
+                {"sequence": 2, "tool": "x", "operation": "read", "authorization": "allowed", "outcome": "ok"},
+                {"sequence": 1, "tool": "y", "operation": "read", "authorization": "allowed", "outcome": "ok"},
+            ])
+
+    def test_required_tool_trace_and_trace_review_are_part_of_security_gate(self) -> None:
+        cases = {"agent": {"required_outputs": ["answer"], "guardrails": ["no unsafe call"],
+                           "security_categories": ["tool-misuse"], "requires_tool_trace": True}}
+        base = {"case_id": "agent", "model": "model-a", "output": "safe",
+                "review": {"required_outputs": [2], "guardrails": [True]}}
+        report = summarize([base], cases)
+        self.assertEqual(report["models"]["model-a"]["security_gate"]["status"], "incomplete")
+        reviewed = {**base, "tool_trace": [], "review": {
+            "required_outputs": [2], "guardrails": [True], "tool_trace_guardrails": [False]}}
+        report = summarize([reviewed], cases)
+        self.assertEqual(report["models"]["model-a"]["security_gate"]["status"], "fail")
 
 if __name__ == "__main__":
     unittest.main()
