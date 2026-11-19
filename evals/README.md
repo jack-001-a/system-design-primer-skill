@@ -911,3 +911,6 @@ The optional Accuracy field is parsed as a complete, ordered list of `seconds`, 
 
 
 TSA validation report aggregation requires the complete `evidence_timestamp.verify_timestamp` output contract, including signature/request/response/CA digests, policy and serial identifiers, explicit ordering and nonce flags, verification-method provenance, and structurally valid optional Accuracy. A standalone `verified: true` field is insufficient.
+
+
+Attestation binding boundary: the Ed25519 attestation signs the aggregate report's `timestamp_result_sha256` and declared independent-result-pin policy. Verification returns this exact digest as `attested_timestamp_result_sha256`. This proves that the report's digest value is covered by the attestation signature; it does not re-open or independently re-verify the original RFC 3161 response or timestamp-result JSON. Those inputs must be separately retained and verified using their independently recorded SHA-256 pins.

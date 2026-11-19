@@ -18,6 +18,8 @@ class TsaAttestationTests(unittest.TestCase):
             "gen_time": "2026-11-19T12:00:00Z",
             "tsa_certificate_sha256": h(b"cert"),
             "timestamp_result_sha256": h(b"timestamp"),
+            "result_digest_policy": "required_independent_sha256_pins_for_all_supplied_result_files",
+            "timestamp_signer_serial_number": "1234",
             "historical_revocation_assessment": {"status": "not_revoked_at_gen_time", "crl_sha256": h(b"crl")},
             "current_ocsp_assessment": {"assessment": "not_provided"},
             "historical_ocsp_responder_revocation_assessment": {"status": "not_assessed"}
@@ -62,6 +64,31 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertEqual(result["historical_validity_basis"],
                          "attester_asserted_attested_at_is_not_trusted_time")
         self.assertEqual(result["verifier_bundle_sha256"], hashlib.sha256(b"verifier package").hexdigest())
+
+    def test_verified_attestation_exposes_signed_timestamp_result_digest(self):
+        result = self.verify()
+        self.assertEqual(result["attested_timestamp_result_sha256"],
+                         hashlib.sha256(b"timestamp").hexdigest())
+        self.assertTrue(result["timestamp_result_digest_attested"])
+        self.assertFalse(result["execution_provenance_established"])
+
+    def test_attestation_rejects_report_without_independent_digest_policy(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report.pop("result_digest_policy")
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "missing required attestation fields"):
+            create_attestation(self.report, self.private, "tsa-attester",
+                hashlib.sha256(b"verifier package").hexdigest(),
+                "system-design-primer TSA verifier release")
+
+    def test_attestation_rejects_invalid_timestamp_signer_serial(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["timestamp_signer_serial_number"] = ""
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "timestamp_signer_serial_number"):
+            create_attestation(self.report, self.private, "tsa-attester",
+                hashlib.sha256(b"verifier package").hexdigest(),
+                "system-design-primer TSA verifier release")
 
     def test_report_replacement_rejected(self):
         self.report.write_text(self.report.read_text() + " ", encoding="utf-8")

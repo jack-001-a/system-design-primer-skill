@@ -58,6 +58,7 @@ def require_sha256(value: Any, field: str) -> str:
 
 def report_claims(report: dict[str, Any]) -> dict[str, Any]:
     required = ("gen_time", "tsa_certificate_sha256", "timestamp_result_sha256",
+                "result_digest_policy", "timestamp_signer_serial_number",
                 "historical_revocation_assessment", "current_ocsp_assessment",
                 "historical_ocsp_responder_revocation_assessment")
     missing = [name for name in required if name not in report]
@@ -68,6 +69,11 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
     parse_utc(report["gen_time"], "gen_time")
     require_sha256(report["tsa_certificate_sha256"], "tsa_certificate_sha256")
     require_sha256(report["timestamp_result_sha256"], "timestamp_result_sha256")
+    if report["result_digest_policy"] != "required_independent_sha256_pins_for_all_supplied_result_files":
+        raise ValueError("TSA report does not declare the required independent result-digest pin policy")
+    signer_serial = report["timestamp_signer_serial_number"]
+    if not isinstance(signer_serial, str) or not signer_serial.strip() or len(signer_serial) > 128:
+        raise ValueError("timestamp_signer_serial_number must be a non-empty string of at most 128 characters")
     for name in ("historical_revocation_assessment", "current_ocsp_assessment",
                  "historical_ocsp_responder_revocation_assessment"):
         if not isinstance(report[name], dict):
@@ -259,6 +265,11 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
             "verifier_bundle_sha256": envelope["verifier_bundle_sha256"],
             "verifier_identity": envelope["verifier_identity"],
             "claims_sha256": claims_digest, "trust_store_sha256": trust_digest,
+            # This value is covered by the signed report claims. It identifies
+            # the pinned verifier-result bytes; this function does not re-verify
+            # the original RFC 3161 response file.
+            "attested_timestamp_result_sha256": report["timestamp_result_sha256"],
+            "timestamp_result_digest_attested": True,
             "execution_provenance_established": False}
 
 
