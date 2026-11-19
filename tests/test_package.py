@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-import package as package_builder  # noqa: E402
+import package as package_builder  # noqa: E402\nimport verify_package as package_verifier  # noqa: E402
 
 
 class DistributionTests(unittest.TestCase):
