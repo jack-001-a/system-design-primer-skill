@@ -18,9 +18,11 @@ from typing import Any
 try:
     from .run_manifest import load_verified_manifest
     from .review_provenance import validate_review_history
+    from .review_consensus import validate_review_panel
 except ImportError:  # Direct execution: python scripts/evaluate.py
     from run_manifest import load_verified_manifest
     from review_provenance import validate_review_history
+    from review_consensus import validate_review_panel
 
 
 AUDIT_CHAIN_VERSION = 1
@@ -189,6 +191,9 @@ def read_responses(
         trace = item.get("tool_trace")
         review_history = item.get("review_history")
         review_provenance = None
+        review_panel = None
+        if "review_submissions" in item:
+            review_panel = validate_review_panel(item["review_submissions"], item.get("adjudication"), cases[case_id], validate_review, line_number)
         if trace is not None:
             validate_tool_trace(trace, line_number)
         if review is not None:
@@ -213,7 +218,7 @@ def read_responses(
                     raise ValueError(f"line {line_number}: review.tool_trace_guardrails must assess every guardrail in order")
                 if any(type(value) is not bool for value in trace_scores):
                     raise ValueError(f"line {line_number}: tool trace guardrail assessments must be booleans")
-        records.append({"case_id": case_id, "model": model.strip(), "output": output, "review": review, "tool_trace": trace, "run_id": item.get("run_id"), "manifest_sha256": item.get("manifest_sha256"), "review_provenance": review_provenance})
+        records.append({"case_id": case_id, "model": model.strip(), "output": output, "review": review, "tool_trace": trace, "run_id": item.get("run_id"), "manifest_sha256": item.get("manifest_sha256"), "review_provenance": review_provenance, "review_panel": review_panel})
     return records
 
 
@@ -254,6 +259,7 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
                 "reviewed": review is not None,
                 "review_provenance": item.get("review_provenance"),
                 "review_provenance_status": "verified" if item.get("review_provenance") else ("unattested" if review is not None else "unreviewed"),
+                "review_panel": item.get("review_panel"),
                 "run_id": item.get("run_id"),
                 "manifest_sha256": item.get("manifest_sha256"),
                 "tool_trace": item.get("tool_trace"),
