@@ -11,11 +11,22 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 MANIFEST_PATH = "system-design-primer/MANIFEST.sha256.json"
-CHECKSUM_RE = re.compile(r"([0-9a-f]{64})  ([^\\s]+)\\n?")
+CHECKSUM_RE = re.compile(r"([0-9a-f]{64})  ([^\s]+)\n?")
 
 
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _unsafe_path(value: str) -> bool:
+    path = PurePosixPath(value)
+    return (
+        path.is_absolute()
+        or not path.parts
+        or any(part in {"", ".", ".."} for part in path.parts)
+        or "\\" in value
+        or bool(re.match(r"^[A-Za-z]:", value))
+    )
 
 
 def verify_archive(archive: Path, checksum: Path | None = None) -> list[str]:
@@ -42,10 +53,7 @@ def verify_archive(archive: Path, checksum: Path | None = None) -> list[str]:
             if len(names) != len(set(names)):
                 errors.append("archive contains duplicate ZIP entry names")
             for info in infos:
-                path = PurePosixPath(info.filename)
-                if path.is_absolute() or not path.parts or any(
-                    part in {"", ".", ".."} for part in path.parts
-                ) or "\\\\" in info.filename:
+                if _unsafe_path(info.filename):
                     errors.append(f"unsafe ZIP entry path: {info.filename!r}")
                 if info.flag_bits & 0x1:
                     errors.append(f"encrypted ZIP entry is not supported: {info.filename}")
@@ -75,10 +83,7 @@ def verify_archive(archive: Path, checksum: Path | None = None) -> list[str]:
                 if not isinstance(name, str):
                     errors.append("manifest path must be a string")
                     continue
-                relative = PurePosixPath(name)
-                if relative.is_absolute() or not relative.parts or any(
-                    part in {"", ".", ".."} for part in relative.parts
-                ) or "\\\\" in name:
+                if _unsafe_path(name):
                     errors.append(f"unsafe manifest path: {name!r}")
                     continue
                 if name in seen:
