@@ -3,7 +3,7 @@ set -Eeuo pipefail
 SCRIPT="$(cd -- "$(dirname -- "$0")/.." && pwd -P)/scripts/install.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf -- "$TMP"' EXIT
-mkdir -p "$TMP/project" "$TMP/home"
+mkdir -p "$TMP/project" "$TMP/home" "$TMP/custom-dsh"
 
 (
   cd "$TMP/project"
@@ -25,9 +25,13 @@ mkdir -p "$TMP/project" "$TMP/home"
 )
 (
   cd "$TMP/project"
-  HOME="$TMP/home" bash "$SCRIPT" --agent dsh --scope user
+  HOME="$TMP/home" env -u DSH_HOME bash "$SCRIPT" --agent dsh --scope user
   [[ -f "$TMP/home/.dsh/skills/system-design-primer/SKILL.md" ]]
-  HOME="$TMP/home" bash "$SCRIPT" --agent all --scope user --force
+  rm -rf "$TMP/home/.dsh"
+  HOME="$TMP/home" DSH_HOME="$TMP/custom-dsh" bash "$SCRIPT" --agent dsh --scope user
+  [[ -f "$TMP/custom-dsh/skills/system-design-primer/SKILL.md" ]]
+  HOME="$TMP/home" DSH_HOME="$TMP/custom-dsh" bash "$SCRIPT" --agent all --scope user --force
+  [[ -f "$TMP/custom-dsh/skills/system-design-primer/SKILL.md" ]]
   [[ -f "$TMP/home/.agents/skills/system-design-primer/SKILL.md" ]]
   [[ -f "$TMP/home/.claude/skills/system-design-primer/SKILL.md" ]]
   [[ -f "$TMP/home/.copilot/skills/system-design-primer/SKILL.md" ]]

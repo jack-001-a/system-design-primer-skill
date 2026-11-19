@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.1 — 2026-11-19
+
+- Respect the `DSH_HOME` environment variable for user-level DSH installs on Bash and PowerShell; retain `~/.dsh` as the default.
+- Add custom and default DSH home-path integration coverage on Linux/macOS and Windows.
+- Clarify DSH discovery precedence and duplicate registration behavior when installing for all supported hosts.
+
 ## 1.3.0 — 2026-11-19
 
 - Add native DeepSeek Harness (DSH) installation targets for project and user scopes.

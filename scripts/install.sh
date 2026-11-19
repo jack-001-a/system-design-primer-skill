@@ -10,9 +10,10 @@ usage() {
 Install the system-design-primer Agent Skill.
 Usage: bash scripts/install.sh [--agent all|dsh|codex|claude|cursor|copilot] [--scope project|user] [--dry-run] [--force]
 Targets: all -> .dsh/skills + .agents/skills + .claude/skills + .github/skills (project)
-              .dsh/skills + .agents/skills + .claude/skills + .copilot/skills (user)
+              $DSH_HOME/skills + .agents/skills + .claude/skills + .copilot/skills (user)
 Run from the target project's root for --scope project.
-DeepSeek Harness discovers project Skills under .dsh/skills and user Skills under ~/.dsh/skills.
+For user-level DSH installs, DSH_HOME overrides the default $HOME/.dsh root.
+DeepSeek Harness discovers project Skills under .dsh/skills and user Skills under $DSH_HOME/skills.
 Only distributable Skill files are copied; .git, CI, and tests are excluded.
 Existing installs are never replaced unless --force is supplied.
 EOF
@@ -36,11 +37,15 @@ SOURCE="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
 BASE="$PWD"
 [[ "$SCOPE" == "user" ]] && BASE="$HOME"
 [[ -n "$BASE" && -d "$BASE" ]] || fail "target root does not exist: $BASE"
+DSH_ROOT="$BASE/.dsh"
+if [[ "$SCOPE" == "user" ]]; then
+  DSH_ROOT="${DSH_HOME:-$HOME/.dsh}"
+fi
 declare -a PARENTS=()
 case "$AGENT:$SCOPE" in
   all:project) PARENTS=("$BASE/.dsh/skills" "$BASE/.agents/skills" "$BASE/.claude/skills" "$BASE/.github/skills") ;;
-  all:user) PARENTS=("$BASE/.dsh/skills" "$BASE/.agents/skills" "$BASE/.claude/skills" "$BASE/.copilot/skills") ;;
-  dsh:*) PARENTS=("$BASE/.dsh/skills") ;;
+  all:user) PARENTS=("$DSH_ROOT/skills" "$BASE/.agents/skills" "$BASE/.claude/skills" "$BASE/.copilot/skills") ;;
+  dsh:*) PARENTS=("$DSH_ROOT/skills") ;;
   codex:*) PARENTS=("$BASE/.agents/skills") ;;
   claude:*) PARENTS=("$BASE/.claude/skills") ;;
   cursor:*) PARENTS=("$BASE/.cursor/skills") ;;

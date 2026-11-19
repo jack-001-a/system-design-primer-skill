@@ -16,6 +16,11 @@ if (-not (Test-Path -LiteralPath (Join-Path $Source 'SKILL.md') -PathType Leaf))
 }
 $Base = (Get-Location).Path
 if ($Scope -eq 'user') { $Base = $HOME }
+$DshRoot = Join-Path $Base '.dsh'
+if ($Scope -eq 'user') {
+  if ([string]::IsNullOrWhiteSpace($env:DSH_HOME)) { $DshRoot = Join-Path $HOME '.dsh' }
+  else { $DshRoot = $env:DSH_HOME }
+}
 
 $Parents = @()
 switch ($Agent + ':' + $Scope) {
@@ -26,13 +31,13 @@ switch ($Agent + ':' + $Scope) {
     $Parents += (Join-Path $Base '.github/skills')
   }
   'all:user' {
-    $Parents += (Join-Path $Base '.dsh/skills')
+    $Parents += (Join-Path $DshRoot 'skills')
     $Parents += (Join-Path $Base '.agents/skills')
     $Parents += (Join-Path $Base '.claude/skills')
     $Parents += (Join-Path $Base '.copilot/skills')
   }
-  'dsh:project' { $Parents += (Join-Path $Base '.dsh/skills') }
-  'dsh:user' { $Parents += (Join-Path $Base '.dsh/skills') }
+  'dsh:project' { $Parents += (Join-Path $DshRoot 'skills') }
+  'dsh:user' { $Parents += (Join-Path $DshRoot 'skills') }
   'codex:project' { $Parents += (Join-Path $Base '.agents/skills') }
   'codex:user' { $Parents += (Join-Path $Base '.agents/skills') }
   'claude:project' { $Parents += (Join-Path $Base '.claude/skills') }
