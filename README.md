@@ -139,6 +139,7 @@ Run the following from the repository root:
     bash -n scripts/install.sh
     bash tests/test_install.sh
     python tools/package.py --output-dir dist
+    python tools/verify_package.py dist/system-design-primer-v$(tr -d '[:space:]' < VERSION).zip
 
 On Windows, you can also run:
 
