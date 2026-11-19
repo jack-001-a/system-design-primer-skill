@@ -152,13 +152,13 @@ class PackageTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             (root / "SKILL.md").write_text(
-                "---\\nname: example-skill\\ndescription: test\\n---\\nbody\\n",
+                "---\nname: example-skill\ndescription: test\n---\nbody\n",
                 encoding="utf-8",
             )
             refs = root / "references"
             refs.mkdir()
             (refs / "69-task-routing-and-evidence.md").write_text(
-                "| Task | Start here | Add when relevant |\\\\n|---|---|---|\\\\n",
+                "| Task | Start here | Add when relevant |\\n|---|---|---|\\n",
                 encoding="utf-8",
             )
             errors = validate(root)
