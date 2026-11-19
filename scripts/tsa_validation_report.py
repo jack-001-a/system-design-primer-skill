@@ -49,6 +49,16 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
     certificate_digest = require_digest(crl_result.get("certificate_sha256"), "CRL certificate_sha256")
     crl_digest = require_digest(crl_result.get("crl_sha256"), "CRL crl_sha256")
     crl_roots_digest = require_digest(crl_result.get("issuer_roots_sha256"), "CRL issuer_roots_sha256")
+    crl_signer_digest = require_digest(crl_result.get("crl_issuer_certificate_sha256"), "CRL crl_issuer_certificate_sha256")
+    if crl_result.get("crl_scope") != "direct_only; certificate CRLDistributionPoints unsupported":
+        raise ValueError("CRL result does not declare the supported strict direct-CRL scope")
+    if not isinstance(crl_result.get("crl_signature_algorithm_oid"), str) or not crl_result.get("crl_signature_algorithm_oid"):
+        raise ValueError("CRL signature algorithm identity is missing")
+    if not isinstance(crl_result.get("crl_signature_policy"), str) or not crl_result.get("crl_signature_policy"):
+        raise ValueError("CRL signature policy evidence is missing")
+    entry = crl_result.get("revocation_entry")
+    if not isinstance(entry, dict) or entry.get("status_at_time") not in ("not_listed", "not_yet_revoked"):
+        raise ValueError("CRL entry evidence does not establish a non-revoked status at genTime")
     ocsp_section: dict[str, Any] = {
         "provided": False,
         "assessment": "not_provided",
@@ -129,6 +139,11 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             raise ValueError("OCSP responder CRL result is not explicitly verified")
         if responder_revocation_result.get("status") != "not_revoked_at_validation_time":
             raise ValueError("OCSP responder CRL result does not assert non-revocation")
+        if responder_revocation_result.get("crl_scope") != "direct_only; certificate CRLDistributionPoints unsupported":
+            raise ValueError("OCSP responder CRL result does not declare the supported strict direct-CRL scope")
+        require_digest(responder_revocation_result.get("crl_issuer_certificate_sha256"), "responder CRL issuer certificate SHA-256")
+        if not isinstance(responder_revocation_result.get("revocation_entry"), dict) or responder_revocation_result["revocation_entry"].get("status_at_time") not in ("not_listed", "not_yet_revoked"):
+            raise ValueError("OCSP responder CRL entry evidence does not establish non-revocation")
         if responder_revocation_result.get("at_time") != gen_time:
             raise ValueError("OCSP responder CRL validation time does not exactly match RFC 3161 genTime")
         if require_digest(responder_revocation_result.get("certificate_sha256"), "responder CRL certificate_sha256") != responder_digest:
@@ -153,6 +168,9 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "validation_time": gen_time,
             "crl_sha256": crl_digest,
             "issuer_roots_sha256": crl_roots_digest,
+            "crl_issuer_certificate_sha256": crl_signer_digest,
+            "crl_signature_algorithm_oid": crl_result["crl_signature_algorithm_oid"],
+            "revocation_entry": entry,
             "result_file_sha256": crl_result_sha256,
         },
         "current_ocsp_assessment": ocsp_section,

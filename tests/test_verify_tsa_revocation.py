@@ -17,7 +17,7 @@ NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
 
 
-def make_material(*, crl_sign=True, future=False, delta=False, indirect=False, wrong_aki=False):
+def make_material(*, crl_sign=True, future=False, delta=False, indirect=False, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=key_size):
     key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "CRL issuer")])
     issuer = (
@@ -52,7 +52,9 @@ def make_material(*, crl_sign=True, future=False, delta=False, indirect=False, w
             full_name=None, relative_name=None, only_contains_user_certs=False,
             only_contains_ca_certs=False, only_some_reasons=None,
             indirect_crl=True, only_contains_attribute_certs=False), True)
-    return issuer, leaf, builder.sign(key, hashes.SHA256())
+    if entry is not None:
+        builder = builder.add_revoked_certificate(entry)
+    return issuer, leaf, builder.sign(key, hash_algorithm)
 
 
 class TsaRevocationTests(unittest.TestCase):
@@ -140,6 +142,57 @@ class TsaRevocationTests(unittest.TestCase):
         self.issuer, self.leaf, self.listing = make_material(wrong_aki=True)
         self.write_material()
         with self.assertRaisesRegex(ValueError, "AuthorityKeyIdentifier does not match"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+
+    def make_entry(self, date, *, invalidity=None, reason=None):
+        builder = x509.RevokedCertificateBuilder().serial_number(self.leaf.serial_number).revocation_date(date)
+        if invalidity is not None:
+            builder = builder.add_extension(x509.InvalidityDate(invalidity), critical=False)
+        if reason is not None:
+            builder = builder.add_extension(x509.CRLReason(reason), critical=False)
+        return builder.build()
+
+    def test_rejects_sha1_crl_signature(self):
+        self.issuer, self.leaf, self.listing = make_material(hash_algorithm=hashes.SHA1())
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "SHA-256"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_rejects_undersized_rsa_crl_signer(self):
+        self.issuer, self.leaf, self.listing = make_material(key_size=1024)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "at least 2048 bits"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_reports_target_serial_absent_from_crl(self):
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
+            result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+        self.assertEqual(result["revocation_entry"]["status_at_time"], "not_listed")
+
+    def test_rejects_remove_from_crl_on_complete_crl(self):
+        entry = self.make_entry(NOW-timedelta(minutes=1), reason=x509.ReasonFlags.remove_from_crl)
+        self.issuer, self.leaf, self.listing = make_material(entry=entry)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "removeFromCRL"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_invalidity_date_is_used_as_conservative_earlier_date(self):
+        entry = self.make_entry(NOW+timedelta(minutes=1), invalidity=NOW-timedelta(minutes=2),
+                                reason=x509.ReasonFlags.key_compromise)
+        self.issuer, self.leaf, self.listing = make_material(entry=entry)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "validation failed"):
+            with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+                run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 2, "", "certificate revoked"
+                verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_rejects_invalidity_date_after_revocation_date(self):
+        entry = self.make_entry(NOW-timedelta(minutes=1), invalidity=NOW+timedelta(minutes=1))
+        self.issuer, self.leaf, self.listing = make_material(entry=entry)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "must not be later"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_openssl_failure(self):

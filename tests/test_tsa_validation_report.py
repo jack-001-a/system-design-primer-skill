@@ -17,6 +17,11 @@ class TsaValidationReportTests(unittest.TestCase):
             "certificate_sha256": self.cert,
             "crl_sha256": hashlib.sha256(b"crl").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"crl roots").hexdigest(),
+            "crl_issuer_certificate_sha256": hashlib.sha256(b"crl issuer").hexdigest(),
+            "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
+            "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
+            "crl_signature_policy": "RSA >= 2048 bits with SHA-256/384/512",
+            "revocation_entry": {"present": False, "status_at_time": "not_listed"},
         }
         self.ocsp = {
             "verified": True,
@@ -98,6 +103,9 @@ class TsaValidationReportTests(unittest.TestCase):
             "certificate_sha256": hashlib.sha256(b"responder").hexdigest(),
             "crl_sha256": hashlib.sha256(b"responder crl").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"responder roots").hexdigest(),
+            "crl_issuer_certificate_sha256": hashlib.sha256(b"responder issuer").hexdigest(),
+            "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
+            "revocation_entry": {"present": False, "status_at_time": "not_listed"},
         }
         value.update(overrides)
         return value
@@ -148,6 +156,18 @@ class TsaValidationReportTests(unittest.TestCase):
         bad = dict(self.ocsp, next_update="2026-11-19T12:01:00Z")
         with self.assertRaisesRegex(ValueError, "does not cover"):
             build_validation_report(self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash)
+
+    def test_rejects_legacy_crl_result_without_strict_scope(self):
+        legacy = dict(self.crl)
+        legacy.pop("crl_scope")
+        with self.assertRaisesRegex(ValueError, "strict direct-CRL scope"):
+            build_validation_report(self.gen_time, legacy, self.crl_file_hash)
+
+    def test_rejects_crl_result_with_revoked_entry(self):
+        revoked = dict(self.crl, revocation_entry={"present": True, "status_at_time": "revoked"})
+        with self.assertRaisesRegex(ValueError, "does not establish a non-revoked status"):
+            build_validation_report(self.gen_time, revoked, self.crl_file_hash)
+
     def test_report_is_non_overwriting_and_hashable(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "report.json"
