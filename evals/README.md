@@ -288,3 +288,19 @@ audit-chain head and manifest/run identity when supplied. Verification detects l
 to either file. Sidecars are created exclusively and never overwritten. Store the sidecar or
 its digest independently to protect against replacement of both artifacts. This is an
 integrity check, not a digital signature or proof of provider-side execution.
+
+## Reviewer attribution and revision history
+
+A reviewed response may include a top-level `review_history` array. Each entry stores the
+review snapshot, reviewer-supplied identifier, timezone-aware ISO-8601 timestamp, rubric
+version, previous event hash, and its own SHA-256 event hash. The event hash is calculated
+over the complete entry excluding only `event_sha256`, using canonical sorted-key JSON.
+The first event's `previous_event_sha256` is null; each later event must point to the
+preceding event hash. The final snapshot must exactly equal the response's current `review`.
+
+The aggregator verifies this history and reports reviewer ID, timestamp, rubric version,
+event count, and history head hash per case. Existing review records without history remain
+readable but are marked `unattested`; unreviewed responses are marked `unreviewed`.
+Reviewer IDs are asserted metadata, not authenticated identities. Use an authenticated
+review service and independently anchored audit-chain head when identity and
+non-repudiation matter. Do not edit earlier events; append a new event when a review changes.
