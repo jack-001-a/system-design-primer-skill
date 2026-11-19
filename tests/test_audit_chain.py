@@ -44,6 +44,23 @@ class AuditChainTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "external anchor"):
             verify_audit_chain(self.sealed, head)
 
+    def test_invalid_input_does_not_leave_partial_destination(self) -> None:
+        self.source.write_text('{"case_id":"ok"}\n{bad json}\n', encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "invalid JSON"):
+            seal_audit_chain(self.source, self.sealed)
+        self.assertFalse(self.sealed.exists())
+
+    def test_empty_input_cannot_be_sealed(self) -> None:
+        self.source.write_text("", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "empty"):
+            seal_audit_chain(self.source, self.sealed)
+        self.assertFalse(self.sealed.exists())
+
+    def test_invalid_external_anchor_format_is_rejected(self) -> None:
+        seal_audit_chain(self.source, self.sealed)
+        with self.assertRaisesRegex(ValueError, "64-character"):
+            verify_audit_chain(self.sealed, "not-a-hash")
+
     def test_unsealed_or_empty_file_is_rejected(self) -> None:
         with self.assertRaisesRegex(ValueError, "metadata"):
             verify_audit_chain(self.source)
