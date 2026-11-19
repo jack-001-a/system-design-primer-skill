@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.5.0 — 2026-11-19
+
+- Add multi-agent topology and orchestration guidance with bounded delegation, contracts, conflict handling, and human escalation.
+- Add agent harness/runtime design for control loops, context assembly, policy enforcement, execution budgets, cancellation, and checkpoints.
+- Add MCP architecture guidance for clients, servers, transports, sessions, capabilities, Tools, Resources, Prompts, and trust boundaries.
+- Add agent security and permission design for least privilege, authorization, sandboxing, egress control, approvals, and audit.
+- Add agent state and memory guidance for durable workflow state, provenance, retention, deletion, checkpointing, replay, and recovery.
+- Add agent evaluation and observability guidance with versioned datasets, trajectory review, safety gates, fault injection, and operational metrics.
+- Add agent system design, security review, and evaluation plan templates; extend package validation and tests.
+
+
 ## 1.4.0 — 2026-11-19
 
 - Add an architecture decision matrix with hard-constraint gates, evidence/confidence, sensitivity analysis, and explicit TCO/team/migration criteria.
