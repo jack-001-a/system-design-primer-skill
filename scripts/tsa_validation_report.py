@@ -64,7 +64,9 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
     if timestamp_result.get("tsa_signer_identity_source") != "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer":
         raise ValueError("timestamp signer identity is not bound to the CMS SignerInfo certificate")
     certificate_digest = require_digest(crl_result.get("certificate_sha256"), "CRL certificate_sha256")
-    if certificate_digest != timestamp_certificate_digest:\n        raise ValueError("CRL certificate fingerprint differs from verified timestamp CMS signer")\n    crl_digest = require_digest(crl_result.get("crl_sha256"), "CRL crl_sha256")
+    if certificate_digest != timestamp_certificate_digest:
+        raise ValueError("CRL certificate fingerprint differs from verified timestamp CMS signer")
+    crl_digest = require_digest(crl_result.get("crl_sha256"), "CRL crl_sha256")
     crl_roots_digest = require_digest(crl_result.get("issuer_roots_sha256"), "CRL issuer_roots_sha256")
     crl_signer_digest = require_digest(crl_result.get("crl_issuer_certificate_sha256"), "CRL crl_issuer_certificate_sha256")
     if crl_result.get("crl_scope") != "direct_only; certificate CRLDistributionPoints unsupported":
