@@ -29,7 +29,7 @@ Select storage after defining entities, queries, update patterns, consistency, t
 - Isolation: concurrent transactions obey a defined isolation behavior.
 - Durability: committed data survives the failures covered by the database's guarantees.
 
-Isolation levels differ by database and implementation. Consider dirty reads, non-repeatable reads, phantom reads, write skew, lost updates, and serialization failures. Do not assume a level's name fully describes exact behavior across products.
+Isolation levels differ by database and implementation. Consider dirty reads, non-repeatable reads, phantom reads, write skew, lost updates, and serialization failures. Do not assume a level's name fully describes exact behavior across products: vendor implementations may map a named level to different snapshot and locking rules. State the database/version and the anomaly the application must prevent. Serializable execution may reject or abort transactions under contention, so callers need bounded retries of the entire transaction when safe; retrying only the final statement is not equivalent.
 
 For inventory-like counters, a conditional update such as `UPDATE inventory SET available = available - 1 WHERE sku = ? AND available > 0` can be safer than read-then-write, provided affected-row checks and transaction boundaries are correct.
 
@@ -37,7 +37,7 @@ For inventory-like counters, a conditional update such as `UPDATE inventory SET 
 
 - Primary/replica separates write authority from read capacity or availability copies.
 - Replication can be synchronous or asynchronous; asynchronous replication introduces lag and stale reads.
-- Read-after-write requirements may need primary reads, session consistency, replica waiting, or sticky routing. Define the guarantee explicitly.
+- Read-after-write requirements may need primary reads, session consistency, replica waiting, or sticky routing. Define the guarantee explicitly, including its scope (same client/session, entity, or globally) and how long it is maintained. A successful write acknowledgement does not imply an asynchronously replicated follower is immediately current; sticky routing also needs a failover policy when the original primary changes.
 - Failover needs leader election/coordination, fencing against an old primary, routing update, and data-loss policy. “Two DBs” alone does not provide safe HA.
 - Multi-primary writes require conflict resolution, ownership partitioning, or coordination. Last-write-wins can silently discard meaningful business updates.
 
