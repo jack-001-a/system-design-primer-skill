@@ -30,7 +30,7 @@ def collect_files() -> list[Path]:
         ROOT / "LICENSE",
         ROOT / "VERSION",
     ]
-    for folder in ("references", "templates", "scripts"):
+    for folder in ("references", "templates", "scripts", "evals"):
         files.extend(
             path for path in (ROOT / folder).rglob("*")
             if path.is_file()
