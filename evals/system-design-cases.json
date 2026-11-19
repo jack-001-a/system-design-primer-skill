@@ -106,6 +106,48 @@
       ]
     },
     {
+      "id": "distributed-business-transaction",
+      "task": "Design a payment and inventory workflow spanning an order database, payment provider, and inventory service. The network can fail after a participant commits but before the caller receives the acknowledgement.",
+      "expected_mode": "Design",
+      "references": [
+        "37-consensus-and-distributed-transactions.md",
+        "05-async-and-messaging.md",
+        "07-reliability-and-resilience.md"
+      ],
+      "required_outputs": [
+        "state the business invariant and local transaction boundaries",
+        "compare outbox plus idempotent consumers, saga compensation, and two-phase commit applicability",
+        "explain ambiguous timeout and durable transaction status handling",
+        "define reconciliation, retry, and fault-injection tests"
+      ],
+      "guardrails": [
+        "Do not describe a saga as atomic rollback",
+        "Do not assume a timeout means the remote operation failed",
+        "Do not claim exactly-once business effects without a concrete mechanism"
+      ]
+    },
+    {
+      "id": "tenant-authorization-review",
+      "task": "Review a multi-tenant API that accepts a tenant ID in request headers, uses cached role grants, and supports exports and background jobs. Define the authorization risks and remediation.",
+      "expected_mode": "Review",
+      "references": [
+        "49-iam-rbac-abac-rebac.md",
+        "47-api-security-rate-limiting-and-abuse.md",
+        "48-oauth-oidc-and-passkeys.md"
+      ],
+      "required_outputs": [
+        "separate authentication, token validation, and object-level authorization",
+        "define trusted tenant context and default-deny policy semantics",
+        "analyze revocation freshness and authorization cache invalidation",
+        "cover exports, bulk endpoints, and background job identity in tests"
+      ],
+      "guardrails": [
+        "Do not trust caller-controlled tenant identifiers as authorization proof",
+        "Do not treat a valid JWT as proof of object permission",
+        "Do not assume cache TTL guarantees immediate revocation"
+      ]
+    },
+    {
       "id": "architecture-decision",
       "task": "Compare a modular monolith and microservices for a small team with unclear scale requirements.",
       "expected_mode": "Decision",
