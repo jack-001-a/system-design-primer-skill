@@ -32,19 +32,19 @@ Next Update: Nov 19 12:05:00 2026 GMT
             response_result = Mock(returncode=0, stdout=self.output if output is None else output, stderr="")
             run.side_effect = [request_result, response_result]
             result = verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,self.pin(),now=self.now)
-            return result, run.call_args.args[0]
+            return result, run.call_args_list[0].args[0], run.call_args_list[1].args[0]
     def test_accepts_fresh_signed_good_response(self):
-        result, command = self.run_valid()
+        result, request_command, command = self.run_valid()
         self.assertTrue(result["verified"])
         self.assertEqual(result["status"], "good")
         self.assertFalse(result["nonce_checked"])
         self.assertIn("-respin", command)
-        self.assertIn("-issuer", command)
-        self.assertIn("-cert", command)
+        self.assertIn("-issuer", request_command)
+        self.assertIn("-cert", request_command)
         self.assertIn("-CAfile", command)
     def test_reports_revoked_status_without_calling_it_good(self):
         output = self.output.replace("Cert Status: good", "Cert Status: revoked")
-        result, _ = self.run_valid(output)
+        result, _, _ = self.run_valid(output)
         self.assertEqual(result["status"], "revoked")
     def test_rejects_missing_signature_verification(self):
         with self.assertRaisesRegex(ValueError, "did not confirm"):
