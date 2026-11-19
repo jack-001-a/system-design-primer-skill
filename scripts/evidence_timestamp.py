@@ -78,7 +78,7 @@ def parse_openssl_gen_time(value: str) -> str:
 
 def parse_accuracy(details: str) -> dict[str, int] | None:
     """Parse the optional RFC 3161 Accuracy field without accepting partial matches."""
-    matches = re.findall(r"^Accuracy:[ \\t]*(.*?)[ \\t]*$", details, re.I | re.M)
+    matches = re.findall(r"^Accuracy:[ \t]*(.*?)[ \t]*$", details, re.I | re.M)
     if not matches:
         return None
     if len(matches) != 1 or not matches[0]:
@@ -89,7 +89,7 @@ def parse_accuracy(details: str) -> dict[str, int] | None:
     previous = -1
     for component in matches[0].split(","):
         parsed = re.fullmatch(
-            r"[ \\t]*(\\d+)[ \\t]+(seconds?|millis|micros)[ \\t]*",
+            r"[ \t]*(\d+)[ \t]+(seconds?|millis|micros)[ \t]*",
             component, re.I,
         )
         if not parsed:
