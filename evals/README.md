@@ -183,3 +183,62 @@ This is suitable for a release/benchmark gate; without the flag, partial reports
   the tool does not calculate or verify prompt hashes or claim that configuration changes
   automatically triggered a run. Re-run and compare reports when model versions, prompts,
   tool permissions, or generation settings change.
+
+
+## Reproducibility manifests
+
+A run manifest records the configuration needed to interpret and compare an evaluation.
+Create evals/run-manifest.json as an unsigned JSON object with exactly these fields:
+
+~~~json
+{
+  "schema_version": 1,
+  "run": {
+    "run_id": "eval-2026-11-19-a",
+    "created_at": "2026-11-19T10:00:00Z",
+    "code_revision": "git-commit-sha-or-null"
+  },
+  "configuration": {
+    "model": {
+      "provider": "provider-name",
+      "name": "model-name",
+      "revision": null
+    },
+    "system_prompt_sha256": "64-character-lowercase-sha256-or-null",
+    "dataset_sha256": "64-character-lowercase-sha256-or-null",
+    "evaluator_version": "2.0",
+    "tool_permission_profile": "readonly-v1",
+    "rubric_version": "rubric-v3",
+    "adapter_version": "adapter-v1",
+    "run_config": {"temperature": 0, "seed": 7},
+    "runtime": {"python": "3.12", "platform": "linux"}
+  }
+}
+~~~
+
+Use null when a provider/model revision, code revision, or hash is genuinely unavailable;
+do not guess. A null value is surfaced as unknown during comparison and prevents a
+"comparable" result for that field. Hash the exact system prompt and dataset bytes with
+SHA-256 before filling their fields. The run_config object should contain the effective
+generation settings, not merely a friendly configuration name.
+
+Seal and verify the manifest:
+
+~~~bash
+python scripts/run_manifest.py seal --input evals/run-manifest.json --output evals/run-manifest.sealed.json
+python scripts/run_manifest.py verify --input evals/run-manifest.sealed.json
+~~~
+
+Compare two sealed manifests:
+
+~~~bash
+python scripts/run_manifest.py compare --left evals/run-a.manifest.json --right evals/run-b.manifest.json
+~~~
+
+The full manifest fingerprint includes run identity and timestamp; the configuration
+fingerprint excludes those run-specific fields. Comparison reports changed configuration
+fields and unknown fields separately. Matching fingerprints establish equality of recorded
+metadata only: they do not guarantee deterministic model outputs, identical provider-side
+infrastructure, or reproducibility when an external model revision is unavailable.
+Keep manifests with their response files and reports, and retain sealed fingerprints in
+independently controlled storage when tamper evidence is required.
