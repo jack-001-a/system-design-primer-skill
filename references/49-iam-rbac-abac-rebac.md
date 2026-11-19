@@ -1,5 +1,9 @@
 # Identity and Access Management: RBAC, ABAC, and ReBAC
 
+## Scope and boundaries
+
+This document owns authorization policy semantics: principal/resource/action evaluation, RBAC/ABAC/ReBAC, tenant and object checks, deny precedence, delegation, and revocation freshness. Use [agent security](19-agent-security-and-permissions.md) for model/tool-specific threat controls; [workload identity](50-zero-trust-and-workload-identity.md) for machine identity and mutual authentication; and [API security](47-api-security-rate-limiting-and-abuse.md) for request abuse controls. Authentication, network location, gateway admission, and cached policy results are inputs or enforcement layers—not substitutes for authoritative resource authorization.
+
 ## Authorization model selection
 RBAC assigns permissions through roles and suits stable organizational responsibilities. ABAC evaluates subject, resource, action, and environment attributes. ReBAC evaluates relationships such as owner, member, parent, and delegated access. Real systems may combine models, but policy composition and precedence must be explicit.
 
