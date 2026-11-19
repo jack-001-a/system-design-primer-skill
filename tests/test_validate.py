@@ -290,7 +290,7 @@ class PackageTests(unittest.TestCase):
             refs = root / "references"
             refs.mkdir()
             (refs / "69-task-routing-and-evidence.md").write_text(
-                "| Task | Start here | Add when relevant |\n|---|---|---|\n",
+                "| Task | Start here | Add when relevant |\\n|---|---|---|\\n",
                 encoding="utf-8",
             )
             errors = validate(root)
