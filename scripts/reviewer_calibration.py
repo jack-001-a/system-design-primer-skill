@@ -33,19 +33,17 @@ def _cohen_kappa(left: list[int | bool], right: list[int | bool], categories: li
 def pairwise_agreement(submissions: list[dict[str, Any]], case: dict[str, Any]) -> dict[str, Any]:
     pairs = []
     for left, right in combinations(submissions, 2):
-        metrics = []
-        for key, categories, quadratic in (("required_outputs", [0, 1, 2], True),
-                                           ("guardrails", [False, True], False)):
+        comparisons = []
+        for key in ("required_outputs", "guardrails"):
             for index, criterion in enumerate(case[key]):
                 a = left["review"][key][index]
                 b = right["review"][key][index]
-                metrics.append({"type": key, "index": index,
-                                "metric": _cohen_kappa([a], [b], categories, quadratic)})
+                comparisons.append({"criterion_type": key, "criterion_index": index,
+                                    "criterion": criterion, "left_value": a,
+                                    "right_value": b, "agreement": a == b})
         pairs.append({"reviewer_ids": [left["reviewer_id"], right["reviewer_id"]],
-                      "criterion_metrics": metrics})
-    # Per-criterion kappas require repeated independent cases; single-case values are not estimable.
-    return {"method": "pairwise_cohen_kappa", "pair_count": len(pairs), "pairs": pairs,
-            "interpretation": "Kappa is not estimable from a single response per criterion; aggregate across cases before drawing conclusions."}
+                      "criterion_comparisons": comparisons})
+    return {"method": "raw_pairwise_agreement", "pair_count": len(pairs), "pairs": pairs}
 
 def aggregate_reviewer_calibration(panels: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate per-reviewer-pair categorical observations across independently reviewed cases."""
