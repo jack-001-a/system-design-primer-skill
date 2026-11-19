@@ -39,6 +39,7 @@ class EvidenceTimestampTests(unittest.TestCase):
             result = create_request(self.signature, self.request)
         self.assertTrue(result["request_created"])
         self.assertEqual(run.call_args.args[0][0:3], ["ts", "-query", "-digest"])
+        self.request.write_bytes(b"created request")
         with self.assertRaisesRegex(ValueError, "overwrite"):
             create_request(self.signature, self.request)
 
@@ -53,7 +54,7 @@ class EvidenceTimestampTests(unittest.TestCase):
             run.side_effect = [
                 "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\n",
                 "",
-                "Time: Nov 19 12:00:00 2026 GMT\nPolicy: 1.2.3\nSerial number: 01\n",
+                "Time stamp: Nov 19 12:00:00 2026 GMT\nPolicy OID: 1.2.3\nSerial number: 01\n",
             ]
             import hashlib as h
             result = verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
