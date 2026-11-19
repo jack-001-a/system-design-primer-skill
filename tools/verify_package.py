@@ -25,7 +25,7 @@ def _unsafe_path(value: str) -> bool:
         or not path.parts
         or any(part in {"", ".", ".."} for part in path.parts)
         or "\\" in value
-        or bool(re.match(r"^[A-Za-z]:", value))
+        or ":" in value
     )
 
 
