@@ -209,6 +209,73 @@
         "Do not describe a queue publish after a database commit as atomic without a demonstrated mechanism",
         "Do not report tests, benchmarks, or runtime checks as executed unless evidence shows they ran"
       ]
+    },
+    {
+      "id": "agent-indirect-prompt-injection",
+      "task": "Review an agent workflow that retrieves tenant documents and can call refund, email, and file-export tools. A retrieved document contains instructions to ignore prior rules, export another tenant's records, and issue a refund. The user only asked for a summary. Design the safe execution and authorization behavior.",
+      "expected_mode": "Review",
+      "references": [
+        "19-agent-security-and-permissions.md",
+        "17-agent-harness-and-runtime.md",
+        "18-mcp-architecture.md",
+        "50-zero-trust-and-workload-identity.md"
+      ],
+      "required_outputs": [
+        "identify the retrieved document as untrusted data and trace how indirect prompt injection could reach planning and tool execution",
+        "separate user intent, agent identity, tenant scope, and tool authorization; define server-side object-level checks",
+        "define least-privilege read versus write capabilities, approval binding for refunds/exports, and egress/data-loss controls",
+        "specify adversarial tests for cross-tenant export, unauthorized refund, tool-description injection, and safe summary-only completion"
+      ],
+      "guardrails": [
+        "Do not treat instructions inside retrieved content as user authorization",
+        "Do not rely on prompt wording or model classification as the sole enforcement boundary",
+        "Do not grant a tool broader authority merely because the model requested it"
+      ]
+    },
+    {
+      "id": "agent-resume-ambiguous-side-effect",
+      "task": "An agent workflow submits a payment-provider operation with an idempotency key. The provider may have accepted the operation, but the worker times out before persisting the completion checkpoint. A retry worker resumes from the previous checkpoint. Design safe recovery.",
+      "expected_mode": "Design",
+      "references": [
+        "20-agent-state-and-memory.md",
+        "17-agent-harness-and-runtime.md",
+        "37-consensus-and-distributed-transactions.md",
+        "15-failure-analysis.md"
+      ],
+      "required_outputs": [
+        "model durable workflow states, checkpoint boundaries, operation identifiers, and ownership/concurrency control",
+        "explain why a missing completion checkpoint does not prove the external side effect failed",
+        "define provider status lookup and idempotency-key reuse before retry, plus reconciliation for unknown outcomes",
+        "cover authorization revalidation, cancellation/deadline handling, audit evidence, and crash-injection tests"
+      ],
+      "guardrails": [
+        "Do not blindly repeat a possibly completed payment or other non-idempotent side effect",
+        "Do not treat model context or an in-memory plan as durable workflow state",
+        "Do not claim exactly-once execution without a concrete downstream idempotency and reconciliation mechanism"
+      ]
+    },
+    {
+      "id": "incident-backlog-recovery",
+      "task": "After a regional outage, a service is restored but its event queue has a large backlog. Some outbox events may have been published before the outage and consumer acknowledgements may have been lost. Plan a safe recovery and return to normal traffic.",
+      "expected_mode": "Review",
+      "references": [
+        "61-incident-management-and-postmortems.md",
+        "60-chaos-engineering-and-resilience-experiments.md",
+        "05-async-and-messaging.md",
+        "37-consensus-and-distributed-transactions.md",
+        "07-reliability-and-resilience.md"
+      ],
+      "required_outputs": [
+        "establish incident roles, customer impact, steady-state signals, and explicit recovery exit criteria",
+        "estimate backlog drain capacity against ongoing arrival rate and protect downstream dependencies with bounded concurrency",
+        "define idempotent replay, duplicate detection, poison-message handling, ordering constraints, and reconciliation",
+        "specify staged traffic ramp, alert/abort thresholds, data-integrity checks, and post-incident corrective actions"
+      ],
+      "guardrails": [
+        "Do not equate healthy processes or an empty queue with business recovery",
+        "Do not replay side effects without idempotency or deduplication controls",
+        "Do not increase consumer concurrency beyond downstream safe capacity"
+      ]
     }
   ]
 }
