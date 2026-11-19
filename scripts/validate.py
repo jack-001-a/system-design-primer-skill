@@ -57,6 +57,13 @@ REQUIRED_REFERENCES = {
     "45-websocket-sse-and-realtime-systems.md",
     "46-realtime-collaboration-ot-crdt.md",
     "47-api-security-rate-limiting-and-abuse.md",
+    "48-oauth-oidc-and-passkeys.md",
+    "49-iam-rbac-abac-rebac.md",
+    "50-zero-trust-and-workload-identity.md",
+    "51-secrets-kms-pki-and-key-management.md",
+    "52-supply-chain-security-sbom-slsa.md",
+    "53-threat-modeling-stride-and-attack-trees.md",
+    "54-privacy-engineering-and-data-governance.md",
 }
 REQUIRED_TEMPLATES = {
     "adr-template.md",
@@ -80,6 +87,10 @@ REQUIRED_TEMPLATES = {
     "api-architecture-design-template.md",
     "realtime-system-design-template.md",
     "api-security-and-rate-limit-review-template.md",
+    "identity-and-access-architecture-template.md",
+    "security-threat-model-template.md",
+    "supply-chain-security-review-template.md",
+    "privacy-data-governance-template.md",
 }
 PACKAGE_ENTRIES = (
     "SKILL.md", "references", "templates", "scripts",

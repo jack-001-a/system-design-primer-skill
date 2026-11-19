@@ -1,7 +1,7 @@
 {
   "name": "system-design-primer-skill",
-  "version": "1.9.0",
-  "description": "A portable System Design Agent Skill for API architecture, real-time systems, databases, distributed data, cloud-native operations, and AI systems.",
+  "version": "2.0.0",
+  "description": "A portable System Design Agent Skill covering security architecture, identity, privacy, APIs, real-time systems, databases, distributed systems, cloud-native operations, and AI systems.",
   "license": "CC-BY-4.0",
   "repository": {
     "type": "git",
@@ -28,7 +28,19 @@
     "grpc",
     "websocket",
     "real-time-systems",
-    "api-security"
+    "api-security",
+    "oauth2",
+    "openid-connect",
+    "passkeys",
+    "iam",
+    "zero-trust",
+    "workload-identity",
+    "kms",
+    "pki",
+    "sbom",
+    "slsa",
+    "threat-modeling",
+    "privacy-engineering"
   ],
   "files": [
     "SKILL.md",
