@@ -77,6 +77,22 @@ class EvaluationEngineTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "score every required output"):
             read_responses(path, self.cases)
 
+    def test_manifest_binding_requires_matching_run_and_fingerprint(self) -> None:
+        item = {"case_id": "example", "model": "model-a", "output": "answer",
+                "run_id": "run-1", "manifest_sha256": "a" * 64}
+        path = self.write_jsonl(item)
+        records = read_responses(path, self.cases, "run-1", "a" * 64)
+        self.assertEqual(records[0]["run_id"], "run-1")
+        with self.assertRaisesRegex(ValueError, "run_id does not match"):
+            read_responses(path, self.cases, "run-2", "a" * 64)
+        with self.assertRaisesRegex(ValueError, "manifest_sha256 does not match"):
+            read_responses(path, self.cases, "run-1", "b" * 64)
+
+    def test_manifest_binding_rejects_unbound_legacy_record(self) -> None:
+        path = self.write_jsonl({"case_id": "example", "model": "model-a", "output": "answer"})
+        with self.assertRaisesRegex(ValueError, "run_id does not match"):
+            read_responses(path, self.cases, "run-1", "a" * 64)
+
     def test_rejects_duplicate_case_model_pair(self) -> None:
         item = {"case_id": "example", "model": "model-a", "output": "answer"}
         path = self.root / "responses.jsonl"
