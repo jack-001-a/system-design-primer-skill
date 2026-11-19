@@ -195,11 +195,11 @@ def _heading_slug(heading: str) -> str:
     """Approximate GitHub's heading slug rules for local Markdown fragments."""
     value = html.unescape(heading.strip())
     value = re.sub(r"<[^>]+>", "", value)
-    value = re.sub(r"\\`([^\\`]*)\\`", r"\\1", value)
-    value = re.sub(r"!\\[([^]]*)\\]\\([^)]*\\)", r"\\1", value)
-    value = re.sub(r"\\[([^]]+)\\]\\([^)]*\\)", r"\\1", value)
+    value = re.sub(r"\x60([^\x60]*)\x60", r"\1", value)
+    value = re.sub(r"!\[([^]]*)\]\([^)]*\)", r"\1", value)
+    value = re.sub(r"\[([^]]+)\]\([^)]*\)", r"\1", value)
     value = re.sub(r"[*_~]", "", value).lower()
-    value = re.sub(r"\\s+", "-", value)
+    value = re.sub(r"\s+", "-", value)
     value = "".join(
         char for char in value
         if char == "-" or not unicodedata.category(char).startswith("P")
@@ -215,7 +215,7 @@ def _markdown_anchors(markdown_text: str) -> set[str]:
     fence_char = ""
     fence_length = 0
     for line in markdown_text.splitlines():
-        fence = re.match(r"^\\s{0,3}(`{3,}|~{3,})", line)
+        fence = re.match(r"^\s{0,3}(\x60{3,}|~{3,})", line)
         if fence:
             token = fence.group(1)
             if not in_fence:
@@ -226,9 +226,9 @@ def _markdown_anchors(markdown_text: str) -> set[str]:
             continue
         if in_fence:
             continue
-        for explicit in re.findall(r"<(?:a|span)\\b[^>]*?\\bid=[\\\"']([^\\\"']+)[\\\"']", line, re.I):
+        for explicit in re.findall(r"<(?:a|span)\b[^>]*?\bid=[\"']([^\"']+)[\"']", line, re.I):
             anchors.add(explicit)
-        heading = re.match(r"^\\s{0,3}#{1,6}\\s+(.+?)\\s*#*\\s*$", line)
+        heading = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", line)
         if not heading:
             continue
         base = _heading_slug(heading.group(1))
