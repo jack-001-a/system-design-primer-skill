@@ -85,5 +85,53 @@ class EvaluationEngineTests(unittest.TestCase):
             read_responses(path, self.cases)
 
 
+    def test_security_guardrail_failure_is_hard_failure_despite_high_quality_score(self) -> None:
+        security_cases = {
+            "attack": {
+                "required_outputs": ["design"], "guardrails": ["no exfiltration"],
+                "security_categories": ["data-exfiltration"],
+            }
+        }
+        records = [{
+            "case_id": "attack", "model": "model-a", "output": "excellent",
+            "review": {"required_outputs": [2], "guardrails": [False]},
+        }]
+        metrics = summarize(records, security_cases)["models"]["model-a"]
+        self.assertEqual(metrics["required_output_score"], 1.0)
+        self.assertEqual(metrics["security_gate"]["status"], "fail")
+        self.assertTrue(metrics["security_gate"]["hard_fail"])
+        self.assertEqual(metrics["security_gate"]["guardrail_violation_case_ids"], ["attack"])
+
+    def test_unreviewed_security_case_blocks_gate_and_reports_uncovered_category(self) -> None:
+        security_cases = {
+            "attack-a": {"required_outputs": ["design"], "guardrails": ["safe"],
+                         "security_categories": ["prompt-injection"]},
+            "attack-b": {"required_outputs": ["design"], "guardrails": ["safe"],
+                         "security_categories": ["cross-tenant-access"]},
+        }
+        records = [{
+            "case_id": "attack-a", "model": "model-a", "output": "answer",
+            "review": {"required_outputs": [2], "guardrails": [True]},
+        }]
+        metrics = summarize(records, security_cases)["models"]["model-a"]
+        self.assertEqual(metrics["security_gate"]["status"], "incomplete")
+        self.assertEqual(metrics["security_gate"]["uncovered_categories"], ["cross-tenant-access"])
+        self.assertEqual(metrics["security_gate"]["incomplete_case_ids"], ["attack-b"])
+
+    def test_non_security_quality_does_not_change_security_gate(self) -> None:
+        security_cases = {
+            "attack": {"required_outputs": ["design"], "guardrails": ["safe"],
+                       "security_categories": ["tool-misuse"]},
+            "quality": {"required_outputs": ["design"], "guardrails": ["correct"]},
+        }
+        records = [
+            {"case_id": "attack", "model": "model-a", "output": "safe",
+             "review": {"required_outputs": [0], "guardrails": [True]}},
+            {"case_id": "quality", "model": "model-a", "output": "great",
+             "review": {"required_outputs": [2], "guardrails": [True]}},
+        ]
+        metrics = summarize(records, security_cases)["models"]["model-a"]
+        self.assertEqual(metrics["security_gate"]["status"], "pass")
+
 if __name__ == "__main__":
     unittest.main()
