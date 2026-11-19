@@ -83,7 +83,8 @@ def verify_audit_chain(path: Path, expected_head_hash: str | None = None) -> dic
     if count == 0:
         raise ValueError("audit chain contains no records")
     if expected_head_hash is not None and previous_hash != expected_head_hash:
-        raise ValueError("audit chain head hash does not match the external anchor")\n    return {"verified": True, "records": count, "chain_version": AUDIT_CHAIN_VERSION, "head_hash": previous_hash, "external_anchor_checked": expected_head_hash is not None}
+        raise ValueError("audit chain head hash does not match the external anchor")
+    return {"verified": True, "records": count, "chain_version": AUDIT_CHAIN_VERSION, "head_hash": previous_hash, "external_anchor_checked": expected_head_hash is not None}
 
 def load_cases(path: Path) -> dict[str, dict[str, Any]]:
     data = json.loads(path.read_text(encoding="utf-8"))
