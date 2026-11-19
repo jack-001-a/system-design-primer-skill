@@ -1,5 +1,9 @@
 # Chaos Engineering and Resilience Experiments
 
+## Scope and boundaries
+
+This document owns the methodology and safety controls for planned, hypothesis-driven resilience experiments. It does not define live incident command or replace incident response; use [incident management](61-incident-management-and-postmortems.md) for active incidents and postmortems, [failure analysis](15-failure-analysis.md) to structure failure modes, and [reliability design](07-reliability-and-resilience.md) for the underlying resilience controls. Experiment results validate only the tested hypothesis, workload, topology, and time window.
+
 ## Principles
 Chaos engineering is a controlled method for testing a falsifiable resilience hypothesis. It is not random disruption in production. Begin with steady-state signals that represent user-visible behavior, then introduce the smallest fault that can test the hypothesis.
 
