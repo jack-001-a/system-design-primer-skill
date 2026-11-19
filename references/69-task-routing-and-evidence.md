@@ -11,6 +11,14 @@ Use this guide as the first-pass index for selecting knowledge. Route by the use
 - **Regional recovery:** `24-multi-region-and-disaster-recovery.md` owns regional replication, writer ownership, failover, and failback; `07-reliability-and-resilience.md` owns service-level resilience controls; `61-incident-management-and-postmortems.md` owns live incident command and postmortems.
 - **Evidence boundary:** authentication, routing, telemetry, broker transactions, and workflow history are not substitutes for resource authorization, external-side-effect reconciliation, or proof of durable business completion. State the exact boundary and verification evidence.
 
+## Security, privacy, and operations ownership
+
+- **Agent authority:** `19-agent-security-and-permissions.md` owns model/tool threat controls; `49-iam-rbac-abac-rebac.md` owns authoritative authorization policy; `50-zero-trust-and-workload-identity.md` owns workload identity and peer authentication.
+- **State and deletion:** `20-agent-state-and-memory.md` owns agent state categories and checkpoints; `54-privacy-engineering-and-data-governance.md` owns retention, subject rights, and deletion propagation across derived/replicated systems.
+- **Cryptographic lifecycle:** `51-secrets-kms-pki-and-key-management.md` owns secret/key/certificate lifecycle; `67-storage-infrastructure-and-storage-systems.md` owns storage durability, recovery, and infrastructure behavior. Key rotation, backup retention, and deletion must be validated as separate operations.
+- **Telemetry:** `55-opentelemetry-and-instrumentation.md` owns telemetry pipelines; `56-distributed-tracing-and-context-propagation.md` owns propagation and sampling semantics; `27-production-observability-and-slo.md` owns SLI/SLO interpretation. Missing telemetry does not prove missing work.
+- **Capacity evidence:** `59-capacity-planning-and-performance-modeling.md` owns conditional capacity models; `58-load-stress-soak-testing-and-workload-modeling.md` owns measured test methodology. State workload, topology, quota, and failure assumptions before claiming headroom.
+
 ## Task-to-reference routing
 
 | Task signal | Start here | Add when relevant |
