@@ -48,7 +48,9 @@ class DistributionTests(unittest.TestCase):
                     self.assertEqual(
                         hashlib.sha256(payload).hexdigest(), entry["sha256"]
                     )
-                self.assertEqual(names, expected)\n                self.assertIn(prefix + "evals/README.md", names)\n                self.assertIn(prefix + "evals/system-design-cases.json", names)
+                self.assertEqual(names, expected)
+                self.assertIn(prefix + "evals/README.md", names)
+                self.assertIn(prefix + "evals/system-design-cases.json", names)
                 self.assertFalse(any("/tests/" in name for name in names))
                 self.assertFalse(any("__pycache__" in name for name in names))
             digest, filename = checksum.read_text(encoding="ascii").split()
