@@ -82,8 +82,16 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         if validation_dt < this_dt or validation_dt > next_dt:
             raise ValueError("OCSP response validity interval does not cover its validation_time")
         historical_at_time = ocsp_result.get("historical_at_time")
-        if scope == historical_scope and historical_at_time != gen_time:
-            raise ValueError("historical OCSP target time does not exactly match RFC 3161 genTime")
+        if scope == historical_scope:
+            gen_dt = parse_utc(gen_time, "gen_time")
+            if historical_at_time != gen_time:
+                raise ValueError("historical OCSP target time does not exactly match RFC 3161 genTime")
+            if validation_dt != gen_dt:
+                raise ValueError("historical OCSP validation_time must exactly match RFC 3161 genTime")
+            if produced_dt > gen_dt:
+                raise ValueError("historical OCSP producedAt is later than RFC 3161 genTime")
+            if this_dt > gen_dt or next_dt < gen_dt:
+                raise ValueError("historical OCSP signed validity interval does not cover RFC 3161 genTime")
         ocsp_digest = require_digest(ocsp_result.get("response_sha256"), "OCSP response_sha256")
         ocsp_roots_digest = require_digest(ocsp_result.get("issuer_roots_sha256"), "OCSP issuer_roots_sha256")
         ocsp_section = {
@@ -92,6 +100,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "historical_status_claim": scope == historical_scope,
             "validation_time": validation_time,
             "historical_at_time": historical_at_time,
+            "scope": scope,
             "produced_at": produced_at,
             "this_update": this_update,
             "next_update": next_update,
@@ -115,12 +124,19 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "result_file_sha256": crl_result_sha256,
         },
         "current_ocsp_assessment": ocsp_section,
+        "historical_ocsp_responder_revocation_assessment": {
+            "status": "not_assessed",
+            "responder_certificate_identity": "not_independently_exposed_or_bound_by_the_current_ocsp_verifier",
+            "reason": "No independently verified responder-certificate revocation result is supplied; do not infer non-revocation from BasicOCSPResponse signature or responder-path validation.",
+        },
         "overall_assessment": "historical_crl_check_passed_with_scope_limitations",
         "limitations": [
             "This report does not independently verify the RFC 3161 token or derive genTime; it binds the caller-supplied time to the CRL result.",
             "The CRL result covers the supplied certificate path and CRL only; it does not prove that all applicable revocation sources or trust policies were supplied.",
             "An OCSP result is current-time evidence only and is never treated as historical status at genTime.",
             "The OCSP verifier does not check a request nonce; nonce_checked is false.",
+            "OCSP responder certificate revocation is not assessed: response-signature and responder-path verification do not establish that the responder certificate was not revoked at genTime.",
+            "The current OCSP verifier does not expose and independently bind the actual BasicOCSPResponse signer certificate fingerprint into this report.",
             "This report is an aggregation record, not a digital signature or an independent trust anchor.",
         ],
     }

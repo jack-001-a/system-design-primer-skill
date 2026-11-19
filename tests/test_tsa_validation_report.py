@@ -45,15 +45,47 @@ class TsaValidationReportTests(unittest.TestCase):
         self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")
     def test_accepts_historical_ocsp_only_when_bound_to_gen_time(self):
         historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
-                          historical_at_time=self.gen_time, validation_time=self.gen_time)
+                          historical_at_time=self.gen_time, validation_time=self.gen_time,
+                          produced_at="2026-11-19T11:59:00Z",
+                          this_update="2026-11-19T11:58:00Z")
         report = build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
                                          historical, self.ocsp_file_hash)
         self.assertTrue(report["current_ocsp_assessment"]["historical_status_claim"])
+        self.assertEqual(report["historical_ocsp_responder_revocation_assessment"]["status"], "not_assessed")
 
     def test_rejects_historical_ocsp_time_not_bound_to_gen_time(self):
         historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
                           historical_at_time="2026-11-19T12:00:01Z")
         with self.assertRaisesRegex(ValueError, "does not exactly match"):
+            build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
+                                    historical, self.ocsp_file_hash)
+
+
+    def test_rejects_historical_ocsp_produced_after_gen_time(self):
+        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
+                          historical_at_time=self.gen_time, validation_time=self.gen_time,
+                          produced_at="2026-11-19T12:00:01Z",
+                          this_update="2026-11-19T11:58:00Z")
+        with self.assertRaisesRegex(ValueError, "producedAt is later"):
+            build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
+                                    historical, self.ocsp_file_hash)
+
+    def test_rejects_historical_ocsp_validation_time_drift(self):
+        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
+                          historical_at_time=self.gen_time, validation_time="2026-11-19T12:00:01Z",
+                          produced_at="2026-11-19T11:59:00Z",
+                          this_update="2026-11-19T11:58:00Z")
+        with self.assertRaisesRegex(ValueError, "validation_time must exactly match"):
+            build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
+                                    historical, self.ocsp_file_hash)
+
+    def test_rejects_historical_ocsp_interval_not_covering_gen_time(self):
+        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
+                          historical_at_time=self.gen_time, validation_time=self.gen_time,
+                          produced_at="2026-11-19T11:59:00Z",
+                          this_update="2026-11-19T11:58:00Z",
+                          next_update="2026-11-19T11:59:59Z")
+        with self.assertRaisesRegex(ValueError, "does not cover RFC 3161 genTime"):
             build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
                                     historical, self.ocsp_file_hash)
 
