@@ -90,7 +90,7 @@ def assess_crl_entry(certificate: x509.Certificate, crl: x509.CertificateRevocat
     if not matches:
         return {"present": False, "status_at_time": "not_listed"}
     entry = matches[0]
-    known = {ExtensionOID.CRL_REASON, ExtensionOID.INVALIDITY_DATE}
+    known = {x509.CRLReason.oid, x509.InvalidityDate.oid}
     for extension in entry.extensions:
         if extension.critical and extension.oid not in known:
             raise ValueError("CRL entry contains an unsupported critical extension: " + extension.oid.dotted_string)

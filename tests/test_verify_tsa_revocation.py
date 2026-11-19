@@ -5,13 +5,13 @@ import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from scripts.verify_tsa_revocation import parse_utc_epoch, verify_crl_status
+from scripts.verify_tsa_revocation import parse_utc_epoch, verify_crl_status, validate_crl_signature_policy
 
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
@@ -154,10 +154,13 @@ class TsaRevocationTests(unittest.TestCase):
         return builder.build()
 
     def test_rejects_sha1_crl_signature(self):
-        self.issuer, self.leaf, self.listing = make_material(hash_algorithm=hashes.SHA1())
-        self.write_material()
+        crl = Mock()
+        crl.signature_hash_algorithm = hashes.SHA1()
+        crl.signature_algorithm_oid.dotted_string = "1.2.840.113549.1.1.5"
+        signer = Mock()
+        signer.public_key.return_value = rsa.generate_private_key(public_exponent=65537, key_size=2048).public_key()
         with self.assertRaisesRegex(ValueError, "SHA-256"):
-            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+            validate_crl_signature_policy(crl, signer)
 
     def test_rejects_undersized_rsa_crl_signer(self):
         self.issuer, self.leaf, self.listing = make_material(key_size=1024)
