@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.8.0 — 2026-11-19
+
+- Add PostgreSQL internals guidance for MVCC, vacuum, WAL, query plans, indexing, pooling, replication, and PITR.
+- Add MySQL/InnoDB guidance for clustered indexes, undo/redo, locking, deadlocks, replication, and online DDL.
+- Add sharding and Distributed SQL design guidance for shard keys, skew, resharding, cross-shard semantics, and operational trade-offs.
+- Add consensus and distributed transaction guidance covering quorum protocols, fencing, two-phase commit, sagas, and failure testing.
+- Add Elasticsearch/OpenSearch search architecture and relevance evaluation guidance.
+- Add vector database and hybrid retrieval guidance for RAG quality, ACL enforcement, index lifecycle, and embedding migrations.
+- Add zero-downtime database migration guidance and database review, sharding, and migration templates; extend validation and tests.
+
+
 ## 1.7.0 — 2026-11-19
 
 - Add event-streaming architecture guidance for Kafka, Pulsar, partitioning, ordering, delivery semantics, consumer recovery, and broker operations.

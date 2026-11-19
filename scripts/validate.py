@@ -43,6 +43,13 @@ REQUIRED_REFERENCES = {
     "31-data-lakehouse-and-stream-batch.md",
     "32-workflow-orchestration-and-temporal.md",
     "33-schema-registry-and-event-governance.md",
+    "34-postgresql-internals-and-performance.md",
+    "35-mysql-innodb-and-performance.md",
+    "36-sharding-and-distributed-sql.md",
+    "37-consensus-and-distributed-transactions.md",
+    "38-search-architecture-elasticsearch-opensearch.md",
+    "39-vector-databases-and-hybrid-retrieval.md",
+    "40-zero-downtime-database-migrations.md",
 }
 REQUIRED_TEMPLATES = {
     "adr-template.md",
@@ -60,6 +67,9 @@ REQUIRED_TEMPLATES = {
     "event-streaming-design-template.md",
     "event-sourcing-cqrs-template.md",
     "cdc-data-pipeline-template.md",
+    "database-architecture-review-template.md",
+    "sharding-distributed-sql-design-template.md",
+    "zero-downtime-database-migration-template.md",
 }
 PACKAGE_ENTRIES = (
     "SKILL.md", "references", "templates", "scripts",

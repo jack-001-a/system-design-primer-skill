@@ -54,6 +54,13 @@ class PackageTests(unittest.TestCase):
             "31-data-lakehouse-and-stream-batch.md",
             "32-workflow-orchestration-and-temporal.md",
             "33-schema-registry-and-event-governance.md",
+            "34-postgresql-internals-and-performance.md",
+            "35-mysql-innodb-and-performance.md",
+            "36-sharding-and-distributed-sql.md",
+            "37-consensus-and-distributed-transactions.md",
+            "38-search-architecture-elasticsearch-opensearch.md",
+            "39-vector-databases-and-hybrid-retrieval.md",
+            "40-zero-downtime-database-migrations.md",
         }.issubset(REQUIRED_REFERENCES))
         self.assertTrue({
             "architecture-decision-matrix-template.md",
@@ -68,6 +75,9 @@ class PackageTests(unittest.TestCase):
             "event-streaming-design-template.md",
             "event-sourcing-cqrs-template.md",
             "cdc-data-pipeline-template.md",
+            "database-architecture-review-template.md",
+            "sharding-distributed-sql-design-template.md",
+            "zero-downtime-database-migration-template.md",
         }.issubset(REQUIRED_TEMPLATES))
 
     def test_invalid_name_is_rejected(self):

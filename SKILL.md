@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "1.7.0"
+  version: "1.8.0"
   language: "en"
 ---
 
@@ -285,3 +285,31 @@ For Design or Review, check at least: module/service boundaries, data ownership,
 ## Definition of done
 
 Be able to explain the business problem and constraints; estimation inputs and growth; data authority and concurrency correctness; dependency failure, partition, and recovery strategies; security boundaries; validation metrics and tests; why the solution is better than alternatives; and when/how to migrate and roll back. When information is insufficient, explicitly list unknowns and verification actions. Never fabricate.
+
+
+## Database architecture and distributed data workflows
+
+Use these workflows for relational database internals, scale-out data systems, search, retrieval, and schema evolution. Ground engine-specific recommendations in the deployed version and measured workload.
+
+### PostgreSQL internals and performance
+Analyze MVCC, vacuum/autovacuum, WAL, checkpoints, query plans, index families, lock contention, connection pooling, replication, and PITR as one operational system. Use representative EXPLAIN ANALYZE/BUFFERS evidence and monitor transaction age, bloat, WAL retention, and tail latency. See `references/34-postgresql-internals-and-performance.md`.
+
+### MySQL and InnoDB
+Evaluate clustered primary-key layout, secondary-index cost, undo/redo, MVCC, next-key/gap locks, deadlocks, buffer-pool behavior, redo/binlog durability, replication, and online DDL. Verify behavior against the deployed MySQL version. See `references/35-mysql-innodb-and-performance.md`.
+
+### Sharding and Distributed SQL
+Do not shard before proving a single-node or partitioned baseline is insufficient. Model shard-key skew, hot tenants, cross-shard transactions/queries, routing, resharding, fencing, rebalancing, and operational TCO. Compare distributed SQL consistency and transaction semantics under partitions. See `references/36-sharding-and-distributed-sql.md` and `templates/sharding-distributed-sql-design-template.md`.
+
+### Consensus and distributed transactions
+Explain quorum intersection, leader terms, log commit, membership changes, fencing, and failure assumptions. Compare local ACID plus Outbox, two-phase commit, and sagas without presenting them as interchangeable. Test safety and liveness separately. See `references/37-consensus-and-distributed-transactions.md`.
+
+### Search architecture
+Treat Elasticsearch/OpenSearch indexes as derived read models unless explicitly authoritative. Design mappings, analyzers, relevance evaluation, shard/segment lifecycle, deep pagination, freshness, reindexing, deletion, and tenant authorization. See `references/38-search-architecture-elasticsearch-opensearch.md`.
+
+### Vector databases and hybrid retrieval
+Specify retrieval quality, freshness, ACL filtering, tenant isolation, vector index trade-offs, lexical/vector fusion, reranking budgets, provenance, deletion propagation, and embedding-version migrations. Evaluate retrieval separately from generation; treat retrieved content as untrusted. See `references/39-vector-databases-and-hybrid-retrieval.md`.
+
+### Zero-downtime database migrations
+Use expand-migrate-contract with bounded idempotent backfills, compatibility across rolling application versions, invariant validation, controlled cutover, and explicit rollback gates. Verify engine/version-specific DDL locks, rebuilds, disk use, and replication/CDC impact. See `references/40-zero-downtime-database-migrations.md` and `templates/zero-downtime-database-migration-template.md`.
+
+For database reviews and designs, use `templates/database-architecture-review-template.md`. Never recommend sharding, a vector database, or a search cluster without workload evidence and an explicit simpler baseline.
