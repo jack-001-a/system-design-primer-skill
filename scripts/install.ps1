@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [ValidateSet('all','codex','claude','cursor','copilot')]
+  [ValidateSet('all','dsh','codex','claude','cursor','copilot')]
   [string]$Agent = 'all',
   [ValidateSet('project','user')]
   [string]$Scope = 'project',
@@ -20,15 +20,19 @@ if ($Scope -eq 'user') { $Base = $HOME }
 $Parents = @()
 switch ($Agent + ':' + $Scope) {
   'all:project' {
+    $Parents += (Join-Path $Base '.dsh/skills')
     $Parents += (Join-Path $Base '.agents/skills')
     $Parents += (Join-Path $Base '.claude/skills')
     $Parents += (Join-Path $Base '.github/skills')
   }
   'all:user' {
+    $Parents += (Join-Path $Base '.dsh/skills')
     $Parents += (Join-Path $Base '.agents/skills')
     $Parents += (Join-Path $Base '.claude/skills')
     $Parents += (Join-Path $Base '.copilot/skills')
   }
+  'dsh:project' { $Parents += (Join-Path $Base '.dsh/skills') }
+  'dsh:user' { $Parents += (Join-Path $Base '.dsh/skills') }
   'codex:project' { $Parents += (Join-Path $Base '.agents/skills') }
   'codex:user' { $Parents += (Join-Path $Base '.agents/skills') }
   'claude:project' { $Parents += (Join-Path $Base '.claude/skills') }
