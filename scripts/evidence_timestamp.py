@@ -8,9 +8,15 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.serialization import pkcs7
+from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID
 
 ENVELOPE_FIELDS = {"schema_version", "algorithm", "key_id", "signed_at", "evidence_root", "signature"}
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
@@ -85,6 +91,61 @@ def parse_accuracy(details: str) -> dict[str, int] | None:
     return result
 
 
+
+def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[str, str]:
+    """Bind the embedded, timestamp-purpose signer certificate to token genTime."""
+    try:
+        target = datetime.fromisoformat(gen_time.replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise ValueError("verified genTime cannot be parsed for TSA certificate validity") from exc
+    with tempfile.TemporaryDirectory(prefix="tsa-token-") as directory:
+        token_path = Path(directory) / "token.der"
+        result = subprocess.run(
+            [openssl_path(), "ts", "-reply", "-in", str(response_path),
+             "-out", str(token_path), "-token_out"],
+            capture_output=True, text=True, check=False,
+        )
+        if result.returncode:
+            detail = (result.stderr or result.stdout).strip()
+            raise ValueError("could not extract verified timestamp token: " + detail[-2000:])
+        try:
+            certificates = pkcs7.load_der_pkcs7_certificates(token_path.read_bytes())
+        except (OSError, ValueError) as exc:
+            raise ValueError("timestamp token does not contain parseable signer certificates") from exc
+    candidates = []
+    for certificate in certificates:
+        try:
+            eku_ext = certificate.extensions.get_extension_for_oid(ExtensionOID.EXTENDED_KEY_USAGE)
+        except x509.ExtensionNotFound:
+            continue
+        if ExtendedKeyUsageOID.TIME_STAMPING in eku_ext.value:
+            candidates.append((certificate, eku_ext))
+    if len(candidates) != 1:
+        raise ValueError("timestamp token must contain exactly one TSA certificate with timeStamping EKU")
+    certificate, eku_ext = candidates[0]
+    if not eku_ext.critical or list(eku_ext.value) != [ExtendedKeyUsageOID.TIME_STAMPING]:
+        raise ValueError("TSA signer certificate must have a critical, exclusive timeStamping EKU")
+    try:
+        key_usage = certificate.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
+    except x509.ExtensionNotFound:
+        key_usage = None
+    if key_usage is not None:
+        permitted = key_usage.digital_signature or key_usage.content_commitment
+        prohibited = any((key_usage.key_encipherment, key_usage.data_encipherment,
+                          key_usage.key_agreement, key_usage.key_cert_sign, key_usage.crl_sign))
+        if not permitted or prohibited:
+            raise ValueError("TSA signer KeyUsage must be limited to digitalSignature or contentCommitment")
+    not_before = certificate.not_valid_before.replace(tzinfo=timezone.utc)
+    not_after = certificate.not_valid_after.replace(tzinfo=timezone.utc)
+    if target < not_before or target > not_after:
+        raise ValueError("TSA signer certificate is not valid at RFC 3161 genTime")
+    return {
+        "tsa_signer_certificate_sha256": certificate.fingerprint(hashes.SHA256()).hex(),
+        "tsa_signer_serial_number": format(certificate.serial_number, "x"),
+        "tsa_signer_valid_at_gen_time": True,
+        "tsa_signer_eku": "critical:id-kp-timeStamping",
+    }
+
 def verify_timestamp(
     signature_path: Path, request_path: Path, response_path: Path,
     tsa_ca_path: Path, expected_ca_sha256: str, chain_path: Path | None = None,
@@ -121,6 +182,7 @@ def verify_timestamp(
         raise ValueError("timestamp token message-imprint algorithm is not SHA-256")
     if not response_imprint or response_imprint.group(1).lower() != expected_imprint:
         raise ValueError("timestamp token message imprint does not bind the supplied Ed25519 signature")
+    signer_evidence = inspect_tsa_signer_certificate(response_path, parse_openssl_gen_time(gen_time.group(1)))
     ordering = re.search(r"^Ordering:\s*(yes|no)", details, re.I | re.M)
     nonce = re.search(r"^Nonce:\s*(\S+)", details, re.I | re.M)
     return {
@@ -135,6 +197,7 @@ def verify_timestamp(
         "request_sha256": hashlib.sha256(request_path.read_bytes()).hexdigest(),
         "response_sha256": hashlib.sha256(response_path.read_bytes()).hexdigest(),
         "tsa_ca_sha256": actual_ca_sha256,
+        **signer_evidence,
         "verification": "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), and TSA chain verification",
     }
 

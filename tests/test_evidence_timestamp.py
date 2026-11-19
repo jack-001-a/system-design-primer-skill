@@ -51,7 +51,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.request.write_bytes(b"request")
         import hashlib
         digest = hashlib.sha256(b"s" * 64).hexdigest()
-        with patch("scripts.evidence_timestamp.run_openssl") as run:
+        with patch("scripts.evidence_timestamp.inspect_tsa_signer_certificate", return_value={"tsa_signer_certificate_sha256": "a" * 64, "tsa_signer_serial_number": "01", "tsa_signer_valid_at_gen_time": True, "tsa_signer_eku": "critical:id-kp-timeStamping"}), patch("scripts.evidence_timestamp.run_openssl") as run:
             run.side_effect = [
                 "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\n",
                 "",
@@ -60,6 +60,8 @@ class EvidenceTimestampTests(unittest.TestCase):
             import hashlib as h
             result = verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
         self.assertTrue(result["verified"])
+        self.assertEqual(result["tsa_signer_certificate_sha256"], "a" * 64)
+        self.assertTrue(result["tsa_signer_valid_at_gen_time"])
         self.assertEqual(result["gen_time"], "2026-11-19T12:00:00Z")
         self.assertEqual(result["policy_oid"], "1.2.3")
         self.assertEqual(result["accuracy"], {"seconds": 1, "millis": 2, "micros": 3})

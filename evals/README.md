@@ -766,3 +766,12 @@ The timestamp verifier normalizes the signed token `genTime` to RFC 3339 UTC (`Z
 The reported accuracy is the TSA's declared uncertainty, not proof that the TSA clock was correct. Preserve the original DER request/response and pinned CA material; output hashes are identifiers unless independently retained or signed. RFC 3161 requires checking the token imprint, algorithm identifier, signature, policy, and freshness evidence; a valid token remains an assertion by the TSA under its policy, not an independent audit of the TSA's clock source.
 
 References: [RFC 3161 Sections 2.2 and 2.4](https://www.rfc-editor.org/rfc/rfc3161.html) and [OpenSSL `ts` command](https://docs.openssl.org/1.1.1/man1/ts/).
+
+
+### TSA signer certificate identity and historical validity
+
+The RFC 3161 verifier extracts the CMS timestamp token after OpenSSL has verified its signature, request binding, and certification path. It requires exactly one embedded certificate carrying the timestamping EKU, requires that EKU to be critical and contain only `id-kp-timeStamping`, checks any KeyUsage extension is limited to digitalSignature or contentCommitment, and checks the signer certificate validity interval at the token's signed `genTime`. The result includes the exact embedded signer certificate SHA-256 fingerprint, serial number, EKU profile, and historical-validity decision.
+
+Use `tsa_signer_certificate_sha256` from this verified token result as the certificate identity when invoking the historical CRL verifier. Do not substitute a certificate selected by subject name or filename. Preserve the original token and the verifier/OpenSSL versions in the evidence archive. Certificate path trust and historical revocation remain separate checks: a valid chain at `genTime` does not establish non-revocation, and a CRL result must still refer to this exact signer fingerprint.
+
+References: [RFC 3161 Section 2.3](https://www.rfc-editor.org/rfc/rfc3161.html#section-2.3), [OpenSSL TS documentation](https://docs.openssl.org/master/man1/openssl-ts/).
