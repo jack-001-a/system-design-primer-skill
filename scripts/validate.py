@@ -482,6 +482,14 @@ def validate(root: Path) -> list[str]:
                     errors.append(f"duplicate evaluation case id: {case_id}")
                 else:
                     seen_case_ids.add(case_id)
+                categories = case.get("security_categories")
+                if categories is not None and (
+                    not isinstance(categories, list)
+                    or not categories
+                    or any(not isinstance(item, str) or not item.strip() for item in categories)
+                    or len(set(categories)) != len(categories)
+                ):
+                    errors.append(f"{prefix}: security_categories must be a non-empty unique string array")
                 for field in ("task", "expected_mode"):
                     value = case.get(field)
                     if not isinstance(value, str) or not value.strip():
