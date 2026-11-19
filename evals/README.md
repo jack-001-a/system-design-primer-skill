@@ -353,3 +353,18 @@ corrected, or changed. Small samples are flagged and no confidence interval is c
 historically low, estimable agreement coefficient. It is a triage aid only; it does not
 automatically adjudicate reviews or change model scores. Caller-supplied reviewer IDs are
 not authenticated.
+
+## Reviewer data quality and statistical uncertainty
+
+The evaluation report includes `review_data_quality`: response-record panel coverage,
+unreviewed-record count, per-case/model reviewer coverage, reviewer workload shares,
+reviewer concentration (HHI and largest share), and per-rubric criterion score distributions.
+These are descriptive diagnostics. Coverage applies only to response records supplied to the
+evaluator, not records missing from the input dataset.
+
+Pairwise agreement results include a deterministic 95% percentile-bootstrap interval only
+when at least 20 paired observations are available. The interval resamples paired case
+observations (1,000 iterations by default); if too many resamples are mathematically
+undefined, the interval is marked unstable. Below 20 observations no interval is emitted.
+The interval summarizes uncertainty under the observed sample; repeated or clustered cases
+may violate independence and limit population-level interpretation.

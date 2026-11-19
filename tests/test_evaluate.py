@@ -349,5 +349,38 @@ class EvaluationEngineTests(unittest.TestCase):
             validate_review_panel(submissions, None, case, validate_review)
 
 
+    def test_review_data_quality_reports_coverage_concentration_and_distribution(self) -> None:
+        from scripts.reviewer_calibration import summarize_review_data_quality
+        case = {"required_outputs": ["correctness"], "guardrails": ["safe"]}
+        records = [
+            {"case_id": "c1", "model": "m1", "review_panel": {"reviewer_count": 2, "submissions": [
+                {"reviewer_id": "r1", "rubric_version": "v1", "review": {"required_outputs": [2], "guardrails": [True]}},
+                {"reviewer_id": "r2", "rubric_version": "v1", "review": {"required_outputs": [1], "guardrails": [False]}}
+            ]}},
+            {"case_id": "c2", "model": "m1", "review_panel": {"reviewer_count": 2, "submissions": [
+                {"reviewer_id": "r1", "rubric_version": "v1", "review": {"required_outputs": [2], "guardrails": [True]}},
+                {"reviewer_id": "r2", "rubric_version": "v1", "review": {"required_outputs": [2], "guardrails": [True]}}
+            ]}},
+            {"case_id": "c3", "model": "m1", "review_panel": None}
+        ]
+        result = summarize_review_data_quality(records, {"c1": case, "c2": case, "c3": case})
+        self.assertEqual(result["reviewed_record_count"], 2)
+        self.assertAlmostEqual(result["panel_coverage_rate"], 2/3)
+        concentration = result["reviewer_concentration"][0]
+        self.assertAlmostEqual(concentration["hhi"], 0.5)
+        distribution = next(item for item in result["score_distributions"] if item["criterion_type"] == "required_outputs")
+        self.assertEqual(distribution["category_counts"], {"1": 1, "2": 3})
+
+    def test_kappa_bootstrap_interval_requires_twenty_observations_and_is_deterministic(self) -> None:
+        from scripts.reviewer_calibration import _bootstrap_interval
+        short = [(1, 1)] * 19
+        self.assertIsNone(_bootstrap_interval(short, [0, 1, 2], quadratic=True))
+        values = [(index % 3, index % 3 if index % 4 else (index + 1) % 3) for index in range(30)]
+        first = _bootstrap_interval(values, [0, 1, 2], quadratic=True, iterations=100)
+        second = _bootstrap_interval(values, [0, 1, 2], quadratic=True, iterations=100)
+        self.assertEqual(first, second)
+        self.assertEqual(first["status"], "estimated")
+        self.assertLessEqual(first["lower"], first["upper"])
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,12 +20,12 @@ try:
     from .run_manifest import load_verified_manifest
     from .review_provenance import validate_review_history
     from .review_consensus import validate_review_panel
-    from .reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior
+    from .reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior, summarize_review_data_quality
 except ImportError:  # Direct execution: python scripts/evaluate.py
     from run_manifest import load_verified_manifest
     from review_provenance import validate_review_history
     from review_consensus import validate_review_panel
-    from reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior
+    from reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior, summarize_review_data_quality
 
 
 AUDIT_CHAIN_VERSION = 1
@@ -295,6 +295,7 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
     calibration_panels = [{"submissions": item["review_panel"]["submissions"], "case": cases[item["case_id"]]} for item in records if item.get("review_panel")]
     report_reviewer_metrics = aggregate_reviewer_calibration(calibration_panels)
     reviewer_behavior = summarize_reviewer_behavior(records, cases)
+    review_data_quality = summarize_review_data_quality(records, cases)
     low_pairs = {(item["rubric_version"], tuple(item["reviewer_ids"])) for item in report_reviewer_metrics["low_agreement_pairs"]}
     re_review_queue = []
     for record in records:
@@ -371,6 +372,7 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
         ),
         "reviewer_calibration": report_reviewer_metrics,
         "reviewer_behavior": reviewer_behavior,
+        "review_data_quality": review_data_quality,
         "re_review_queue": re_review_queue,
         "models": models,
     }
