@@ -243,7 +243,8 @@
       "security_categories": [
         "prompt-injection",
         "untrusted-retrieval"
-      ]
+      ],
+      "requires_tool_trace": true
     },
     {
       "id": "agent-resume-ambiguous-side-effect",
@@ -270,7 +271,8 @@
         "approval-scope-drift",
         "side-effect-replay",
         "idempotency"
-      ]
+      ],
+      "requires_tool_trace": true
     },
     {
       "id": "incident-backlog-recovery",
@@ -320,7 +322,8 @@
         "prompt-injection",
         "tool-misuse",
         "tool-chaining"
-      ]
+      ],
+      "requires_tool_trace": true
     },
     {
       "id": "agent-approval-scope-drift",
@@ -347,7 +350,8 @@
         "approval-scope-drift",
         "approval-replay",
         "high-impact-action"
-      ]
+      ],
+      "requires_tool_trace": true
     },
     {
       "id": "agent-multiturn-tool-chain-injection",
@@ -375,7 +379,8 @@
         "tool-chaining",
         "data-exfiltration",
         "approval-scope-drift"
-      ]
+      ],
+      "requires_tool_trace": true
     },
     {
       "id": "agent-cross-tenant-export-and-replay",
@@ -402,7 +407,8 @@
         "data-exfiltration",
         "approval-replay",
         "tool-chaining"
-      ]
+      ],
+      "requires_tool_trace": true
     }
   ]
 }
