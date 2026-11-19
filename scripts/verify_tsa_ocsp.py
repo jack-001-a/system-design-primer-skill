@@ -7,6 +7,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -33,14 +34,22 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
     executable = shutil.which("openssl")
     if not executable:
         raise ValueError("OpenSSL CLI is required for OCSP response verification")
-    command = [executable, "ocsp", "-respin", str(response), "-issuer", str(issuer),
-               "-cert", str(certificate), "-CAfile", str(roots), "-text", "-no_nonce"]
-    if intermediates is not None:
-        command.extend(["-verify_other", str(intermediates)])
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
-    output = (result.stdout or "") + "\n" + (result.stderr or "")
-    if result.returncode:
-        raise ValueError("OpenSSL OCSP verification failed: " + output.strip()[-2000:])
+    with tempfile.TemporaryDirectory(prefix="tsa-ocsp-") as temporary:
+        request_path = Path(temporary) / "request.der"
+        request_command = [executable, "ocsp", "-issuer", str(issuer), "-cert", str(certificate),
+                           "-no_nonce", "-reqout", str(request_path)]
+        request_result = subprocess.run(request_command, capture_output=True, text=True, check=False)
+        if request_result.returncode:
+            detail = (request_result.stderr or request_result.stdout).strip()
+            raise ValueError("OpenSSL could not construct the certificate-bound OCSP request: " + detail[-2000:])
+        command = [executable, "ocsp", "-reqin", str(request_path), "-respin", str(response),
+                   "-CAfile", str(roots), "-text", "-no_nonce"]
+        if intermediates is not None:
+            command.extend(["-verify_other", str(intermediates)])
+        result = subprocess.run(command, capture_output=True, text=True, check=False)
+        output = (result.stdout or "") + "\\n" + (result.stderr or "")
+        if result.returncode:
+            raise ValueError("OpenSSL OCSP verification failed: " + output.strip()[-2000:])
     if not re.search(r"Response verify OK", output, re.I):
         raise ValueError("OpenSSL did not confirm OCSP response signature and responder-chain verification")
     status_match = re.search(r"Cert Status:\s*(good|revoked|unknown)\b", output, re.I)

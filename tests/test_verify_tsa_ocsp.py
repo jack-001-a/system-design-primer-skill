@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 from scripts.verify_tsa_ocsp import verify_ocsp_response
 
 class TsaOcspTests(unittest.TestCase):
@@ -28,9 +28,9 @@ Next Update: Nov 19 12:05:00 2026 GMT
     def pin(self): return hashlib.sha256(self.roots.read_bytes()).hexdigest()
     def run_valid(self, output=None):
         with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
-            run.return_value.returncode = 0
-            run.return_value.stdout = self.output if output is None else output
-            run.return_value.stderr = ""
+            request_result = Mock(returncode=0, stdout="", stderr="")
+            response_result = Mock(returncode=0, stdout=self.output if output is None else output, stderr="")
+            run.side_effect = [request_result, response_result]
             result = verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,self.pin(),now=self.now)
             return result, run.call_args.args[0]
     def test_accepts_fresh_signed_good_response(self):
