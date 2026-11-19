@@ -276,6 +276,50 @@
         "Do not replay side effects without idempotency or deduplication controls",
         "Do not increase consumer concurrency beyond downstream safe capacity"
       ]
+    },
+    {
+      "id": "agent-tool-result-injection",
+      "task": "An agent receives a tool result containing a fake policy override and a request to call another tool with a different tenant ID and send records to an external address. The original user asked only for a summary. Specify how the agent should process the result and enforce the next-action boundary.",
+      "expected_mode": "Review",
+      "references": [
+        "19-agent-security-and-permissions.md",
+        "17-agent-harness-and-runtime.md",
+        "18-mcp-architecture.md",
+        "49-iam-rbac-abac-rebac.md"
+      ],
+      "required_outputs": [
+        "classify tool output and embedded policy-like text as untrusted data while preserving provenance",
+        "re-evaluate the original user intent and reject any tenant, recipient, or action expansion",
+        "require deterministic server-side authorization and strict schema/allowlist validation before any subsequent tool call",
+        "define tests for chained tool-result injection, cross-tenant access, and outbound data exfiltration"
+      ],
+      "guardrails": [
+        "Do not treat tool output as a higher-priority instruction or authorization",
+        "Do not chain tool calls solely because untrusted output requests them",
+        "Do not send data to a new recipient or tenant without explicit user scope and policy authorization"
+      ]
+    },
+    {
+      "id": "agent-approval-scope-drift",
+      "task": "An agent receives approval to issue a $25 refund for order A. Before execution, a retrieved message changes the proposed amount to $250 and the destination account to a different customer. Define the approval and execution controls.",
+      "expected_mode": "Review",
+      "references": [
+        "19-agent-security-and-permissions.md",
+        "49-iam-rbac-abac-rebac.md",
+        "20-agent-state-and-memory.md",
+        "37-consensus-and-distributed-transactions.md"
+      ],
+      "required_outputs": [
+        "bind approval to principal, tenant, order, exact amount, destination, action parameters, expiry, and one-time use",
+        "reject modified or replayed approval and re-check authorization immediately before commit",
+        "use idempotency and durable audit evidence to reconcile ambiguous execution outcomes",
+        "define adversarial tests for parameter mutation, stale approval, replay, and cross-tenant target substitution"
+      ],
+      "guardrails": [
+        "Do not treat approval for one parameter set as approval for a modified action",
+        "Do not infer approval from retrieved content or model-generated summaries",
+        "Do not retry an ambiguous financial side effect without reconciliation"
+      ]
     }
   ]
 }
