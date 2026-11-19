@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import sys
+import unicodedata
 from pathlib import Path
+from urllib.parse import unquote
 
 REQUIRED_REFERENCES = {
     "00-primer-map-and-attribution.md",
@@ -188,6 +191,59 @@ def _check_package_symlinks(root: Path) -> list[str]:
     return errors
 
 
+def _heading_slug(heading: str) -> str:
+    """Approximate GitHub's heading slug rules for local Markdown fragments."""
+    value = html.unescape(heading.strip())
+    value = re.sub(r"<[^>]+>", "", value)
+    value = re.sub(r"\\`([^\\`]*)\\`", r"\\1", value)
+    value = re.sub(r"!\\[([^]]*)\\]\\([^)]*\\)", r"\\1", value)
+    value = re.sub(r"\\[([^]]+)\\]\\([^)]*\\)", r"\\1", value)
+    value = re.sub(r"[*_~]", "", value).lower()
+    value = re.sub(r"\\s+", "-", value)
+    value = "".join(
+        char for char in value
+        if char == "-" or not unicodedata.category(char).startswith("P")
+    )
+    return re.sub(r"-+", "-", value).strip("-")
+
+
+def _markdown_anchors(markdown_text: str) -> set[str]:
+    """Collect explicit IDs and GitHub-style heading anchors, including duplicates."""
+    anchors: set[str] = set()
+    counts: dict[str, int] = {}
+    in_fence = False
+    fence_char = ""
+    fence_length = 0
+    for line in markdown_text.splitlines():
+        fence = re.match(r"^\\s{0,3}(`{3,}|~{3,})", line)
+        if fence:
+            token = fence.group(1)
+            if not in_fence:
+                in_fence = True
+                fence_char, fence_length = token[0], len(token)
+            elif token[0] == fence_char and len(token) >= fence_length:
+                in_fence = False
+            continue
+        if in_fence:
+            continue
+        for explicit in re.findall(r"<(?:a|span)\\b[^>]*?\\bid=[\\\"']([^\\\"']+)[\\\"']", line, re.I):
+            anchors.add(explicit)
+        heading = re.match(r"^\\s{0,3}#{1,6}\\s+(.+?)\\s*#*\\s*$", line)
+        if not heading:
+            continue
+        base = _heading_slug(heading.group(1))
+        if not base:
+            continue
+        suffix = counts.get(base, 0)
+        slug = base if suffix == 0 else f"{base}-{suffix}"
+        while slug in anchors:
+            suffix += 1
+            slug = f"{base}-{suffix}"
+        anchors.add(slug)
+        counts[base] = suffix + 1
+    return anchors
+
+
 def validate(root: Path) -> list[str]:
     errors: list[str] = []
     root = root.resolve()
@@ -258,15 +314,20 @@ def validate(root: Path) -> list[str]:
         for filename in sorted(REQUIRED_TEMPLATES - actual_templates):
             errors.append(f"required template is missing: templates/{filename}")
 
-    for markdown in root.rglob("*.md"):
-        text = markdown.read_text(encoding="utf-8")
-        for target in LOCAL_LINK_RE.findall(text):
-            if target.startswith(("http://", "https://", "mailto:", "#")):
+    markdown_files = {
+        path.resolve(): path
+        for path in root.rglob("*.md")
+        if path.is_file()
+    }
+    anchor_cache: dict[Path, set[str]] = {}
+    for markdown in markdown_files.values():
+        source_text = markdown.read_text(encoding="utf-8")
+        for target in LOCAL_LINK_RE.findall(source_text):
+            if target.startswith(("http://", "https://", "mailto:")):
                 continue
-            path_text = target.split("#", 1)[0].split("?", 1)[0]
-            if not path_text:
-                continue
-            resolved = (markdown.parent / path_text).resolve()
+            path_text, separator, fragment = target.partition("#")
+            path_text = path_text.split("?", 1)[0]
+            resolved = (markdown.parent / unquote(path_text)).resolve() if path_text else markdown.resolve()
             try:
                 resolved.relative_to(root)
             except ValueError:
@@ -279,6 +340,18 @@ def validate(root: Path) -> list[str]:
                 errors.append(
                     f"broken local link in {markdown.relative_to(root)}: {target}"
                 )
+                continue
+            if separator and resolved.suffix.lower() == ".md":
+                if resolved not in anchor_cache:
+                    anchor_cache[resolved] = _markdown_anchors(
+                        resolved.read_text(encoding="utf-8")
+                    )
+                anchor = unquote(fragment)
+                if anchor and anchor not in anchor_cache[resolved]:
+                    errors.append(
+                        f"broken local Markdown anchor in "
+                        f"{markdown.relative_to(root)}: {target}"
+                    )
 
     linked_paths = set(
         re.findall(r"`((?:references|templates|scripts)/[^`]+)`", content)
