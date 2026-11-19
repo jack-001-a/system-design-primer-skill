@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.evaluate import load_cases, read_responses, summarize, validate_tool_trace
+from scripts.evaluate import load_cases, read_responses, summarize, validate_tool_trace, validate_tool_trace
 
 
 class EvaluationEngineTests(unittest.TestCase):
