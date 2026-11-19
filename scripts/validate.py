@@ -215,7 +215,7 @@ def validate(root: Path) -> list[str]:
         routing_file = refs_dir / "69-task-routing-and-evidence.md"
         if routing_file.is_file():
             routing_text = routing_file.read_text(encoding="utf-8")
-            if r"\\n|" in routing_text or r"|\\n" in routing_text:
+            if r"\n|" in routing_text or r"|\n" in routing_text:
                 errors.append(
                     "task routing index contains escaped newline text; use real Markdown line breaks"
                 )
