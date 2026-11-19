@@ -2,7 +2,7 @@
 
 ## 1. Availability math
 
-For serial dependencies that must all work, approximate availability is the product of their availabilities only when the independence assumptions are reasonable. For independent redundant paths where either can serve, approximate availability is `1 - product(1 - A_i)`. Real systems have common-mode failures (shared region, network, identity provider, deployment, configuration, operator error), so independence is often overstated.
+For serial dependencies that must all work, approximate availability is the product of their availabilities only when the measurement windows, request populations, and dependency boundaries align and independence assumptions are reasonable. For independent redundant paths where either can serve, approximate availability is `1 - product(1 - A_i)` only if failover actually works and the paths fail independently. Include failover detection, routing convergence, capacity after failover, state consistency, and shared dependencies; redundancy without these conditions does not provide the calculated availability. Real systems have common-mode failures (shared region, network, identity provider, deployment, configuration, operator error), so independence is often overstated.
 
 Do not promise “five nines” from node counts alone. Define the measurement window, eligible requests, exclusions, and dependency boundary.
 
@@ -13,7 +13,7 @@ Do not promise “five nines” from node counts alone. Define the measurement w
 - **SLA**: external contractual commitment with defined remedies/exclusions.
 - **Error budget**: allowed unreliability derived from the SLO; use it to balance release velocity and reliability work.
 
-Choose user-centered SLIs. A process-health check is not equivalent to successful completion of a user transaction.
+Choose user-centered SLIs and define the denominator, eligible events, measurement location, aggregation window, and treatment of partial failures. A process-health check is not equivalent to successful completion of a user transaction. Do not multiply component availability figures that use incompatible windows or count different request populations.
 
 ## 3. Timeout and retry policy
 
@@ -40,7 +40,7 @@ Define reduced modes before the outage: stale-but-safe reads, disable recommenda
 
 ## 7. Failover and redundancy
 
-Active-passive and active-active topologies have different cost and conflict behavior. Failover needs detection, routing, state continuity, fencing, and a tested recovery plan. Replicas are not backups: replication can copy accidental deletion or corruption.
+Active-passive and active-active topologies have different cost and conflict behavior. Failover needs detection, routing, state continuity, fencing, and a tested recovery plan. Specify the RTO contribution of detection and routing convergence, how split-brain is prevented, how writes acknowledged by the old primary are reconciled, and how the recovered site rejoins. A DNS or load-balancer switch alone does not establish safe state continuity. Replicas are not backups: replication can copy accidental deletion or corruption.
 
 ## 8. Backup and disaster recovery
 
