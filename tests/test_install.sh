@@ -20,11 +20,14 @@ mkdir -p "$TMP/project" "$TMP/home"
   printf 'sentinel\n' > "$DEST/SKILL.md"
   bash "$SCRIPT" --agent codex --scope project --force
   ! grep -q sentinel "$DEST/SKILL.md"
+  bash "$SCRIPT" --agent dsh --scope project
+  [[ -f ".dsh/skills/system-design-primer/SKILL.md" ]]
 )
-
 (
   cd "$TMP/project"
-  HOME="$TMP/home" bash "$SCRIPT" --agent all --scope user
+  HOME="$TMP/home" bash "$SCRIPT" --agent dsh --scope user
+  [[ -f "$TMP/home/.dsh/skills/system-design-primer/SKILL.md" ]]
+  HOME="$TMP/home" bash "$SCRIPT" --agent all --scope user --force
   [[ -f "$TMP/home/.agents/skills/system-design-primer/SKILL.md" ]]
   [[ -f "$TMP/home/.claude/skills/system-design-primer/SKILL.md" ]]
   [[ -f "$TMP/home/.copilot/skills/system-design-primer/SKILL.md" ]]

@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   language: "en"
 ---
 
@@ -121,7 +121,7 @@ Avoid mixing bits/bytes, MB/MiB, averages/peaks, and logical data/replicas/backu
 
 A full Design normally includes: conclusion and recommendation; requirements, constraints, and assumptions; capacity estimates; high-level architecture diagram; core components and data flows; decisions and alternatives; data correctness/concurrency/consistency; failure/security/observability; evolution/testing/rollback; and open questions/unverified assumptions.
 
-Quick Design may include only the conclusion, key assumptions, a diagram or flow, major trade-offs, and next steps. Review findings are ordered Critical/High/Medium/Low and include evidence. Optimize emphasizes baselines, bottlenecks, experiments, and regression results. Migration emphasizes compatibility, cutover, validation, and rollback. For code changes, include a summary, test commands actually run, and uncovered risks.
+Quick Design may include only the conclusion, key assumptions, a diagram or flow, major trade-offs, and next steps. Do not force full sections into a small task. Review findings are ordered Critical/High/Medium/Low and include evidence. Optimize emphasizes baselines, bottlenecks, experiments, and regression results. Migration emphasizes compatibility, cutover, validation, and rollback. For code changes, include a summary, test commands actually run, and uncovered risks.
 
 ## Progressive reference loading
 
