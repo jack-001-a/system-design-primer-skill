@@ -9,6 +9,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+try:
+    from .evaluation_fingerprints import dataset_fingerprints
+except ImportError:
+    from evaluation_fingerprints import dataset_fingerprints
+
 CASE_RUBRIC_FIELDS = ("required_outputs", "guardrails", "security_categories")
 CASE_CONTEXT_FIELDS = ("task", "expected_mode", "references", "requires_tool_trace")
 TOP_FIELDS = {"schema_version", "description", "cases"}
@@ -45,20 +50,7 @@ def load_dataset(path: Path) -> dict[str, Any]:
 
 
 def fingerprint_dataset(dataset: dict[str, Any], source_bytes: bytes | None = None) -> dict[str, Any]:
-    cases = dataset["cases"]
-    rubric_projection = [
-        {"id": case["id"], **{field: case.get(field, []) for field in CASE_RUBRIC_FIELDS}}
-        for case in sorted(cases, key=lambda item: item["id"])
-    ]
-    return {
-        "catalog_schema_version": 1,
-        "dataset_schema_version": dataset["schema_version"],
-        "case_count": len(cases),
-        "case_ids": sorted(case["id"] for case in cases),
-        "dataset_canonical_sha256": sha256(canonical_json(dataset)),
-        "dataset_source_sha256": sha256(source_bytes) if source_bytes is not None else None,
-        "rubric_sha256": sha256(canonical_json(rubric_projection)),
-    }
+    return dataset_fingerprints(dataset, source_bytes)
 
 
 def compare_datasets(left: dict[str, Any], right: dict[str, Any]) -> dict[str, Any]:

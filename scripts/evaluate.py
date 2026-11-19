@@ -22,12 +22,14 @@ try:
     from .review_consensus import validate_review_panel
     from .reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior, summarize_review_data_quality
     from .statistical_analysis import comparative_analysis
+    from .evaluation_catalog import fingerprint_dataset
 except ImportError:  # Direct execution: python scripts/evaluate.py
     from run_manifest import load_verified_manifest
     from review_provenance import validate_review_history
     from review_consensus import validate_review_panel
     from reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior, summarize_review_data_quality
     from statistical_analysis import comparative_analysis
+    from evaluation_catalog import fingerprint_dataset
 
 
 AUDIT_CHAIN_VERSION = 1
@@ -268,6 +270,7 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             review = item["review"]
             case_results[item["case_id"]] = {
                 "reviewed": review is not None,
+                "rubric_sha256": hashlib.sha256(canonical_json({"case_id": case["id"], "required_outputs": case["required_outputs"], "guardrails": case["guardrails"], "security_categories": case.get("security_categories", [])})).hexdigest(),
                 "review_provenance": item.get("review_provenance"),
                 "review_provenance_status": "verified" if item.get("review_provenance") else ("unattested" if review is not None else "unreviewed"),
                 "review_panel": item.get("review_panel"),
@@ -407,6 +410,8 @@ def main() -> int:
         parser.error("--integrity-sidecar requires --output")
     try:
         cases = load_cases(args.cases)
+        dataset_document = json.loads(args.cases.read_text(encoding="utf-8"))
+        catalog_fingerprint = fingerprint_dataset(dataset_document, args.cases.read_bytes())
         if args.expected_chain_head_hash and not args.verify_chain:
             raise ValueError("--expected-chain-head-hash requires --verify-chain")
         chain_status = verify_audit_chain(args.responses, args.expected_chain_head_hash) if args.verify_chain else None
@@ -415,6 +420,7 @@ def main() -> int:
         expected_manifest_hash = manifest["fingerprints"]["manifest_sha256"] if manifest else None
         records = read_responses(args.responses, cases, expected_run_id, expected_manifest_hash)
         report = summarize(records, cases)
+        report["evaluation_catalog"] = {key: catalog_fingerprint[key] for key in ("catalog_schema_version", "dataset_canonical_sha256", "dataset_source_sha256", "rubric_sha256", "case_count", "case_ids")}
         report["run_manifest"] = ({
             "verified": True, "run_id": expected_run_id,
             "manifest_sha256": expected_manifest_hash,

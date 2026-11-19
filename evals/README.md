@@ -512,3 +512,25 @@ applied a transformation correctly. Existing \`review_history\` events retain th
 outputs under the new rubric when strict same-rubric comparisons are required. Reports
 without sufficient rubric metadata remain unknown/incomparable; never infer compatibility
 from matching model names, aggregate scores, or version strings alone.
+
+
+## Report-bound dataset and rubric identity
+
+New reports include an `evaluation_catalog` object with canonical dataset and rubric
+fingerprints, source-byte hash, case count, and sorted case IDs. Every model/case result
+also carries a `rubric_sha256` computed from that case's exact ordered required outputs,
+guardrails, and security categories. This binds interpretation to the criteria used; it
+does not authenticate the reviewer.
+
+Before comparing reports, run the fail-closed check:
+
+```bash
+python scripts/compare_reports.py --left-report evals/report-a.json --right-report evals/report-b.json
+```
+
+Exit 0 means dataset, rubric, system-prompt fingerprint, tool-permission profile, and
+run-configuration ID match. Differences return 2 (`incompatible`); missing metadata,
+including older reports, returns 2 (`unknown`). Model labels may differ. A passing
+result establishes matching evaluation design metadata only, not statistical significance
+or model quality. When rubric definitions change, generate a new review rather than
+silently relabeling historical annotations.
