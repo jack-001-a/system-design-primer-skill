@@ -251,6 +251,28 @@ class PackageTests(unittest.TestCase):
                 "contains escaped newline text" in item for item in errors
             ))
 
+    def test_consensus_and_tracing_references_require_scope_boundaries(self):
+        required = {
+            "37-consensus-and-distributed-transactions.md",
+            "56-distributed-tracing-and-context-propagation.md",
+        }
+        for filename in required:
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "SKILL.md").write_text(
+                    "---\nname: example-skill\ndescription: test\n---\nbody\n",
+                    encoding="utf-8",
+                )
+                refs = root / "references"
+                refs.mkdir()
+                (refs / filename).write_text("# Example\n\n## Details\n", encoding="utf-8")
+                errors = validate(root)
+                self.assertTrue(any(
+                    "missing its required scope boundary section" in item
+                    and filename in item
+                    for item in errors
+                ))
+
     def test_task_routing_index_cannot_reference_missing_reference(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
