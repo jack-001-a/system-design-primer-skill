@@ -270,7 +270,7 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             review = item["review"]
             case_results[item["case_id"]] = {
                 "reviewed": review is not None,
-                "rubric_sha256": hashlib.sha256(canonical_json({"case_id": case["id"], "required_outputs": case["required_outputs"], "guardrails": case["guardrails"], "security_categories": case.get("security_categories", [])})).hexdigest(),
+                "rubric_sha256": hashlib.sha256(canonical_json({"case_id": item["case_id"], "required_outputs": case["required_outputs"], "guardrails": case["guardrails"], "security_categories": case.get("security_categories", [])})).hexdigest(),
                 "review_provenance": item.get("review_provenance"),
                 "review_provenance_status": "verified" if item.get("review_provenance") else ("unattested" if review is not None else "unreviewed"),
                 "review_panel": item.get("review_panel"),
