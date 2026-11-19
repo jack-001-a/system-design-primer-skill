@@ -114,7 +114,7 @@ class TsaAttestationTests(unittest.TestCase):
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
             "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
-            "gen_time": "2026-11-19T12:00:00Z",
+            "gen_time": "2026-11-19T12:00:00Z", "accuracy": {"seconds": 0},
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
@@ -162,7 +162,7 @@ class TsaAttestationTests(unittest.TestCase):
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
             "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
-            "gen_time": "2026-11-19T12:00:00Z",
+            "gen_time": "2026-11-19T12:00:00Z", "accuracy": {"seconds": 0},
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
