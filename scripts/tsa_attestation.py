@@ -74,10 +74,78 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
     signer_serial = report["timestamp_signer_serial_number"]
     if not isinstance(signer_serial, str) or not signer_serial.strip() or len(signer_serial) > 128:
         raise ValueError("timestamp_signer_serial_number must be a non-empty string of at most 128 characters")
-    for name in ("historical_revocation_assessment", "current_ocsp_assessment",
-                 "historical_ocsp_responder_revocation_assessment"):
-        if not isinstance(report[name], dict):
-            raise ValueError(name + " must be an object")
+    historical = report["historical_revocation_assessment"]
+    if not isinstance(historical, dict):
+        raise ValueError("historical_revocation_assessment must be an object")
+    if historical.get("source") != "verified_crl" or historical.get("status") != "not_revoked_at_gen_time":
+        raise ValueError("historical CRL assessment must explicitly report verified non-revocation")
+    if historical.get("validation_time") != report["gen_time"]:
+        raise ValueError("historical CRL validation_time must exactly match report gen_time")
+    for field in ("crl_sha256", "issuer_roots_sha256", "crl_issuer_certificate_sha256", "result_file_sha256"):
+        require_sha256(historical.get(field), "historical_revocation_assessment." + field)
+    if not isinstance(historical.get("crl_signature_algorithm_oid"), str) or not historical["crl_signature_algorithm_oid"].strip():
+        raise ValueError("historical_revocation_assessment.crl_signature_algorithm_oid must be non-empty")
+    entry = historical.get("revocation_entry")
+    if not isinstance(entry, dict) or entry.get("status_at_time") not in ("not_listed", "not_yet_revoked"):
+        raise ValueError("historical CRL revocation_entry does not establish non-revocation")
+
+    current = report["current_ocsp_assessment"]
+    if not isinstance(current, dict) or type(current.get("provided")) is not bool:
+        raise ValueError("current_ocsp_assessment must declare a boolean provided field")
+    if current.get("provided") is False:
+        if current.get("assessment") != "not_provided" or current.get("historical_status_claim") is not False:
+            raise ValueError("omitted OCSP evidence must be classified not_provided with no historical claim")
+        if report["historical_ocsp_responder_revocation_assessment"].get("status") != "not_assessed":
+            raise ValueError("OCSP responder revocation cannot be assessed without OCSP evidence")
+    else:
+        if current.get("assessment") not in ("good", "revoked", "unknown"):
+            raise ValueError("current OCSP assessment has an invalid status")
+        scope = current.get("scope")
+        current_scope = "current-time OCSP response validation; not a historical status determination"
+        historical_scope = "historical OCSP status validation at the supplied target time"
+        if scope not in (current_scope, historical_scope):
+            raise ValueError("current OCSP assessment has an unsupported scope")
+        if current.get("nonce_checked") is not False:
+            raise ValueError("current OCSP assessment must explicitly state nonce_checked=false")
+        if current.get("historical_status_claim") is not (scope == historical_scope):
+            raise ValueError("OCSP historical_status_claim contradicts its declared scope")
+        for field in ("response_sha256", "issuer_roots_sha256", "result_file_sha256"):
+            require_sha256(current.get(field), "current_ocsp_assessment." + field)
+        responder_digest = current.get("responder_certificate_sha256")
+        if responder_digest is not None:
+            require_sha256(responder_digest, "current_ocsp_assessment.responder_certificate_sha256")
+        validation = parse_utc(current.get("validation_time"), "OCSP validation_time")
+        produced = parse_utc(current.get("produced_at"), "OCSP produced_at")
+        this_update = parse_utc(current.get("this_update"), "OCSP this_update")
+        next_update = parse_utc(current.get("next_update"), "OCSP next_update")
+        if next_update < this_update or produced < this_update or validation < this_update or validation > next_update:
+            raise ValueError("OCSP assessment contains inconsistent signed validity times")
+        if scope == historical_scope:
+            gen_dt = parse_utc(report["gen_time"], "gen_time")
+            if current.get("historical_at_time") != report["gen_time"] or validation != gen_dt:
+                raise ValueError("historical OCSP assessment must exactly match report gen_time")
+            if produced > gen_dt or next_update < gen_dt:
+                raise ValueError("historical OCSP assessment is not valid at report gen_time")
+
+    responder = report["historical_ocsp_responder_revocation_assessment"]
+    if not isinstance(responder, dict):
+        raise ValueError("historical_ocsp_responder_revocation_assessment must be an object")
+    if responder.get("status") == "not_assessed":
+        if not isinstance(responder.get("reason"), str) or not responder["reason"].strip():
+            raise ValueError("not-assessed OCSP responder revocation must include a reason")
+    elif responder.get("status") == "not_revoked_at_gen_time":
+        if current.get("provided") is not True or current.get("historical_status_claim") is not True:
+            raise ValueError("OCSP responder revocation requires historical OCSP evidence")
+        if current.get("responder_certificate_sha256") is None:
+            raise ValueError("OCSP responder revocation requires a bound responder certificate")
+        if responder.get("responder_certificate_sha256") != current["responder_certificate_sha256"]:
+            raise ValueError("OCSP responder revocation fingerprint differs from the OCSP signer")
+        if responder.get("validation_time") != report["gen_time"]:
+            raise ValueError("OCSP responder revocation validation_time must match report gen_time")
+        for field in ("crl_sha256", "issuer_roots_sha256", "result_file_sha256"):
+            require_sha256(responder.get(field), "historical_ocsp_responder_revocation_assessment." + field)
+    else:
+        raise ValueError("historical OCSP responder revocation has an unsupported status")
     return {name: report[name] for name in required}
 
 

@@ -914,3 +914,17 @@ TSA validation report aggregation requires the complete `evidence_timestamp.veri
 
 
 Attestation binding boundary: the Ed25519 attestation signs the aggregate report's `timestamp_result_sha256` and declared independent-result-pin policy. Verification returns this exact digest as `attested_timestamp_result_sha256`. This proves that the report's digest value is covered by the attestation signature; it does not re-open or independently re-verify the original RFC 3161 response or timestamp-result JSON. Those inputs must be separately retained and verified using their independently recorded SHA-256 pins.
+
+### Attestation claim-consistency validation
+
+The attestation signer and verifier validate the internal semantics of the aggregate
+report before accepting it. The historical CRL assessment must explicitly bind its
+validation time to the report RFC 3161 `genTime`, include its source/result
+digests, and carry a serial-specific non-revocation finding. Optional OCSP evidence
+must distinguish `not_provided`, current-time status, and historical status;
+the historical claim flag must agree with its declared scope and signed validity
+interval. An OCSP responder non-revocation claim additionally requires a
+historical OCSP assessment and an exact responder-certificate fingerprint match.
+These checks prevent contradictory signed fields from being presented as a
+coherent assessment. They validate report consistency, not the truth of the
+underlying verifier assertions or the completeness of revocation sources.

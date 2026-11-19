@@ -90,6 +90,59 @@ class TsaAttestationTests(unittest.TestCase):
                 hashlib.sha256(b"verifier package").hexdigest(),
                 "system-design-primer TSA verifier release")
 
+    def test_attestation_rejects_historical_crl_time_mismatch(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["historical_revocation_assessment"]["validation_time"] = "2026-11-18T12:00:00Z"
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "must exactly match report gen_time"):
+            create_attestation(self.report, self.private, "tsa-attester",
+                hashlib.sha256(b"verifier package").hexdigest(), "system-design-primer TSA verifier release")
+
+    def _ocsp_fixture(self):
+        return {
+            "provided": True, "assessment": "good", "historical_status_claim": True,
+            "scope": "historical OCSP status validation at the supplied target time",
+            "nonce_checked": False, "validation_time": "2026-11-19T12:00:00Z",
+            "produced_at": "2026-11-19T11:00:00Z", "this_update": "2026-11-19T10:00:00Z",
+            "next_update": "2026-11-19T13:00:00Z", "historical_at_time": "2026-11-19T12:00:00Z",
+            "response_sha256": "a" * 64, "issuer_roots_sha256": "b" * 64,
+            "result_file_sha256": "c" * 64, "responder_certificate_sha256": "d" * 64
+        }
+
+    def test_attestation_rejects_ocsp_historical_claim_scope_mismatch(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["current_ocsp_assessment"] = self._ocsp_fixture()
+        report["current_ocsp_assessment"]["scope"] = "current-time OCSP response validation; not a historical status determination"
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "contradicts its declared scope"):
+            create_attestation(self.report, self.private, "tsa-attester",
+                hashlib.sha256(b"verifier package").hexdigest(), "system-design-primer TSA verifier release")
+
+    def test_attestation_rejects_ocsp_responder_fingerprint_mismatch(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["current_ocsp_assessment"] = self._ocsp_fixture()
+        report["historical_ocsp_responder_revocation_assessment"] = {
+            "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
+            "responder_certificate_sha256": "e" * 64, "crl_sha256": "f" * 64,
+            "issuer_roots_sha256": "1" * 64, "result_file_sha256": "2" * 64
+        }
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "fingerprint differs"):
+            create_attestation(self.report, self.private, "tsa-attester",
+                hashlib.sha256(b"verifier package").hexdigest(), "system-design-primer TSA verifier release")
+
+    def test_attestation_accepts_consistent_historical_ocsp_claims(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["current_ocsp_assessment"] = self._ocsp_fixture()
+        report["historical_ocsp_responder_revocation_assessment"] = {
+            "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
+            "responder_certificate_sha256": "d" * 64, "crl_sha256": "e" * 64,
+            "issuer_roots_sha256": "f" * 64, "result_file_sha256": "1" * 64
+        }
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        self.assertTrue(create_attestation(self.report, self.private, "tsa-attester",
+            hashlib.sha256(b"verifier package").hexdigest(), "system-design-primer TSA verifier release"))
+
     def test_report_replacement_rejected(self):
         self.report.write_text(self.report.read_text() + " ", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "report SHA-256 mismatch"):
