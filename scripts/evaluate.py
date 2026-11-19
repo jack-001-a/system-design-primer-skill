@@ -207,7 +207,7 @@ def read_responses(
                     raise ValueError(f"line {line_number}: review.tool_trace_guardrails must assess every guardrail in order")
                 if any(type(value) is not bool for value in trace_scores):
                     raise ValueError(f"line {line_number}: tool trace guardrail assessments must be booleans")
-        records.append({"case_id": case_id, "model": model.strip(), "output": output, "review": review, "tool_trace": trace})
+        records.append({"case_id": case_id, "model": model.strip(), "output": output, "review": review, "tool_trace": trace, "run_id": item.get("run_id"), "manifest_sha256": item.get("manifest_sha256")})
     return records
 
 
