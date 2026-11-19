@@ -1,7 +1,7 @@
 # TCP, QUIC, and Network Performance Engineering
 
 ## Transport selection
-Understand TCP connection setup, congestion control, retransmission, flow control, head-of-line blocking, keepalive, and connection reuse. Evaluate QUIC/HTTP/3 for connection migration, stream multiplexing, handshake behavior, and deployment compatibility; do not assume it improves every workload.
+Understand TCP connection setup, congestion control, retransmission, flow control, head-of-line blocking, keepalive, and connection reuse. Evaluate QUIC/HTTP/3 for connection migration, stream multiplexing, handshake behavior, and deployment compatibility; do not assume it improves every workload. QUIC loss recovery retransmits information in newly formed packets/frames rather than retransmitting an entire lost packet; do not describe it as TCP-style packet retransmission. Connection migration is subject to connection-ID and path-validation rules and can be blocked by deployment policy or intermediaries. Verify transport claims against [RFC 9000](https://www.rfc-editor.org/rfc/rfc9000.html) and the relevant recovery specification.
 
 ## Latency budget
 Decompose DNS lookup, connection establishment, TLS handshake, network RTT, congestion/window growth, server queueing, application processing, and response transfer. Separate cold and warm connections, client and server time, and network from application delay.
