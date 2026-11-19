@@ -775,3 +775,8 @@ The RFC 3161 verifier extracts the CMS timestamp token after OpenSSL has verifie
 Use `tsa_signer_certificate_sha256` from this verified token result as the certificate identity when invoking the historical CRL verifier. Do not substitute a certificate selected by subject name or filename. Preserve the original token and the verifier/OpenSSL versions in the evidence archive. Certificate path trust and historical revocation remain separate checks: a valid chain at `genTime` does not establish non-revocation, and a CRL result must still refer to this exact signer fingerprint.
 
 References: [RFC 3161 Section 2.3](https://www.rfc-editor.org/rfc/rfc3161.html#section-2.3), [OpenSSL TS documentation](https://docs.openssl.org/master/man1/openssl-ts/).
+
+
+### End-to-end timestamp-to-revocation identity binding
+
+The unified report now requires the JSON output from `evidence_timestamp.py verify` as `--timestamp-result`. It rejects an unverified timestamp result, a `genTime` mismatch, a signer certificate not established valid at `genTime`, or a TSA signer fingerprint that differs from the certificate fingerprint assessed by the CRL verifier. The timestamp result file digest is retained in the report. This makes the chain explicit: verified RFC 3161 token → actual CMS SignerInfo certificate → historical CRL assessment of that same certificate. The timestamp result remains a verifier output; preserve the original token, trust inputs, verifier version, and result digest in the evidence archive.

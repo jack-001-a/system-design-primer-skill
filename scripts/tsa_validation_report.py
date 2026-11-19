@@ -37,7 +37,9 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                             crl_result_sha256: str, ocsp_result: dict[str, Any] | None = None,
                             ocsp_result_sha256: str | None = None,
                             responder_revocation_result: dict[str, Any] | None = None,
-                            responder_revocation_result_sha256: str | None = None) -> dict[str, Any]:
+                            responder_revocation_result_sha256: str | None = None,
+                            timestamp_result: dict[str, Any] | None = None,
+                            timestamp_result_sha256: str | None = None) -> dict[str, Any]:
     parse_utc(gen_time, "gen_time")
     require_digest(crl_result_sha256, "crl_result_sha256")
     if crl_result.get("verified") is not True:
@@ -46,8 +48,23 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         raise ValueError("CRL result does not assert a non-revoked status")
     if crl_result.get("at_time") != gen_time:
         raise ValueError("CRL validation time does not exactly match RFC 3161 genTime")
+    if timestamp_result is None:
+        raise ValueError("verified RFC 3161 timestamp result is required")
+    require_digest(timestamp_result_sha256, "timestamp_result_sha256")
+    if timestamp_result.get("verified") is not True:
+        raise ValueError("RFC 3161 timestamp result is not explicitly verified")
+    if timestamp_result.get("gen_time") != gen_time:
+        raise ValueError("timestamp result genTime does not exactly match report genTime")
+    timestamp_certificate_digest = require_digest(
+        timestamp_result.get("tsa_signer_certificate_sha256"),
+        "timestamp tsa_signer_certificate_sha256",
+    )
+    if timestamp_result.get("tsa_signer_valid_at_gen_time") is not True:
+        raise ValueError("timestamp signer certificate is not established valid at genTime")
+    if timestamp_result.get("tsa_signer_identity_source") != "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer":
+        raise ValueError("timestamp signer identity is not bound to the CMS SignerInfo certificate")
     certificate_digest = require_digest(crl_result.get("certificate_sha256"), "CRL certificate_sha256")
-    crl_digest = require_digest(crl_result.get("crl_sha256"), "CRL crl_sha256")
+    if certificate_digest != timestamp_certificate_digest:\n        raise ValueError("CRL certificate fingerprint differs from verified timestamp CMS signer")\n    crl_digest = require_digest(crl_result.get("crl_sha256"), "CRL crl_sha256")
     crl_roots_digest = require_digest(crl_result.get("issuer_roots_sha256"), "CRL issuer_roots_sha256")
     crl_signer_digest = require_digest(crl_result.get("crl_issuer_certificate_sha256"), "CRL crl_issuer_certificate_sha256")
     if crl_result.get("crl_scope") != "direct_only; certificate CRLDistributionPoints unsupported":
@@ -161,7 +178,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "report_type": "tsa_long_term_validation_evidence",
         "gen_time": gen_time,
         "gen_time_source": "caller_supplied_from_independently_verified_rfc3161_token",
-        "tsa_certificate_sha256": certificate_digest,
+        "tsa_certificate_sha256": certificate_digest,\n        "timestamp_result_sha256": timestamp_result_sha256,\n        "timestamp_signer_serial_number": timestamp_result.get("tsa_signer_serial_number"),
         "historical_revocation_assessment": {
             "source": "verified_crl",
             "status": "not_revoked_at_gen_time",
@@ -195,14 +212,14 @@ def write_report(output: Path, report: dict[str, Any]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gen-time", required=True)
+    parser.add_argument("--gen-time", required=True)\n    parser.add_argument("--timestamp-result", type=Path, required=True)
     parser.add_argument("--crl-result", type=Path, required=True)
     parser.add_argument("--ocsp-result", type=Path)
     parser.add_argument("--ocsp-responder-revocation-result", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        crl_result, crl_digest = load_json(args.crl_result)
+        timestamp_result, timestamp_digest = load_json(args.timestamp_result)\n        crl_result, crl_digest = load_json(args.crl_result)
         if args.ocsp_result:
             ocsp_result, ocsp_digest = load_json(args.ocsp_result)
         else:
@@ -212,7 +229,7 @@ def main() -> int:
         else:
             responder_result, responder_digest = None, None
         report = build_validation_report(args.gen_time, crl_result, crl_digest,
-                                         ocsp_result, ocsp_digest, responder_result, responder_digest)
+                                         ocsp_result, ocsp_digest, responder_result, responder_digest,\n                                         timestamp_result, timestamp_digest)
         report_digest = write_report(args.output, report)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
         print("ERROR: " + str(exc), file=sys.stderr)

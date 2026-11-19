@@ -15,7 +15,6 @@ from typing import Any
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.serialization import pkcs7
 from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID
 
 ENVELOPE_FIELDS = {"schema_version", "algorithm", "key_id", "signed_at", "evidence_root", "signature"}
@@ -93,36 +92,42 @@ def parse_accuracy(details: str) -> dict[str, int] | None:
 
 
 def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[str, str]:
-    """Bind the embedded, timestamp-purpose signer certificate to token genTime."""
+    """Extract the CMS SignerInfo certificate and bind its TSA profile to genTime."""
     try:
         target = datetime.fromisoformat(gen_time.replace("Z", "+00:00"))
     except ValueError as exc:
         raise ValueError("verified genTime cannot be parsed for TSA certificate validity") from exc
     with tempfile.TemporaryDirectory(prefix="tsa-token-") as directory:
         token_path = Path(directory) / "token.der"
-        result = subprocess.run(
+        signer_path = Path(directory) / "signer.pem"
+        content_path = Path(directory) / "content.der"
+        extract = subprocess.run(
             [openssl_path(), "ts", "-reply", "-in", str(response_path),
              "-out", str(token_path), "-token_out"],
             capture_output=True, text=True, check=False,
         )
-        if result.returncode:
-            detail = (result.stderr or result.stdout).strip()
+        if extract.returncode:
+            detail = (extract.stderr or extract.stdout).strip()
             raise ValueError("could not extract verified timestamp token: " + detail[-2000:])
+        # CMS resolves the certificate using the actual SignerInfo issuer/serial
+        # or subjectKeyIdentifier. -noverify skips path validation only; ts -verify
+        # has already performed the timestamp chain check.
+        verify = subprocess.run(
+            [openssl_path(), "cms", "-verify", "-inform", "DER", "-in", str(token_path),
+             "-noverify", "-signer", str(signer_path), "-out", str(content_path)],
+            capture_output=True, text=True, check=False,
+        )
+        if verify.returncode or not signer_path.is_file():
+            detail = (verify.stderr or verify.stdout).strip()
+            raise ValueError("could not identify the actual CMS timestamp signer certificate: " + detail[-2000:])
         try:
-            certificates = pkcs7.load_der_pkcs7_certificates(token_path.read_bytes())
+            certificate = x509.load_pem_x509_certificate(signer_path.read_bytes())
         except (OSError, ValueError) as exc:
-            raise ValueError("timestamp token does not contain parseable signer certificates") from exc
-    candidates = []
-    for certificate in certificates:
-        try:
-            eku_ext = certificate.extensions.get_extension_for_oid(ExtensionOID.EXTENDED_KEY_USAGE)
-        except x509.ExtensionNotFound:
-            continue
-        if ExtendedKeyUsageOID.TIME_STAMPING in eku_ext.value:
-            candidates.append((certificate, eku_ext))
-    if len(candidates) != 1:
-        raise ValueError("timestamp token must contain exactly one TSA certificate with timeStamping EKU")
-    certificate, eku_ext = candidates[0]
+            raise ValueError("CMS timestamp signer certificate is not valid PEM X.509") from exc
+    try:
+        eku_ext = certificate.extensions.get_extension_for_oid(ExtensionOID.EXTENDED_KEY_USAGE)
+    except x509.ExtensionNotFound as exc:
+        raise ValueError("TSA signer certificate is missing timeStamping EKU") from exc
     if not eku_ext.critical or list(eku_ext.value) != [ExtendedKeyUsageOID.TIME_STAMPING]:
         raise ValueError("TSA signer certificate must have a critical, exclusive timeStamping EKU")
     try:
@@ -144,6 +149,7 @@ def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[s
         "tsa_signer_serial_number": format(certificate.serial_number, "x"),
         "tsa_signer_valid_at_gen_time": True,
         "tsa_signer_eku": "critical:id-kp-timeStamping",
+        "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer",
     }
 
 def verify_timestamp(

@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from scripts.evidence_timestamp import create_request, load_signature, verify_timestamp
+from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verify_timestamp
 
 class EvidenceTimestampTests(unittest.TestCase):
     def setUp(self):
@@ -51,7 +51,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.request.write_bytes(b"request")
         import hashlib
         digest = hashlib.sha256(b"s" * 64).hexdigest()
-        with patch("scripts.evidence_timestamp.inspect_tsa_signer_certificate", return_value={"tsa_signer_certificate_sha256": "a" * 64, "tsa_signer_serial_number": "01", "tsa_signer_valid_at_gen_time": True, "tsa_signer_eku": "critical:id-kp-timeStamping"}), patch("scripts.evidence_timestamp.run_openssl") as run:
+        with patch("scripts.evidence_timestamp.inspect_tsa_signer_certificate", return_value={"tsa_signer_certificate_sha256": "a" * 64, "tsa_signer_serial_number": "01", "tsa_signer_valid_at_gen_time": True, "tsa_signer_eku": "critical:id-kp-timeStamping", "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer"}), patch("scripts.evidence_timestamp.run_openssl") as run:
             run.side_effect = [
                 "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\n",
                 "",
@@ -61,7 +61,7 @@ class EvidenceTimestampTests(unittest.TestCase):
             result = verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
         self.assertTrue(result["verified"])
         self.assertEqual(result["tsa_signer_certificate_sha256"], "a" * 64)
-        self.assertTrue(result["tsa_signer_valid_at_gen_time"])
+        self.assertTrue(result["tsa_signer_valid_at_gen_time"])\n        self.assertIn("CMS SignerInfo", result["tsa_signer_identity_source"])
         self.assertEqual(result["gen_time"], "2026-11-19T12:00:00Z")
         self.assertEqual(result["policy_oid"], "1.2.3")
         self.assertEqual(result["accuracy"], {"seconds": 1, "millis": 2, "micros": 3})
@@ -116,6 +116,43 @@ class EvidenceTimestampTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "does not bind"):
                 import hashlib as h
                 verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
+
+    def test_inspector_uses_cms_signerinfo_certificate_not_embedded_certificate_guess(self):
+        from datetime import datetime, timedelta, timezone
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        now = datetime.now(timezone.utc)
+        subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "TSA signer")])
+        cert = (x509.CertificateBuilder().subject_name(subject).issuer_name(issuer)
+            .public_key(key.public_key()).serial_number(1234)
+            .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
+            .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.TIME_STAMPING]), critical=True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=False, crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
+            .sign(key, hashes.SHA256()))
+        pem = cert.public_bytes(serialization.Encoding.PEM)
+        calls = []
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            if "ts" in command and "-token_out" in command:
+                Path(command[command.index("-out") + 1]).write_bytes(b"CMS token")
+                return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+            if "cms" in command and "-signer" in command:
+                Path(command[command.index("-signer") + 1]).write_bytes(pem)
+                Path(command[command.index("-out") + 1]).write_bytes(b"content")
+                return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+            raise AssertionError(command)
+        with patch("scripts.evidence_timestamp.openssl_path", return_value="openssl"), patch(
+            "scripts.evidence_timestamp.subprocess.run", side_effect=fake_run
+        ):
+            result = inspect_tsa_signer_certificate(self.response, now.isoformat().replace("+00:00", "Z"))
+        self.assertEqual(result["tsa_signer_certificate_sha256"], cert.fingerprint(hashes.SHA256()).hex())
+        self.assertIn("cms", calls[1])
+        self.assertIn("-signer", calls[1])
 
 if __name__ == "__main__":
     unittest.main()

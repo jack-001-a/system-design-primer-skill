@@ -4,7 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from scripts.tsa_validation_report import build_validation_report, write_report
+from scripts.tsa_validation_report import build_validation_report as build_report, write_report
 
 class TsaValidationReportTests(unittest.TestCase):
     def setUp(self):
@@ -36,8 +36,42 @@ class TsaValidationReportTests(unittest.TestCase):
             "response_sha256": hashlib.sha256(b"response").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"ocsp roots").hexdigest(),
         }
+        self.timestamp = {
+            "verified": True, "gen_time": self.gen_time,
+            "tsa_signer_certificate_sha256": self.cert,
+            "tsa_signer_valid_at_gen_time": True,
+            "tsa_signer_serial_number": "1234",
+            "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer",
+        }
+        self.timestamp_file_hash = hashlib.sha256(b"timestamp result").hexdigest()
         self.crl_file_hash = hashlib.sha256(b"crl result").hexdigest()
         self.ocsp_file_hash = hashlib.sha256(b"ocsp result").hexdigest()
+    def build_validation_report(self, gen_time, crl_result, crl_result_sha256,
+                                ocsp_result=None, ocsp_result_sha256=None,
+                                responder_revocation_result=None,
+                                responder_revocation_result_sha256=None):
+        return build_report(gen_time, crl_result, crl_result_sha256,
+            ocsp_result, ocsp_result_sha256, responder_revocation_result,
+            responder_revocation_result_sha256, self.timestamp, self.timestamp_file_hash)
+
+    def test_rejects_timestamp_signer_fingerprint_mismatch(self):
+        bad = dict(self.timestamp, tsa_signer_certificate_sha256=hashlib.sha256(b"other").hexdigest())
+        with self.assertRaisesRegex(ValueError, "differs from verified timestamp"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_timestamp_gen_time_mismatch(self):
+        bad = dict(self.timestamp, gen_time="2026-11-19T12:00:01Z")
+        with self.assertRaisesRegex(ValueError, "genTime"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_unverified_timestamp_result(self):
+        bad = dict(self.timestamp, verified=False)
+        with self.assertRaisesRegex(ValueError, "not explicitly verified"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
     def test_crl_alone_produces_historical_assessment(self):
         report = build_validation_report(self.gen_time, self.crl, self.crl_file_hash)
         self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")
