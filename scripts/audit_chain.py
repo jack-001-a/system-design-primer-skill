@@ -17,7 +17,8 @@ def main() -> int:
     seal.add_argument("--input", type=Path, required=True)
     seal.add_argument("--output", type=Path, required=True)
     verify = sub.add_parser("verify", help="Verify an existing hash-chained JSONL file")
-    verify.add_argument("--input", type=Path, required=True)\n    verify.add_argument("--expected-head-hash", help="Optional independently retained head hash")
+    verify.add_argument("--input", type=Path, required=True)
+    verify.add_argument("--expected-head-hash", help="Optional independently retained head hash")
     args = parser.parse_args()
     try:
         if args.command == "seal":
