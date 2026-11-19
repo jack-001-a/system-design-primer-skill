@@ -161,7 +161,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "limitations": [
             "This report does not independently verify the RFC 3161 token or derive genTime; it binds the caller-supplied time to the CRL result.",
             "The CRL result covers the supplied certificate path and CRL only; it does not prove that all applicable revocation sources or trust policies were supplied.",
-            "An OCSP result is current-time evidence only and is never treated as historical status at genTime.",
+            "A current-time OCSP result is never treated as historical status at genTime; only an explicitly historical result with matching time fields can make that claim.",
             "The OCSP verifier does not check a request nonce; nonce_checked is false.",
             "OCSP responder certificate revocation is not assessed: response-signature and responder-path verification do not establish that the responder certificate was not revoked at genTime.",
             "Responder revocation can only be assessed when the OCSP verifier is given a separately pinned signer certificate, proves its ResponderID matches the BasicOCSPResponse, forces OpenSSL to verify using that exact certificate, and a separately pinned issuer CRL result is bound to the same certificate and genTime.",

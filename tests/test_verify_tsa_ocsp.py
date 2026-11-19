@@ -5,6 +5,14 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch, Mock
+from datetime import timedelta
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import Encoding
+from cryptography.x509.oid import NameOID
+from cryptography.x509 import ocsp
+from scripts.verify_tsa_ocsp import bind_responder_certificate
 from scripts.verify_tsa_ocsp import verify_ocsp_response
 
 class TsaOcspTests(unittest.TestCase):
@@ -85,6 +93,54 @@ Next Update: Nov 19 12:05:00 2026 GMT
         with self.assertRaisesRegex(ValueError, "stale"):
             self.run_historical(target)
 
+
+
+    def make_responder_response(self, responder_encoding):
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "OCSP test responder")])
+        now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
+        cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
+                .public_key(key.public_key()).serial_number(x509.random_serial_number())
+                .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=30))
+                .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+                .sign(key, hashes.SHA256()))
+        response = (ocsp.OCSPResponseBuilder()
+            .add_response(cert, cert, hashes.SHA1(), ocsp.OCSPCertStatus.GOOD,
+                          now - timedelta(minutes=1), now + timedelta(minutes=5), None, None)
+            .responder_id(responder_encoding, cert).sign(key, hashes.SHA256()))
+        self.responder.write_bytes(cert.public_bytes(Encoding.PEM))
+        self.response.write_bytes(response.public_bytes(Encoding.DER))
+        return hashlib.sha256(self.responder.read_bytes()).hexdigest()
+
+    def test_responder_id_name_is_bound_to_pinned_certificate(self):
+        digest = self.make_responder_response(ocsp.OCSPResponderEncoding.NAME)
+        cert, actual = bind_responder_certificate(self.response, self.responder, digest)
+        self.assertEqual(actual, digest)
+        self.assertEqual(cert.subject.get_attributes_for_oid(NameOID.COMMON_NAME)[0].value,
+                         "OCSP test responder")
+
+    def test_responder_id_key_hash_is_bound_to_pinned_certificate(self):
+        digest = self.make_responder_response(ocsp.OCSPResponderEncoding.HASH)
+        _, actual = bind_responder_certificate(self.response, self.responder, digest)
+        self.assertEqual(actual, digest)
+
+    def test_responder_id_mismatch_is_rejected(self):
+        digest = self.make_responder_response(ocsp.OCSPResponderEncoding.NAME)
+        other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Different responder")])
+        other = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
+                 .public_key(other_key.public_key()).serial_number(x509.random_serial_number())
+                 .not_valid_before(self.now - timedelta(days=1)).not_valid_after(self.now + timedelta(days=1))
+                 .sign(other_key, hashes.SHA256()))
+        self.responder.write_bytes(other.public_bytes(Encoding.PEM))
+        pin = hashlib.sha256(self.responder.read_bytes()).hexdigest()
+        with self.assertRaisesRegex(ValueError, "does not match OCSP ResponderID"):
+            bind_responder_certificate(self.response, self.responder, pin)
+
+    def test_responder_certificate_pin_is_enforced(self):
+        self.make_responder_response(ocsp.OCSPResponderEncoding.NAME)
+        with self.assertRaisesRegex(ValueError, "pin mismatch"):
+            bind_responder_certificate(self.response, self.responder, "0" * 64)
 
     def test_pinned_responder_certificate_is_forced_as_the_only_signer_candidate(self):
         digest = hashlib.sha256(self.responder.read_bytes()).hexdigest()
