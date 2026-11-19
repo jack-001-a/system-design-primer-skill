@@ -47,7 +47,21 @@ secret manager; never place API keys in command arguments, fixture files, or res
 records. The runner does not transmit data itself: the adapter controls which service
 receives the prompt. Review the adapter code before running it.
 
-After the run, follow the human-review and aggregation steps below.
+After the run, follow the human-review and aggregation steps below. For an integrity-checked
+snapshot, seal the JSONL into a new file (the destination must not already exist):
+
+```bash
+python scripts/audit_chain.py seal --input evals/responses.jsonl --output evals/responses.sealed.jsonl
+python scripts/audit_chain.py verify --input evals/responses.sealed.jsonl
+python scripts/evaluate.py --responses evals/responses.sealed.jsonl --verify-chain
+```
+
+The chain uses versioned SHA-256 over canonical UTF-8 JSON (sorted keys, compact separators)
+and links each record to the previous record hash. Verification detects edits, deletions,
+insertions, and reordering within the sealed file. It is not a digital signature and does not
+prevent an authorized party from rewriting the entire file and recomputing the chain; retain
+the final head hash in an independently controlled system if an external integrity anchor is
+required. Keep sealed snapshots and review annotations under appropriate access controls.
 
 ## Run a reviewed comparison
 
