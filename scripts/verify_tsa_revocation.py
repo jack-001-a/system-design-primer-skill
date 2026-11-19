@@ -257,6 +257,8 @@ def verify_crl_status(
         parsed_crl = load_crl(crl)
         signer_digest = validate_direct_crl_scope(cert, issuer_certs, parsed_crl, instant)
         entry_assessment = assess_crl_entry(cert, parsed_crl, instant)
+        if entry_assessment["status_at_time"] == "revoked":
+            raise ValueError("target certificate is revoked at the historical validation time")
     except (ValueError, x509.DuplicateExtension) as exc:
         raise ValueError("CRL applicability preflight failed: " + str(exc)) from exc
 
