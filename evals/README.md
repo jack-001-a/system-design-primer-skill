@@ -787,3 +787,40 @@ References: [RFC 3161 Section 2.3](https://www.rfc-editor.org/rfc/rfc3161.html#s
 ### End-to-end timestamp-to-revocation identity binding
 
 The unified report now requires the JSON output from `evidence_timestamp.py verify` as `--timestamp-result`. It rejects an unverified timestamp result, a `genTime` mismatch, a signer certificate not established valid at `genTime`, or a TSA signer fingerprint that differs from the certificate fingerprint assessed by the CRL verifier. The timestamp result file digest is retained in the report. This makes the chain explicit: verified RFC 3161 token → actual CMS SignerInfo certificate → historical CRL assessment of that same certificate. The timestamp result remains a verifier output; preserve the original token, trust inputs, verifier version, and result digest in the evidence archive.
+
+
+## TSA validation report attestation
+
+After producing a TSA validation report with independently pinned timestamp/CRL
+(and optional OCSP) result JSON, create a detached Ed25519 attestation:
+
+```bash
+python scripts/tsa_attestation.py sign \
+  --report evals/tsa-validation-report.json \
+  --private-key /secure/path/attester-private.pem \
+  --key-id tsa-attester-2026 \
+  --verifier-bundle-sha256 TRUSTED_VERIFIER_PACKAGE_SHA256 \
+  --verifier-identity system-design-primer-tsa-verifier-release \
+  --output evals/tsa-validation-report.attestation.json
+
+python scripts/tsa_attestation.py verify \
+  --report evals/tsa-validation-report.json \
+  --attestation evals/tsa-validation-report.attestation.json \
+  --trust-store /secure/path/attester-trust-store.json \
+  --trust-store-sha256 TRUST_STORE_SHA256_FROM_INDEPENDENT_CHANNEL
+```
+
+The detached signature binds the exact report bytes, a canonical digest of its
+TSA validation claims, the declared verifier package/source digest, verifier
+identity label, attester key ID, and attestation time. Verification uses the
+existing Trust Store v2 lifecycle policy and requires its SHA-256 pin from an
+independent channel. The envelope never supplies its own trusted public key.
+
+**Important provenance boundary:** the verifier package digest and identity are
+attester-supplied claims; this tool does not establish that those bytes were
+executed, that the runner was isolated, or that the execution environment was
+honest. A valid signature proves only that the trusted key signed this report
+and these declarations. Strong execution provenance requires a separately
+verified CI/build attestation, trusted runner identity, or reproducible-build
+and deployment controls. Keep signing keys outside the repository and retain
+the attestation and trust-store pin independently.
