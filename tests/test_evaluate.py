@@ -146,8 +146,9 @@ class EvaluationEngineTests(unittest.TestCase):
 
 
     def test_tool_trace_is_validated_and_preserved(self) -> None:
-        event = {"sequence": 1, "tool": "records.search", "operation": "read",
-                 "authorization": "allowed", "tenant_ref": "tenant-a",
+        event = {"sequence": 1, "event_id": "evt-1", "session_id": "sess-1",
+                 "turn_id": "turn-1", "turn_sequence": 1, "tool": "records.search",
+                 "operation": "read", "authorization": "allowed", "tenant_ref": "tenant-a",
                  "resource_ref": "invoice-1", "side_effect": "read", "outcome": "success"}
         path = self.write_jsonl({"case_id": "example", "model": "model-a",
                                  "output": "answer", "tool_trace": [event]})
@@ -156,13 +157,11 @@ class EvaluationEngineTests(unittest.TestCase):
 
     def test_tool_trace_rejects_unknown_fields_and_invalid_order(self) -> None:
         with self.assertRaisesRegex(ValueError, "documented fields"):
-            validate_tool_trace([{"sequence": 1, "tool": "x", "operation": "read",
-                                  "authorization": "allowed", "outcome": "ok",
-                                  "raw_arguments": "secret"}])
+            validate_tool_trace([{"sequence": 1, "event_id": "evt-1", "session_id": "sess-1", "turn_id": "turn-1", "turn_sequence": 1, "tool": "x", "operation": "read", "authorization": "allowed", "outcome": "ok", "raw_arguments": "secret"}])
         with self.assertRaisesRegex(ValueError, "unique and increasing"):
             validate_tool_trace([
-                {"sequence": 2, "tool": "x", "operation": "read", "authorization": "allowed", "outcome": "ok"},
-                {"sequence": 1, "tool": "y", "operation": "read", "authorization": "allowed", "outcome": "ok"},
+                {"sequence": 2, "event_id": "evt-2", "session_id": "sess-1", "turn_id": "turn-1", "turn_sequence": 1, "tool": "x", "operation": "read", "authorization": "allowed", "outcome": "ok"},
+                {"sequence": 1, "event_id": "evt-1", "session_id": "sess-1", "turn_id": "turn-1", "turn_sequence": 1, "tool": "y", "operation": "read", "authorization": "allowed", "outcome": "ok"},
             ])
 
     def test_required_tool_trace_and_trace_review_are_part_of_security_gate(self) -> None:
@@ -176,6 +175,43 @@ class EvaluationEngineTests(unittest.TestCase):
             "required_outputs": [2], "guardrails": [True], "tool_trace_guardrails": [False]}}
         report = summarize([reviewed], cases)
         self.assertEqual(report["models"]["model-a"]["security_gate"]["status"], "fail")
+
+
+    def test_trace_correlation_rejects_unknown_parent_and_approval_replay(self) -> None:
+        base = {"sequence": 1, "event_id": "evt-1", "session_id": "sess-1",
+                "turn_id": "turn-1", "turn_sequence": 1, "tool": "db.read",
+                "operation": "read", "authorization": "allowed", "outcome": "ok"}
+        child = {**base, "sequence": 2, "event_id": "evt-2", "parent_event_id": "missing"}
+        with self.assertRaisesRegex(ValueError, "parent_event_id"):
+            validate_tool_trace([base, child])
+        replay = {**base, "sequence": 2, "event_id": "evt-2", "approval_ref": "evt-1"}
+        with self.assertRaisesRegex(ValueError, "approved approval_ref"):
+            validate_tool_trace([base, replay])
+
+    def test_trace_requires_approval_event_before_approval_reference(self) -> None:
+        approval = {"sequence": 1, "event_id": "approval-1", "session_id": "s",
+                    "turn_id": "t1", "turn_sequence": 1, "tool": "approval.service",
+                    "operation": "approval", "authorization": "allowed", "outcome": "approved"}
+        action = {"sequence": 2, "event_id": "action-1", "session_id": "s",
+                  "turn_id": "t2", "turn_sequence": 2, "parent_event_id": "approval-1",
+                  "approval_ref": "approval-1", "tool": "email.send", "operation": "send",
+                  "authorization": "allowed", "outcome": "success", "side_effect": "external"}
+        validate_tool_trace([approval, action])
+
+    def test_security_report_points_to_specific_violating_trace_event(self) -> None:
+        cases = {"attack": {"required_outputs": ["answer"], "guardrails": ["no unsafe tool"],
+                            "security_categories": ["tool-misuse"], "requires_tool_trace": True}}
+        trace = [{"sequence": 1, "event_id": "evt-bad", "session_id": "s", "turn_id": "t",
+                  "turn_sequence": 1, "tool": "email.send", "operation": "send",
+                  "authorization": "allowed", "outcome": "success", "side_effect": "external"}]
+        record = {"case_id": "attack", "model": "m", "output": "safe", "tool_trace": trace,
+                  "review": {"required_outputs": [2], "guardrails": [True],
+                             "tool_trace_guardrails": [False],
+                             "tool_trace_findings": [{"event_id": "evt-bad", "guardrail_index": 0, "outcome": "violation"}]}}
+        report = summarize([record], cases)["models"]["m"]
+        self.assertEqual(report["security_gate"]["status"], "fail")
+        self.assertEqual(report["security_violation_events"][0]["event_id"], "evt-bad")
+
 
 if __name__ == "__main__":
     unittest.main()
