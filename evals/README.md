@@ -304,3 +304,21 @@ readable but are marked `unattested`; unreviewed responses are marked `unreviewe
 Reviewer IDs are asserted metadata, not authenticated identities. Use an authenticated
 review service and independently anchored audit-chain head when identity and
 non-repudiation matter. Do not edit earlier events; append a new event when a review changes.
+
+## Independent review panels and adjudication
+
+A response may include `review_submissions` with at least two independently attributed
+submissions. Each submission has a unique `submission_id`, distinct `reviewer_id`,
+timezone-aware `submitted_at`, `rubric_version`, and a complete `review` object. The
+aggregator compares every required-output score and guardrail independently and reports
+the values and disagreement status for each criterion. Distinct reviewer IDs are caller-
+asserted identifiers, not proof of separate human identities.
+
+An optional top-level `adjudication` records `adjudicator_id`, timezone-aware `decided_at`,
+a non-empty `rationale`, the exact `based_on_submission_ids`, and a validated final `review`.
+The adjudication must reference existing submissions. It is stored separately in the
+report's review panel and never replaces or edits the original submissions or the response's
+existing `review` field. A disputed panel without adjudication remains `disputed`; an
+adjudicated panel is labeled `adjudicated`, while the underlying disagreement remains
+visible. The existing `review` remains the input to legacy aggregate scoring; the adjudication
+is provenance evidence until an explicit downstream policy chooses to consume it.
