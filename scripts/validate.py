@@ -212,6 +212,15 @@ def validate(root: Path) -> list[str]:
             if (refs_dir / filename).stat().st_size == 0:
                 errors.append(f"empty reference file: references/{filename}")
 
+        routing_file = refs_dir / "69-task-routing-and-evidence.md"
+        if routing_file.is_file():
+            routing_text = routing_file.read_text(encoding="utf-8")
+            routed_refs = set(re.findall(r"`(\\d{2}-[a-z0-9-]+\\.md)`", routing_text))
+            for filename in sorted(routed_refs - actual_refs):
+                errors.append(
+                    f"task routing index references a missing file: references/{filename}"
+                )
+
     templates_dir = root / "templates"
     if templates_dir.is_dir():
         actual_templates = {p.name for p in templates_dir.glob("*.md")}
