@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.3.0 — 2026-11-19
+
+- Add native DeepSeek Harness (DSH) installation targets for project and user scopes.
+- Document DSH's `.dsh/skills` discovery path and compatibility with the existing Agent Skill bundle format.
+- Include DeepSeek Harness in the supported-host matrix and installer tests.
+
 ## 1.2.0 — 2026-11-18
 
 - Pin GitHub Actions to verified immutable commit SHAs and add weekly Dependabot updates.
