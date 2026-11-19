@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "2.0.0"
+  version: "2.1.0"
   language: "en"
 ---
 
@@ -281,6 +281,31 @@ Map assets, actors, entry points, data flows, trust boundaries, and control plan
 ### Privacy engineering and data governance
 Trace sensitive data through collection, processing, derived data, logs, analytics, replicas, indexes, and backups. Define purpose, minimization, access, retention, deletion propagation, residency, lineage, and accountable ownership. Obtain qualified legal review for jurisdiction-specific obligations. See `references/54-privacy-engineering-and-data-governance.md` and `templates/privacy-data-governance-template.md`.
 
+## Observability, performance, and resilience workflows
+
+Use these workflows when operating production systems, investigating latency or saturation, validating capacity, or testing resilience. Prefer user-visible SLIs and measured evidence over infrastructure-only indicators.
+
+### OpenTelemetry and instrumentation
+Design signal coverage, resource attributes, semantic conventions, context propagation, Collector topology, batching, retries, sampling, redaction, retention, and telemetry cost. Treat telemetry pipelines as production dependencies and monitor data loss independently. See references/55-opentelemetry-and-instrumentation.md and templates/observability-architecture-template.md.
+
+### Distributed tracing and context propagation
+Trace causal paths across HTTP/RPC, queues, workflows, and fan-out/fan-in. Distinguish end-to-end wall time from summed span durations; account for sampling, clock skew, missing spans, and trust boundaries. Baggage is untrusted metadata, never authorization. See references/56-distributed-tracing-and-context-propagation.md.
+
+### Continuous profiling and performance diagnostics
+Use CPU, heap/allocation, wall-clock, lock, and runtime profiles to test explicit hypotheses. Compare equivalent workloads and correlate profiles with traces, saturation, and tail latency. Include profiler overhead, symbolization, and profile-data access controls. See references/57-continuous-profiling-and-performance-diagnostics.md.
+
+### Load, stress, soak, and workload modeling
+Model arrival rates, concurrency, request mix, data shape, tenant skew, cache state, and background work. Distinguish open and closed workloads; account for coordinated omission. Define generator validation, production authorization, hard limits, abort thresholds, and cleanup. See references/58-load-stress-soak-testing-and-workload-modeling.md and templates/performance-test-plan-template.md.
+
+### Capacity planning and performance modeling
+Use measured demand, Little's Law, CPU-seconds/request, connection occupancy, queue stability, storage growth, and network load. Model N+1 failure capacity, scaling delay, retry amplification, and low/base/high scenarios. Do not translate benchmark peaks directly into production capacity. See references/59-capacity-planning-and-performance-modeling.md.
+
+### Chaos engineering and resilience experiments
+Start with a falsifiable hypothesis and user-visible steady state. Bound scope, blast radius, duration, and fault intensity; require authorization, independent abort monitoring, and a kill switch. Validate data integrity, detection, containment, recovery, and reconciliation. See references/60-chaos-engineering-and-resilience-experiments.md and templates/chaos-experiment-template.md.
+
+### Incident management and postmortems
+Define severity by user impact, incident roles, escalation, communication, actionable alerts, and safe runbooks. Stabilize before deep diagnosis; verify recovery with user-facing signals and data reconciliation. Use blameless, evidence-based postmortems with owned, dated, effectiveness-tested actions. See references/61-incident-management-and-postmortems.md and templates/incident-postmortem-template.md.
+
 ## Progressive reference loading
 
 - Requirements and estimation: `references/01-requirements-and-capacity.md`
@@ -332,7 +357,7 @@ Trace sensitive data through collection, processing, derived data, logs, analyti
 - Threat modeling, STRIDE, and attack trees: `references/53-threat-modeling-stride-and-attack-trees.md`
 - Privacy engineering and data governance: `references/54-privacy-engineering-and-data-governance.md`
 
-When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, cloud cost modeling, event streaming, event sourcing/CQRS, CDC/data pipelines, API and real-time systems, identity and access architecture, threat modeling, supply chain security, and privacy governance.
+When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, cloud cost modeling, event streaming, event sourcing/CQRS, CDC/data pipelines, API and real-time systems, identity and access architecture, threat modeling, supply chain security, and privacy governance, observability architecture, performance testing, chaos experiments, and incident postmortems.
 
 ## Tools, evidence, and untrusted-input boundaries
 
