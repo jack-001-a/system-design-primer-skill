@@ -229,6 +229,33 @@ Choose a queue, scheduler, state machine, or durable workflow engine based on pr
 
 Define event ownership, semantic meaning, schema identity, compatibility policy, subject lifecycle, authorization, PII classification, and consumer inventory. Use expand-migrate-contract and test both structural compatibility and semantic behavior. A schema registry is not a substitute for data governance or consumer contract tests. See `references/33-schema-registry-and-event-governance.md`.
 
+## API, gateway, and real-time architecture workflows
+
+Choose protocols and infrastructure from consumer constraints, correctness needs, and measured load—not fashion.
+
+### API gateway and edge
+Define edge-versus-service responsibilities, trusted proxy chains, routing, TLS, request limits, deadlines, retry budgets, canary rollout, and gateway failure behavior. Keep object-level authorization and business invariants in trusted services. See `references/41-api-gateway-and-edge-architecture.md`.
+
+### REST API design and lifecycle
+Specify resource semantics, pagination, conditional updates, idempotency-key behavior, error contracts, compatibility, deprecation, and consumer contract tests. Treat client timeouts as unknown outcomes, not proof that writes failed. See `references/42-rest-api-design-and-lifecycle.md`.
+
+### GraphQL architecture
+Bound query depth, complexity, aliases, resolver fan-out, and response size. Define field ownership, federation contracts, per-field authorization, tenant-safe caching, and schema composition gates. See `references/43-graphql-architecture-and-governance.md`.
+
+### gRPC and typed service contracts
+Define Protobuf compatibility, reserved field numbers, deadlines, cancellation, retry semantics, message limits, streaming flow control, and workload identity. Test mixed-version deployments and stream interruption. See `references/44-grpc-and-service-contracts.md`.
+
+### WebSocket, SSE, and real-time delivery
+Choose request/response, SSE, WebSocket, or gRPC streaming from directionality and delivery needs. Model connection lifecycle, reconnect, backpressure, slow consumers, fan-out, event cursors, and regional failure. Treat live delivery as best-effort unless durable replay or acknowledgements provide stronger semantics. See `references/45-websocket-sse-and-realtime-systems.md`.
+
+### Real-time collaboration
+Choose centralized sequencing, Operational Transformation, or CRDT from offline and concurrency semantics. Define convergence, revisioning, idempotency, metadata compaction, authorization, and persistence boundaries. Test randomized concurrent operations and partitions. See `references/46-realtime-collaboration-ot-crdt.md` and `templates/realtime-system-design-template.md`.
+
+### API security, rate limits, and abuse prevention
+Threat-model object/function authorization failures, enumeration, replay, credential abuse, resource exhaustion, and tenant escape. Design multi-dimensional quotas, burst/concurrency budgets, distributed limiter failure modes, load shedding, and operational overrides. See `references/47-api-security-rate-limiting-and-abuse.md` and `templates/api-security-and-rate-limit-review-template.md`.
+
+For API designs, use `templates/api-architecture-design-template.md`. Compare REST, GraphQL, gRPC, and asynchronous messaging against actual client and operational constraints; do not prescribe one protocol universally.
+
 ## Progressive reference loading
 
 - Requirements and estimation: `references/01-requirements-and-capacity.md`
@@ -265,6 +292,13 @@ Define event ownership, semantic meaning, schema identity, compatibility policy,
 - Data lakehouse and stream/batch processing: `references/31-data-lakehouse-and-stream-batch.md`
 - Durable workflow orchestration: `references/32-workflow-orchestration-and-temporal.md`
 - Schema registry and event governance: `references/33-schema-registry-and-event-governance.md`
+- API gateway and edge architecture: `references/41-api-gateway-and-edge-architecture.md`
+- REST API design and lifecycle: `references/42-rest-api-design-and-lifecycle.md`
+- GraphQL architecture and governance: `references/43-graphql-architecture-and-governance.md`
+- gRPC and service contracts: `references/44-grpc-and-service-contracts.md`
+- WebSocket, SSE, and real-time systems: `references/45-websocket-sse-and-realtime-systems.md`
+- Real-time collaboration, OT, and CRDT: `references/46-realtime-collaboration-ot-crdt.md`
+- API security, rate limiting, and abuse: `references/47-api-security-rate-limiting-and-abuse.md`
 
 When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, cloud cost modeling, event streaming, event sourcing/CQRS, and CDC/data pipelines.
 
