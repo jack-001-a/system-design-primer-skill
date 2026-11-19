@@ -1,7 +1,10 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Any
-from .reviewer_calibration import pairwise_agreement
+try:
+    from .reviewer_calibration import pairwise_agreement
+except ImportError:  # Direct execution via evaluate.py
+    from reviewer_calibration import pairwise_agreement
 
 def _aware(value: Any, field: str) -> None:
     if not isinstance(value, str) or not value.strip():
