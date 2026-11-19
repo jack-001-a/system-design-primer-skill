@@ -47,23 +47,81 @@ def pairwise_agreement(submissions: list[dict[str, Any]], case: dict[str, Any]) 
 
 def aggregate_reviewer_calibration(panels: list[dict[str, Any]]) -> dict[str, Any]:
     """Aggregate per-reviewer-pair categorical observations across independently reviewed cases."""
-    buckets: dict[tuple[str, str, str, int], list[tuple[int | bool, int | bool]]] = {}
+    buckets: dict[tuple[str, str, str, str, str], list[tuple[int | bool, int | bool]]] = {}
     for panel in panels:
         submissions = panel["submissions"]
         for left, right in combinations(submissions, 2):
+            if left.get("rubric_version") != right.get("rubric_version"):
+                continue
             pair = tuple(sorted((left["reviewer_id"], right["reviewer_id"])))
+            rubric = left["rubric_version"]
             for key in ("required_outputs", "guardrails"):
                 for index in range(len(left["review"][key])):
-                    bucket = (pair[0], pair[1], key, index)
+                    label = panel.get("case", {}).get(key, [])[index] if panel.get("case") else str(index)
+                    bucket = (rubric, pair[0], pair[1], key, label)
                     buckets.setdefault(bucket, []).append((left["review"][key][index], right["review"][key][index]))
     results = []
-    for (a_id, b_id, key, index), values in sorted(buckets.items()):
+    for (rubric, a_id, b_id, key, label), values in sorted(buckets.items()):
         categories = [0, 1, 2] if key == "required_outputs" else [False, True]
         metric = _cohen_kappa([v[0] for v in values], [v[1] for v in values],
                               categories, quadratic=(key == "required_outputs"))
-        results.append({"reviewer_ids": [a_id, b_id], "criterion_type": key,
-                        "criterion_index": index, **metric})
+        results.append({"rubric_version": rubric, "reviewer_ids": [a_id, b_id], "criterion_type": key,
+                        "criterion": label, **metric})
     return {"method": "pairwise_cohen_kappa", "minimum_observations": 2,
             "results": results,
             "low_agreement_pairs": [item for item in results if item["observations"] >= 2
                                      and item["kappa"] is not None and item["kappa"] < 0.6]}
+
+def summarize_reviewer_behavior(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]],
+                                min_cases: int = 3) -> dict[str, Any]:
+    """Describe reviewer scoring tendencies; never normalize or mutate model scores."""
+    observations: dict[tuple[str, str, str], list[tuple[str, str, float]]] = {}
+    reviewer_cases: dict[tuple[str, str], set[str]] = {}
+    panel_lookup: list[dict[str, Any]] = []
+    for record in records:
+        panel = record.get("review_panel")
+        if not panel:
+            continue
+        case_id = record["case_id"]
+        case = cases[case_id]
+        for submission in panel.get("submissions", []):
+            reviewer = submission["reviewer_id"]
+            rubric = submission["rubric_version"]
+            reviewer_cases.setdefault((rubric, reviewer), set()).add(case_id)
+            review = submission["review"]
+            for index, score in enumerate(review["required_outputs"]):
+                observations.setdefault((rubric, "required_outputs", case["required_outputs"][index]), []).append((reviewer, case_id + "|" + record["model"], float(score)))
+            for index, passed in enumerate(review["guardrails"]):
+                observations.setdefault((rubric, "guardrails", case["guardrails"][index]), []).append((reviewer, case_id + "|" + record["model"], 1.0 if passed else 0.0))
+        panel_lookup.append({"case_id": case_id, "rubric_version": sorted({s["rubric_version"] for s in panel.get("submissions", [])}),
+                             "reviewer_ids": [s["reviewer_id"] for s in panel.get("submissions", [])],
+                             "disagreement_count": panel.get("disagreement_count", 0),
+                             "status": panel.get("status")})
+    reviewer_rows = []
+    for (rubric, reviewer), case_ids in sorted(reviewer_cases.items()):
+        row: dict[str, Any] = {"rubric_version": rubric, "reviewer_id": reviewer,
+                               "reviewed_case_count": len(case_ids),
+                               "sample_status": "sufficient" if len(case_ids) >= min_cases else "insufficient_sample",
+                               "minimum_cases": min_cases, "criterion_tendencies": []}
+        for (r_version, kind, criterion), values in sorted(observations.items()):
+            if r_version != rubric:
+                continue
+            own = [value for who, _, value in values if who == reviewer]
+            own_case_keys = {case_key for who, case_key, _ in values if who == reviewer}
+            peers = [value for who, case_key, value in values if who != reviewer and case_key in own_case_keys]
+            if not own:
+                continue
+            mean = sum(own) / len(own)
+            peer_mean = sum(peers) / len(peers) if peers else None
+            row["criterion_tendencies"].append({"criterion_type": kind, "criterion": criterion,
+                "observation_count": len(own), "mean_score_or_pass_rate": round(mean, 4),
+                "peer_mean": round(peer_mean, 4) if peer_mean is not None else None,
+                "descriptive_delta": round(mean - peer_mean, 4) if peer_mean is not None else None,
+                "interpretation": "higher_than_peers" if peer_mean is not None and mean > peer_mean else ("lower_than_peers" if peer_mean is not None and mean < peer_mean else "not_comparable")})
+        reviewer_rows.append(row)
+    return {"status": "descriptive_only", "minimum_cases": min_cases,
+            "reviewers": reviewer_rows, "panels": panel_lookup,
+            "limitations": ["Reviewer IDs are caller-declared, not authenticated.",
+                            "Deltas are descriptive and are not bias-corrected scores.",
+                            "Small samples are flagged; confidence intervals are not estimated.",
+                            "Comparisons are isolated by rubric version, criterion label, and shared case/model observations."]}

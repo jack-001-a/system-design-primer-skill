@@ -334,3 +334,22 @@ meaningful kappa inference. Degenerate expected agreement yields a null kappa ra
 an invented value. The helper reports low-agreement reviewer/criterion pairs below 0.60
 only when at least two observations exist; treat this as a review-queue signal, not an
 automatic judgment of reviewer competence. Reviewer IDs remain caller-declared metadata.
+
+## Cross-case reviewer calibration and re-review queue
+
+The evaluation report exposes three separate top-level sections: `reviewer_calibration`,
+`reviewer_behavior`, and `re_review_queue`. Pairwise Cohen's kappa is aggregated only
+within the same rubric version and criterion label. Quadratic-weighted kappa is used for
+ordinal required-output scores; ordinary Cohen's kappa is used for binary guardrails.
+Panels with mixed rubric versions are rejected before comparison.
+
+`reviewer_behavior` reports each reviewer's case count, sample sufficiency (default minimum
+three cases), per-criterion mean score/pass rate, and a descriptive delta against other
+reviewers who assessed the same case/model observations. Positive/negative deltas indicate
+higher/lower scores or pass rates, not proven leniency or severity. No score is normalized,
+corrected, or changed. Small samples are flagged and no confidence interval is claimed.
+
+`re_review_queue` includes disputed panels and panels involving reviewer pairs with a
+historically low, estimable agreement coefficient. It is a triage aid only; it does not
+automatically adjudicate reviews or change model scores. Caller-supplied reviewer IDs are
+not authenticated.

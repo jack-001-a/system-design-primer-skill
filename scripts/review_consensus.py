@@ -32,6 +32,8 @@ def validate_review_panel(submissions: Any, adjudication: Any, case: dict[str, A
                 raise ValueError(prefix + f"review_submissions entry {index} requires {field}")
         if item["submission_id"] in ids:
             raise ValueError(prefix + "duplicate review submission_id")
+        if normalized and item["rubric_version"] != normalized[0]["rubric_version"]:
+            raise ValueError(prefix + "review panel submissions must use the same rubric_version")
         if item["reviewer_id"] in reviewers:
             raise ValueError(prefix + "independent reviews must have distinct reviewer_id values")
         _aware(item["submitted_at"], f"review_submissions entry {index} submitted_at")

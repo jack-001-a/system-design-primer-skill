@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.evaluate import load_cases, read_responses, summarize, validate_tool_trace, validate_review
+from scripts.evaluate import load_cases, read_responses, summarize, validate_tool_trace, validate_review, validate_review
 
 
 class EvaluationEngineTests(unittest.TestCase):
@@ -319,6 +319,35 @@ class EvaluationEngineTests(unittest.TestCase):
         self.assertIn("quadratic_weighted_kappa", output_metric)
         self.assertNotIn("quadratic_weighted_kappa", guard_metric)
         self.assertEqual(output_metric["observations"], 3)
+
+    def test_reviewer_behavior_uses_shared_cases_and_keeps_scores_unchanged(self) -> None:
+        from scripts.reviewer_calibration import summarize_reviewer_behavior
+        case = {"required_outputs": ["correctness"], "guardrails": ["safe"]}
+        records = []
+        for case_id, a, b in (("c1", 2, 1), ("c2", 2, 1), ("c3", 1, 1)):
+            records.append({"case_id": case_id, "model": "m", "review_panel": {
+                "status": "disputed", "disagreement_count": int(a != b), "submissions": [
+                    {"reviewer_id": "r-a", "rubric_version": "v1", "review": {"required_outputs": [a], "guardrails": [True]}},
+                    {"reviewer_id": "r-b", "rubric_version": "v1", "review": {"required_outputs": [b], "guardrails": [True]}}
+                ]}})
+        result = summarize_reviewer_behavior(records, {key: case for key in ("c1", "c2", "c3")})
+        reviewer = next(item for item in result["reviewers"] if item["reviewer_id"] == "r-a")
+        self.assertEqual(reviewer["sample_status"], "sufficient")
+        tendency = next(item for item in reviewer["criterion_tendencies"] if item["criterion_type"] == "required_outputs")
+        self.assertAlmostEqual(tendency["descriptive_delta"], 2/3)
+        self.assertEqual(records[0]["review_panel"]["submissions"][0]["review"]["required_outputs"], [2])
+
+    def test_review_panel_rejects_mixed_rubric_versions(self) -> None:
+        from scripts.review_consensus import validate_review_panel
+        case = {"required_outputs": ["correctness"], "guardrails": ["safe"]}
+        review = {"required_outputs": [2], "guardrails": [True]}
+        submissions = [
+            {"submission_id": "a", "reviewer_id": "r-a", "submitted_at": "2026-11-19T10:00:00Z", "rubric_version": "v1", "review": review},
+            {"submission_id": "b", "reviewer_id": "r-b", "submitted_at": "2026-11-19T10:01:00Z", "rubric_version": "v2", "review": review}
+        ]
+        with self.assertRaisesRegex(ValueError, "same rubric_version"):
+            validate_review_panel(submissions, None, case, validate_review)
+
 
 if __name__ == "__main__":
     unittest.main()

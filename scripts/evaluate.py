@@ -11,6 +11,7 @@ import hashlib
 import json
 import re
 import sys
+from itertools import combinations
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
@@ -19,10 +20,12 @@ try:
     from .run_manifest import load_verified_manifest
     from .review_provenance import validate_review_history
     from .review_consensus import validate_review_panel
+    from .reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior
 except ImportError:  # Direct execution: python scripts/evaluate.py
     from run_manifest import load_verified_manifest
     from review_provenance import validate_review_history
     from review_consensus import validate_review_panel
+    from reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior
 
 
 AUDIT_CHAIN_VERSION = 1
@@ -289,6 +292,22 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             "unreviewed_case_ids": sorted(item["case_id"] for item in items if item["review"] is None),
             "case_results": case_results,
         }
+    calibration_panels = [{"submissions": item["review_panel"]["submissions"]} for item in records if item.get("review_panel")]
+    report_reviewer_metrics = aggregate_reviewer_calibration(calibration_panels)
+    reviewer_behavior = summarize_reviewer_behavior(records, cases)
+    low_pairs = {tuple(item["reviewer_ids"]) for item in report_reviewer_metrics["low_agreement_pairs"]}
+    re_review_queue = []
+    for record in records:
+        panel = record.get("review_panel")
+        if not panel:
+            continue
+        reviewers = panel.get("submissions", [])
+        pair_ids = {tuple(sorted((a["reviewer_id"], b["reviewer_id"]))) for a, b in combinations(reviewers, 2)}
+        flagged_pairs = sorted([list(pair) for pair in pair_ids if pair in low_pairs])
+        if panel.get("status") == "disputed" or flagged_pairs:
+            re_review_queue.append({"case_id": record["case_id"], "model": record["model"],
+                                    "reason": "panel_disagreement" if panel.get("status") == "disputed" else "low_historical_reviewer_agreement",
+                                    "reviewer_pairs": flagged_pairs})
     all_security_categories = sorted({
         category
         for case in cases.values()
@@ -349,6 +368,9 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             "tool permissions, prompt/configuration fingerprints, review rubric, and reviewer "
             "calibration are held constant."
         ),
+        "reviewer_calibration": report_reviewer_metrics,
+        "reviewer_behavior": reviewer_behavior,
+        "re_review_queue": re_review_queue,
         "models": models,
     }
 
