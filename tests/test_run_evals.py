@@ -39,7 +39,29 @@ class ModelRunnerTests(unittest.TestCase):
         self.assertEqual(output, "sample:provider/model-v1")
         self.assertGreaterEqual(elapsed, 0)
 
-    def test_does_not_disclose_scoring_rubric_to_model(self) -> None:
+    def test_manifest_loader_verifies_before_response_binding(self) -> None:
+        from scripts.run_manifest import load_verified_manifest, seal_manifest
+        manifest = {
+            "schema_version": 1,
+            "run": {"run_id": "run-bound", "created_at": "2026-11-19T10:00:00Z", "code_revision": None},
+            "configuration": {
+                "model": {"provider": "provider", "name": "model", "revision": None},
+                "system_prompt_sha256": None, "dataset_sha256": None,
+                "evaluator_version": "2", "tool_permission_profile": "readonly",
+                "rubric_version": "v1", "adapter_version": "v1",
+                "run_config": {}, "runtime": {"python": "3"},
+            },
+        }
+        path = self.root / "manifest.json"
+        path.write_text(json.dumps(seal_manifest(manifest)), encoding="utf-8")
+        loaded = load_verified_manifest(path)
+        self.assertEqual(loaded["run"]["run_id"], "run-bound")
+        loaded["configuration"]["tool_permission_profile"] = "mutated"
+        path.write_text(json.dumps(loaded), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "fingerprint mismatch"):
+            load_verified_manifest(path)
+
+    def test_does_not_disclose_scoring_rubric_to_model(self) -> None
         source = "import json,sys\nrequest=json.load(sys.stdin)\nprint(json.dumps({'output': json.dumps(request, sort_keys=True)}))\n"
         adapter = self.adapter(source)
         output, _, _ = invoke_adapter(adapter, [], self.case, "model", 5)
