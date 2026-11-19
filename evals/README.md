@@ -592,3 +592,21 @@ python scripts/evidence_signing.py verify --report evals/report.json --signature
 The detached envelope signs a domain-separated tuple of schema version, algorithm, key ID, UTC signing timestamp, and evidence root. Verification checks the full Merkle report before checking the root binding and Ed25519 signature. A key whose trust-store status is not `active` is rejected. For rotation, provision the new public key under a new key ID before using it; retain historical public keys while they remain trusted, and mark compromised keys revoked. Protect and distribute the trust store through a separate trusted channel.
 
 The timestamp is a signer assertion, not a trusted timestamp. Use an external timestamp authority when independently verifiable time evidence is required. Private-key bytes are never embedded in the report, signature envelope, CLI output, or repository; protect key storage, backups, access, and rotation outside this project.
+
+## Historical signature validity and trust-store pinning
+
+Trust Store schema v2 requires each key to declare `status` (`active`, `revoked`, or `disabled`), UTC `not_before`, UTC `not_after`, and nullable UTC `revoked_at`, in addition to its public key. Signatures outside the key validity interval are rejected. A signature created before the effective revocation timestamp can remain historically cryptographically valid even after the key is revoked; the verifier reports `historically_valid` separately from `currently_authorized`. A signature at or after `revoked_at` is rejected. Expired or disabled keys can therefore validate old signatures without authorizing new signing today.
+
+Pin the Trust Store bytes through an independently trusted channel. Compute its digest after provisioning:
+
+```bash
+sha256sum trusted-keys.json
+```
+
+Pass that independently recorded digest during verification:
+
+```bash
+python scripts/evidence_signing.py verify --report evals/report.json --signature evals/report.signature.json --trust-store trusted-keys.json --trust-store-sha256 EXPECTED_64_HEX_DIGEST
+```
+
+The digest pin detects Trust Store replacement only when the expected digest is obtained independently; a digest stored beside the Trust Store provides no authenticity by itself. Update the pin through a separately authenticated key-management process during rotation. The verifier does not infer a trusted historical revocation time from the current local clock: `revoked_at` is an administrator assertion in the pinned trust policy. For high-assurance historical time claims, use an independently verifiable TSA token and preserve it with the signature.
