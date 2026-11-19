@@ -629,3 +629,20 @@ python scripts/evidence_timestamp.py verify --signature evals/report.signature.j
 Verification pins the exact TSA CA bundle bytes using a digest obtained independently, checks that the request's SHA-256 message imprint matches the supplied Ed25519 signature, and delegates RFC 3161/CMS token, request nonce, and TSA certificate-chain verification to OpenSSL. Preserve the request, response token, CA bundle, any intermediate certificates, and the independently recorded CA digest together in controlled archival storage. A valid token proves that the TSA attested to possession of the signature bytes no later than its stated `genTime`; it does not prove the report's truth or the signer's identity.
 
 This helper does not fetch CRLs/OCSP responses, establish historical certificate status indefinitely, or guarantee future algorithm strength. For long-term validation, archive applicable TSA certificate-chain and revocation evidence at issuance, record the TSA policy and trust-anchor provenance, and periodically renew evidence before cryptographic algorithms or certificates become obsolete. OpenSSL CLI behavior and certificate policy are part of the verifier's trusted computing base; use a maintained OpenSSL release and an independently governed TSA trust policy.
+
+
+## Offline TSA validation-evidence archive
+
+Use `scripts/evidence_archive.py` to create a byte-integrity inventory of the evidence retained for later TSA validation. Keep the archive directory limited to the exact files being inventoried. Include the RFC 3161 request and response, TSA signer/intermediate certificates, the pinned trust anchor, and the CRL/OCSP responses or policy documents collected at validation time.
+
+```bash
+python scripts/evidence_archive.py create --evidence-dir evidence-archive \
+  --output evidence-archive-manifest.json --captured-at 2026-11-19T12:00:00Z
+sha256sum evidence-archive-manifest.json
+python scripts/evidence_archive.py verify --evidence-dir evidence-archive \
+  --manifest evidence-archive-manifest.json --manifest-sha256 INDEPENDENTLY_RECORDED_SHA256
+```
+
+The manifest records each relative path, byte length, and SHA-256 digest. Verification rejects path traversal, symlinks, missing/modified files, unlisted files, duplicate entries, and a manifest whose independently supplied digest does not match. Preserve the manifest digest through a separate trusted channel. The manifest timestamp is an operator-supplied collection time, not a trusted timestamp.
+
+**Important limitation:** this utility verifies archive byte integrity only. It does not parse or validate CRL signatures, OCSP BasicResponse signatures, responder authorization, thisUpdate/nextUpdate, certificate status at the TSA genTime, or certificate path policy. Do not treat an archived CRL/OCSP file as proof of valid historical revocation status until a dedicated PKI verifier checks its signatures, issuer/responder chain, scope, freshness, and applicability to the TSA certificate. Retain the original DER/PEM objects and their provenance; do not rely on filenames or self-declared metadata.
