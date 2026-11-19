@@ -155,7 +155,8 @@ def comparative_analysis(records: list[dict[str, Any]], cases: dict[str, dict[st
         "status": "paired_descriptive_and_inferential_analysis",
         "minimum_paired_cases": MIN_PAIRED_CASES,
         "practical_effect_threshold_absolute": PRACTICAL_EFFECT_THRESHOLD,
-        "model_coverage": coverage, "comparisons": comparisons,\n        "robustness_analysis": robustness_analysis(records, cases),
+        "model_coverage": coverage, "comparisons": comparisons,
+        "robustness_analysis": robustness_analysis(records, cases),
         "limitations": [
             "Comparisons use only cases reviewed for both models; unequal coverage can create selection bias.",
             "Case weights and strata are caller-supplied design metadata, not inferred corrections.",
