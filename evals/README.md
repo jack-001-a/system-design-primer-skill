@@ -697,6 +697,7 @@ After verifying the RFC 3161 token and extracting its signed `genTime`, run the 
 ```bash
 python scripts/tsa_validation_report.py \
   --gen-time 2026-11-19T12:00:00Z \
+  --timestamp-result verified-timestamp-result.json \
   --crl-result tsa-crl-result.json \
   --ocsp-result tsa-ocsp-result.json \
   --ocsp-responder-revocation-result tsa-ocsp-responder-crl-result.json \
