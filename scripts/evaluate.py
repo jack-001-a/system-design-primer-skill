@@ -90,13 +90,32 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
         output_max = 2 * sum(len(cases[item["case_id"]]["required_outputs"]) for item in reviewed)
         guard_passes = sum(sum(item["review"]["guardrails"]) for item in reviewed)
         guard_total = sum(len(cases[item["case_id"]]["guardrails"]) for item in reviewed)
+        present_case_ids = {item["case_id"] for item in items}
+        case_results: dict[str, Any] = {}
+        for item in items:
+            case = cases[item["case_id"]]
+            review = item["review"]
+            case_results[item["case_id"]] = {
+                "reviewed": review is not None,
+                "required_outputs": [
+                    {"criterion": criterion, "score": review["required_outputs"][index]}
+                    for index, criterion in enumerate(case["required_outputs"])
+                ] if review is not None else [],
+                "guardrails": [
+                    {"guardrail": guardrail, "passed": review["guardrails"][index]}
+                    for index, guardrail in enumerate(case["guardrails"])
+                ] if review is not None else [],
+            }
         models[model] = {
             "responses": len(items),
+            "fixture_coverage": round(len(present_case_ids) / len(cases), 4) if cases else 0.0,
+            "missing_case_ids": sorted(set(cases) - present_case_ids),
             "reviewed_responses": len(reviewed),
             "review_coverage": round(len(reviewed) / len(items), 4) if items else 0.0,
             "required_output_score": round(output_points / output_max, 4) if output_max else None,
             "guardrail_pass_rate": round(guard_passes / guard_total, 4) if guard_total else None,
             "unreviewed_case_ids": sorted(item["case_id"] for item in items if item["review"] is None),
+            "case_results": case_results,
         }
     return {
         "schema_version": 1,
