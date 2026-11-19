@@ -133,5 +133,17 @@ class EvaluationEngineTests(unittest.TestCase):
         metrics = summarize(records, security_cases)["models"]["model-a"]
         self.assertEqual(metrics["security_gate"]["status"], "pass")
 
+
+    def test_security_gate_cli_enforcement_flag_is_available(self) -> None:
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, "scripts/evaluate.py", "--help"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("--enforce-security-gate", result.stdout)
+
+
 if __name__ == "__main__":
     unittest.main()
