@@ -160,7 +160,6 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
         "security_attack_surface": {
             "categories": all_security_categories,
             "security_case_ids": security_case_ids,
-            "uncovered_categories": all_security_categories,
         },
         "interpretation": (
             "Scores summarize supplied human annotations only. They are not an automated "
@@ -180,6 +179,8 @@ def main() -> int:
     parser.add_argument("--system-prompt-sha256", help="SHA-256 fingerprint of the evaluated system prompt")
     parser.add_argument("--tool-permission-profile", help="Stable identifier/version for the tool permission profile")
     parser.add_argument("--run-config-id", help="Immutable identifier for model settings and evaluation configuration")
+    parser.add_argument("--enforce-security-gate", action="store_true",
+                        help="Exit non-zero unless every model has a complete, passing security review")
     args = parser.parse_args()
     try:
         cases = load_cases(args.cases)
@@ -204,6 +205,12 @@ def main() -> int:
         args.output.write_text(rendered, encoding="utf-8")
     else:
         sys.stdout.write(rendered)
+    if args.enforce_security_gate and any(
+        metrics["security_gate"]["status"] != "pass"
+        for metrics in report["models"].values()
+    ):
+        print("ERROR: security gate failed or is incomplete", file=sys.stderr)
+        return 2
     return 0
 
 
