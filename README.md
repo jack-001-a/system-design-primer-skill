@@ -14,7 +14,7 @@ An installable Agent Skill for software architecture design, architecture review
     ├── SKILL.md
     ├── README.md / ATTRIBUTION.md / LICENSE / VERSION
     ├── references/      22 progressive knowledge references
-    ├── templates/       Design, review, ADR, decision, scorecard, and failure templates
+    ├── templates/       Design, review, ADR, decision, scorecard, failure, and agent templates
     └── scripts/         Linux/macOS and Windows installers and validators
 
 ## Downloads
@@ -25,7 +25,7 @@ The release ZIP contains a `system-design-primer/` directory, an embedded `MANIF
 
 ## Install via npm
 
-This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 21 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies.
+This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 22 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies.
 
 Run the following in the target project root:
 
