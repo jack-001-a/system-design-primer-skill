@@ -148,6 +148,25 @@ class PackageTests(unittest.TestCase):
             self.assertTrue(any("unsafe reference path" in item for item in errors))
             self.assertTrue(any("required_outputs entries must be unique" in item for item in errors))
 
+    def test_task_routing_index_cannot_reference_missing_reference(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SKILL.md").write_text(
+                "---\nname: example-skill\ndescription: test\n---\nbody\n",
+                encoding="utf-8",
+            )
+            refs = root / "references"
+            refs.mkdir()
+            (refs / "69-task-routing-and-evidence.md").write_text(
+                "Use `99-missing-specialist-guide.md` for this task.\n",
+                encoding="utf-8",
+            )
+            errors = validate(root)
+            self.assertTrue(any(
+                "task routing index references a missing file" in item
+                for item in errors
+            ))
+
     def test_invalid_name_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
