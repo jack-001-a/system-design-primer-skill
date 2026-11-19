@@ -130,6 +130,24 @@ class PackageTests(unittest.TestCase):
         self.assertEqual(len({case["id"] for case in cases}), len(cases))
         self.assertTrue(all(case["expected_mode"] for case in cases))
 
+    def test_eval_rubric_and_reference_integrity_are_validated(self):
+        import json
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SKILL.md").write_text("---\nname: example\ndescription: test\n---\nbody\n", encoding="utf-8")
+            (root / "evals").mkdir()
+            (root / "references").mkdir()
+            cases = {"schema_version": 1, "cases": [{
+                "id": "bad", "task": "Do work", "expected_mode": "Design",
+                "references": ["../outside.md"],
+                "required_outputs": ["evidence", "evidence"],
+                "guardrails": ["avoid fabricated claims"]
+            }]}
+            (root / "evals" / "system-design-cases.json").write_text(json.dumps(cases), encoding="utf-8")
+            errors = validate(root)
+            self.assertTrue(any("unsafe reference path" in item for item in errors))
+            self.assertTrue(any("required_outputs entries must be unique" in item for item in errors))
+
     def test_invalid_name_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
