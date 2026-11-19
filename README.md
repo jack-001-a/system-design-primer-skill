@@ -4,7 +4,7 @@
 
 An installable Agent Skill for software architecture design, architecture reviews, performance optimization, technology evaluation, and migration planning. It uses Donne Martin's System Design Primer as its knowledge foundation and adds modern production engineering practices.
 
-- **Version:** 1.3.1
+- **Version:** 1.4.0
 - **Language:** English, with standard technical terminology
 - **Runtime dependencies:** The Skill itself has no third-party runtime dependencies. Installation and validation require only Bash, PowerShell, or Python 3.
 
@@ -13,8 +13,8 @@ An installable Agent Skill for software architecture design, architecture review
     system-design-primer/
     ├── SKILL.md
     ├── README.md / ATTRIBUTION.md / LICENSE / VERSION
-    ├── references/      13 progressive knowledge references
-    ├── templates/       Architecture design, review, and ADR templates
+    ├── references/      16 progressive knowledge references
+    ├── templates/       Design, review, ADR, decision, scorecard, and failure templates
     └── scripts/         Linux/macOS and Windows installers and validators
 
 ## Downloads
@@ -142,6 +142,8 @@ GitHub Actions runs validation and tests on Ubuntu, macOS, and Windows. Formal r
 ## Attribution and license
 
 This is an independent, unofficial Skill. Its knowledge topics are based on [Donne Martin/System Design Primer](https://github.com/donnemartin/system-design-primer), with original workflows and modern engineering practices added. Original explanations, templates, and reference text are licensed under CC BY 4.0. Third-party linked content remains under its respective copyright and license; see [ATTRIBUTION.md](ATTRIBUTION.md) for details.
+
+Architecture decision matrices, evidence-based review scorecards, API/data contracts, and failure-analysis workflows are documented in [references/13-architecture-intelligence.md](references/13-architecture-intelligence.md), [references/14-api-and-data-contracts.md](references/14-api-and-data-contracts.md), and [references/15-failure-analysis.md](references/15-failure-analysis.md). Matching fill-in templates are available under `templates/`.
 
 For in-depth AI systems architecture, see [references/12-ai-systems-architecture.md](references/12-ai-systems-architecture.md).
 
