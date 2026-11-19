@@ -69,6 +69,10 @@ A response without a `review` is retained but counted as unreviewed. The report 
 required-output scores and guardrail pass rates separate; it intentionally does not
 collapse them into a single quality score.
 
+The report also includes fixture coverage, missing case IDs, unreviewed case IDs, and
+per-case criterion-level annotations so incomplete runs and weak areas remain visible
+rather than hidden inside an aggregate.
+
 ## JSONL response format
 
 Each line contains:
