@@ -214,14 +214,16 @@ def write_report(output: Path, report: dict[str, Any]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gen-time", required=True)\n    parser.add_argument("--timestamp-result", type=Path, required=True)
+    parser.add_argument("--gen-time", required=True)
+    parser.add_argument("--timestamp-result", type=Path, required=True)
     parser.add_argument("--crl-result", type=Path, required=True)
     parser.add_argument("--ocsp-result", type=Path)
     parser.add_argument("--ocsp-responder-revocation-result", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        timestamp_result, timestamp_digest = load_json(args.timestamp_result)\n        crl_result, crl_digest = load_json(args.crl_result)
+        timestamp_result, timestamp_digest = load_json(args.timestamp_result)
+        crl_result, crl_digest = load_json(args.crl_result)
         if args.ocsp_result:
             ocsp_result, ocsp_digest = load_json(args.ocsp_result)
         else:
