@@ -20,9 +20,17 @@ class TsaAttestationTests(unittest.TestCase):
             "timestamp_result_sha256": h(b"timestamp"),
             "result_digest_policy": "required_independent_sha256_pins_for_all_supplied_result_files",
             "timestamp_signer_serial_number": "1234",
-            "historical_revocation_assessment": {"status": "not_revoked_at_gen_time", "crl_sha256": h(b"crl")},
-            "current_ocsp_assessment": {"assessment": "not_provided"},
-            "historical_ocsp_responder_revocation_assessment": {"status": "not_assessed"}
+            "historical_revocation_assessment": {
+                "source": "verified_crl", "status": "not_revoked_at_gen_time",
+                "validation_time": "2026-11-19T12:00:00Z", "crl_sha256": h(b"crl"),
+                "issuer_roots_sha256": h(b"roots"), "crl_issuer_certificate_sha256": h(b"issuer"),
+                "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
+                "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": h(b"crl-result")
+            },
+            "current_ocsp_assessment": {"provided": False, "assessment": "not_provided", "historical_status_claim": False},
+            "historical_ocsp_responder_revocation_assessment": {
+                "status": "not_assessed", "reason": "No responder CRL evidence was supplied."
+            }
         }, sort_keys=True), encoding="utf-8")
         self.key = Ed25519PrivateKey.generate()
         self.private = self.root / "private.pem"
