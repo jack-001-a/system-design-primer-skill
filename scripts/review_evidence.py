@@ -59,6 +59,10 @@ def verify_report_evidence(report: dict[str,Any]) -> dict[str,Any]:
  if not isinstance(commitment,dict) or commitment.get("algorithm")!="sha256-merkle-v1": raise ValueError("unsupported or missing evidence commitment")
  expected=hashlib.sha256(bytes([3])+canonical_json(commitment)).hexdigest()
  if report.get("review_evidence_root")!=expected: raise ValueError("global review evidence root mismatch")
+ for key in ("dataset_canonical_sha256","rubric_sha256"):
+  if commitment.get(key)!=report.get("evaluation_catalog",{}).get(key): raise ValueError("global commitment does not match report catalog")
+ for key in ("evaluation_provenance","run_manifest","audit_chain"):
+  if commitment.get(key)!=report.get(key): raise ValueError("global commitment does not match report "+key)
  roots={}; checked=0
  for model,metrics in sorted(report.get("models",{}).items()):
   evidence=metrics.get("review_evidence")
@@ -71,6 +75,9 @@ def verify_report_evidence(report: dict[str,Any]) -> dict[str,Any]:
    if not isinstance(leaf,dict) or leaf.get("model")!=model or leaf.get("case_id")!=entry.get("case_id"): raise ValueError("invalid leaf identity")
    digest=leaf_hash(leaf)
    if digest!=entry.get("leaf_sha256") or not verify_inclusion(leaf,entry.get("proof",[]),evidence.get("root","")): raise ValueError("case inclusion proof failed")
+   case_result=metrics.get("case_results",{}).get(leaf["case_id"])
+   if not isinstance(case_result,dict) or case_result.get("rubric_sha256")!=leaf.get("rubric_sha256") or case_result.get("reviewed")!=leaf.get("reviewed"):
+    raise ValueError("case leaf does not match report case result")
    hashes.append(digest); checked+=1
   root=merkle_root(hashes)
   if root!=evidence.get("root"): raise ValueError("model Merkle root mismatch")
@@ -88,6 +95,8 @@ def main() -> int:
   if a.command=="verify": result=verify_report_evidence(report)
   else:
    ev=report["models"][a.model]["review_evidence"]; entry=next(x for x in ev["entries"] if x["case_id"]==a.case_id)
+   commitment=report.get("review_evidence_commitment",{}); expected=hashlib.sha256(bytes([3])+canonical_json(commitment)).hexdigest()
+   if report.get("review_evidence_root")!=expected or commitment.get("model_roots",{}).get(a.model)!=ev.get("root"): raise ValueError("global report root does not commit to this model root")
    if not verify_inclusion(entry["leaf"],entry["proof"],ev["root"]): raise ValueError("case inclusion proof failed")
    result={"verified":True,"model":a.model,"case_id":a.case_id,"leaf_sha256":entry["leaf_sha256"],"model_merkle_root":ev["root"],"global_report_root":report.get("review_evidence_root")}
  except (OSError,json.JSONDecodeError,KeyError,StopIteration,TypeError,ValueError) as exc:
