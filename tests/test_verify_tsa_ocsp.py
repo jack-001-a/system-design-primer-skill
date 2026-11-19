@@ -63,6 +63,27 @@ Next Update: Nov 19 12:05:00 2026 GMT
     def test_rejects_root_pin_mismatch(self):
         with self.assertRaisesRegex(ValueError, "pin mismatch"):
             verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,"0"*64,now=self.now)
+    def test_historical_mode_uses_target_time_for_responder_chain_and_status_window(self):
+        target = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
+        result, _, command = self.run_historical(target)
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["scope"], "historical OCSP status validation at the supplied target time")
+        self.assertEqual(result["historical_at_time"], "2026-11-19T12:00:00Z")
+        self.assertIn("-attime", command)
+        self.assertIn(str(int(target.timestamp())), command)
+
+    def run_historical(self, target):
+        with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
+            run.side_effect = [Mock(returncode=0, stdout="", stderr=""), Mock(returncode=0, stdout=self.output, stderr="")]
+            result = verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,self.pin(),
+                                          at_time=target)
+            return result, run.call_args_list[0].args[0], run.call_args_list[1].args[0]
+
+    def test_historical_mode_rejects_target_outside_signed_interval(self):
+        target = datetime(2026, 11, 19, 12, 10, tzinfo=timezone.utc)
+        with self.assertRaisesRegex(ValueError, "stale"):
+            self.run_historical(target)
+
     def test_rejects_bad_clock_skew(self):
         with self.assertRaisesRegex(ValueError, "between 0 and 3600"):
             verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,self.pin(),now=self.now,skew_seconds=99999)

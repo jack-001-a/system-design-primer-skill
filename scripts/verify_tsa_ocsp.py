@@ -23,7 +23,8 @@ def parse_openssl_time(value: str) -> datetime:
 
 def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response: Path,
                          expected_roots_sha256: str, intermediates: Path | None = None,
-                         now: datetime | None = None, skew_seconds: int = 300) -> dict[str, Any]:
+                         now: datetime | None = None, skew_seconds: int = 300,
+                         at_time: datetime | None = None) -> dict[str, Any]:
     if not isinstance(expected_roots_sha256, str) or not HEX256.fullmatch(expected_roots_sha256):
         raise ValueError("expected issuer-root SHA-256 must be 64 lowercase hex characters")
     if isinstance(skew_seconds, bool) or not isinstance(skew_seconds, int) or not 0 <= skew_seconds <= 3600:
@@ -46,6 +47,10 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
                    "-CAfile", str(roots), "-text", "-no_nonce"]
         if intermediates is not None:
             command.extend(["-verify_other", str(intermediates)])
+        if at_time is not None:
+            if at_time.tzinfo is None or at_time.utcoffset() is None:
+                raise ValueError("historical target time must be timezone-aware")
+            command.extend(["-attime", str(int(at_time.timestamp()))])
         result = subprocess.run(command, capture_output=True, text=True, check=False)
         output = (result.stdout or "") + "\\n" + (result.stderr or "")
         if result.returncode:
@@ -62,7 +67,7 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
     produced = parse_openssl_time(produced_match.group(1))
     this_update = parse_openssl_time(this_match.group(1))
     next_update = parse_openssl_time(next_match.group(1))
-    instant = now or datetime.now(timezone.utc)
+    instant = at_time or now or datetime.now(timezone.utc)
     if instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError("validation clock must be timezone-aware")
     instant = instant.astimezone(timezone.utc)
@@ -88,7 +93,9 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
         "issuer_roots_sha256": roots_digest,
         "response_sha256": hashlib.sha256(response.read_bytes()).hexdigest(),
         "nonce_checked": False,
-        "scope": "current-time OCSP response validation; not a historical status determination",
+        "scope": ("historical OCSP status validation at the supplied target time" if at_time is not None else
+                  "current-time OCSP response validation; not a historical status determination"),
+        "historical_at_time": (instant.isoformat().replace("+00:00", "Z") if at_time is not None else None),
     }
 
 def main() -> int:
@@ -100,11 +107,18 @@ def main() -> int:
     parser.add_argument("--response", type=Path, required=True)
     parser.add_argument("--intermediates", type=Path)
     parser.add_argument("--clock-skew-seconds", type=int, default=300)
+    parser.add_argument("--at-time", help="historical RFC 3339 UTC instant ending in Z")
     args = parser.parse_args()
     try:
+        historical_time = None
+        if args.at_time is not None:
+            if not re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z", args.at_time):
+                raise ValueError("--at-time must be an RFC 3339 UTC timestamp ending in Z")
+            historical_time = datetime.fromisoformat(args.at_time[:-1] + "+00:00")
         result = verify_ocsp_response(args.certificate, args.issuer, args.issuer_roots,
                                       args.response, args.issuer_roots_sha256,
-                                      args.intermediates, skew_seconds=args.clock_skew_seconds)
+                                      args.intermediates, skew_seconds=args.clock_skew_seconds,
+                                      at_time=historical_time)
     except (OSError, ValueError, TypeError) as exc:
         print("ERROR: " + str(exc), file=sys.stderr)
         return 1

@@ -706,3 +706,24 @@ The report refuses to combine a CRL result whose validation time differs from th
 
 The report's historical finding is deliberately scoped to the supplied certificate path and CRL. The report does not itself verify the timestamp token, establish completeness of revocation sources or trust policy, validate a nonce, or provide a digital signature. Preserve the report and its SHA-256 digest through an independent trusted channel. Do not treat a report file or its hash as a substitute for signed source evidence.
 
+
+
+### Historical OCSP status check
+
+The OCSP helper also supports an explicit historical target instant:
+
+```bash
+python scripts/verify_tsa_ocsp.py \
+  --certificate tsa-signer.pem \
+  --issuer tsa-issuer.pem \
+  --issuer-roots tsa-issuer-roots.pem \
+  --issuer-roots-sha256 INDEPENDENTLY_RECORDED_ROOT_BUNDLE_SHA256 \
+  --response tsa-status.ocsp.der \
+  --intermediates tsa-responder-chain.pem \
+  --at-time 2026-11-19T12:00:00Z
+```
+
+In this mode the helper passes OpenSSL `-attime` so responder certificate path validity and OCSP responder authorization are evaluated at the target instant. It separately requires the signed response validity interval (`thisUpdate` through `nextUpdate`) to cover that instant and rejects a `producedAt` later than the target beyond the configured skew. The response CertID is still constructed from the exact TSA certificate and issuer. OpenSSL verifies the response signature and delegated responder authorization, including the OCSPSigning EKU where applicable.
+
+Use the exact RFC 3161 token `genTime` as `--at-time`. The unified report accepts historical OCSP output only when its `historical_at_time` exactly matches the supplied `genTime`; it keeps that result distinct from current-time OCSP status. This remains evidence about the OCSP response and supplied trust configuration: it does not prove the completeness of archived evidence, check a nonce (the original request is not available), or replace independent RFC 3161 token verification.
+

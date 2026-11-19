@@ -56,7 +56,10 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         require_digest(ocsp_result_sha256, "ocsp_result_sha256")
         if ocsp_result.get("verified") is not True:
             raise ValueError("OCSP result is not explicitly verified")
-        if ocsp_result.get("scope") != "current-time OCSP response validation; not a historical status determination":
+        scope = ocsp_result.get("scope")
+        current_scope = "current-time OCSP response validation; not a historical status determination"
+        historical_scope = "historical OCSP status validation at the supplied target time"
+        if scope not in (current_scope, historical_scope):
             raise ValueError("OCSP result scope is missing or unsupported")
         if ocsp_result.get("nonce_checked") is not False:
             raise ValueError("OCSP nonce status must be explicit; this verifier currently requires nonce_checked=false")
@@ -78,13 +81,17 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             raise ValueError("OCSP response time ordering is invalid")
         if validation_dt < this_dt or validation_dt > next_dt:
             raise ValueError("OCSP response validity interval does not cover its validation_time")
+        historical_at_time = ocsp_result.get("historical_at_time")
+        if scope == historical_scope and historical_at_time != gen_time:
+            raise ValueError("historical OCSP target time does not exactly match RFC 3161 genTime")
         ocsp_digest = require_digest(ocsp_result.get("response_sha256"), "OCSP response_sha256")
         ocsp_roots_digest = require_digest(ocsp_result.get("issuer_roots_sha256"), "OCSP issuer_roots_sha256")
         ocsp_section = {
             "provided": True,
             "assessment": status,
-            "historical_status_claim": False,
+            "historical_status_claim": scope == historical_scope,
             "validation_time": validation_time,
+            "historical_at_time": historical_at_time,
             "produced_at": produced_at,
             "this_update": this_update,
             "next_update": next_update,

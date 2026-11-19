@@ -43,6 +43,20 @@ class TsaValidationReportTests(unittest.TestCase):
         self.assertEqual(report["current_ocsp_assessment"]["assessment"], "good")
         self.assertFalse(report["current_ocsp_assessment"]["historical_status_claim"])
         self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")
+    def test_accepts_historical_ocsp_only_when_bound_to_gen_time(self):
+        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
+                          historical_at_time=self.gen_time, validation_time=self.gen_time)
+        report = build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
+                                         historical, self.ocsp_file_hash)
+        self.assertTrue(report["current_ocsp_assessment"]["historical_status_claim"])
+
+    def test_rejects_historical_ocsp_time_not_bound_to_gen_time(self):
+        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
+                          historical_at_time="2026-11-19T12:00:01Z")
+        with self.assertRaisesRegex(ValueError, "does not exactly match"):
+            build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
+                                    historical, self.ocsp_file_hash)
+
     def test_rejects_crl_time_not_equal_to_token_gen_time(self):
         bad = dict(self.crl, at_time="2026-11-19T12:00:01Z")
         with self.assertRaisesRegex(ValueError, "does not exactly match"):
