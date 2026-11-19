@@ -667,3 +667,24 @@ The helper invokes OpenSSL `verify -attime ... -crl_check -CRLfile ...`, evaluat
 **OCSP is not marked verified by this command.** OpenSSL's OCSP client can verify response signatures and responder chains, but its client mode does not expose the same historical `-attime` control available to `openssl verify`. A separate OCSP historical verifier must validate BasicOCSPResponse signature, responder authorization and chain, CertID match, `producedAt`, `thisUpdate`, `nextUpdate`, nonce policy where applicable, and status semantics before claiming status at TSA `genTime`. Until then, archived OCSP responses remain integrity-preserved evidence only.
 
 References: [OpenSSL verification options](https://docs.openssl.org/master/man1/openssl-verification-options/) and [OpenSSL OCSP command](https://docs.openssl.org/master/man1/openssl-ocsp/).
+
+
+## Offline OCSP response verification (current-time only)
+
+For an archived OCSP response, validate it against the exact TSA signer certificate and issuer certificate using a pinned trust-root bundle:
+
+```bash
+python scripts/verify_tsa_ocsp.py \
+  --certificate tsa-signer.pem \
+  --issuer tsa-issuer.pem \
+  --issuer-roots tsa-issuer-roots.pem \
+  --issuer-roots-sha256 INDEPENDENTLY_RECORDED_ROOT_BUNDLE_SHA256 \
+  --response tsa-status.ocsp.der \
+  --intermediates tsa-responder-chain.pem
+```
+
+The helper delegates response signature and responder-chain verification plus CertID selection to OpenSSL's OCSP client, then requires an explicit `Response verify OK`, one unambiguous certificate status, and `producedAt`, `thisUpdate`, and `nextUpdate`. It rejects missing time fields, future production/update times beyond the configured clock skew, stale responses, and inverted update intervals. The trust-root bundle is pinned by an independently supplied SHA-256 digest. A cryptographically valid `revoked` or `unknown` result is reported as such; it is never converted to `good`.
+
+**Important boundaries:** this command evaluates freshness against the current validation clock. It does not prove status at the RFC 3161 `genTime`. The helper uses `-no_nonce` because it does not possess the original OCSP request; therefore the response nonce is not checked (`nonce_checked: false`). Preserve the original request if nonce binding is part of your evidence policy. The verifier also depends on OpenSSL's responder authorization and chain policy; provide the correct issuer, trust roots, and responder intermediates. Do not infer historical status from a currently good response. For historical validation, retain a response whose signed validity interval covers the target time and use a verifier that evaluates every OCSP time and authorization constraint at that target instant.
+
+References: [OpenSSL OCSP command](https://docs.openssl.org/master/man1/openssl-ocsp/) and [RFC 6960](https://www.rfc-editor.org/rfc/rfc6960).
