@@ -21,7 +21,11 @@ An installable Agent Skill for software architecture design, architecture review
 
 Version 2.3.0 adds an evidence-first task-routing guide, explicit reference-loading paths, repository-review traceability rules, and a compact regression case set for design, review, optimization, security, and migration tasks. The validator checks the evaluation dataset structure and keeps the README, Skill metadata, package manifest, changelog, and VERSION aligned.
 
-Run the regression cases as review prompts when changing routing instructions or output contracts; they are test fixtures, not claims that an LLM has passed a behavioral benchmark.
+The evaluation workflow now includes a dependency-free review aggregator. Run model responses through the six fixture prompts, annotate required outputs (0–2) and guardrails (pass/fail), then aggregate comparable results:
+
+    python scripts/evaluate.py --responses evals/responses.jsonl --output evals/report.json
+
+See [evals/README.md](evals/README.md) for the JSONL schema, scoring rubric, comparison controls, and limitations. The tool validates human annotations; it does not automatically judge model correctness or claim benchmark performance.
 
 ## Observability and performance engineering
 
