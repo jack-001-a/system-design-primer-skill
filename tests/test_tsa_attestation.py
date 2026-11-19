@@ -134,12 +134,14 @@ class TsaAttestationTests(unittest.TestCase):
             verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
                                timestamp_request_path=self.root / "request.tsq")
 
-    def test_key_revocation_effective_time_rejected(self):
+    def test_attester_clock_does_not_establish_historical_validity(self):
         store = json.loads(self.store.read_text())
         store["keys"]["tsa-attester"]["revoked_at"] = "2020-01-01T00:00:00Z"
         self.store.write_text(json.dumps(store, sort_keys=True))
-        with self.assertRaisesRegex(ValueError, "revocation effective time"):
-            self.verify()
+        result = self.verify()
+        self.assertFalse(result["historically_valid"])
+        self.assertFalse(result["signature_existence_proven_by_trusted_timestamp"])
+        self.assertFalse(result["currently_authorized"])
 
 if __name__ == "__main__":
     unittest.main()

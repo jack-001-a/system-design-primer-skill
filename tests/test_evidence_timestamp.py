@@ -26,6 +26,20 @@ class EvidenceTimestampTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+
+    def test_load_signature_accepts_tsa_attestation_envelope(self):
+        from scripts.evidence_timestamp import load_signature
+        path = self.root / "tsa-attestation.json"
+        path.write_text(json.dumps({
+            "schema_version": 1, "algorithm": "Ed25519", "key_id": "attester",
+            "attested_at": "2026-11-19T12:00:00Z", "report_sha256": "a" * 64,
+            "verifier_bundle_sha256": "b" * 64, "verifier_identity": "verifier",
+            "claims_sha256": "c" * 64, "signature": base64.b64encode(b"x" * 64).decode("ascii")
+        }), encoding="utf-8")
+        envelope, signature = load_signature(path)
+        self.assertEqual(envelope["key_id"], "attester")
+        self.assertEqual(len(signature), 64)
+
     def test_rejects_malformed_ed25519_signature(self):
         value = json.loads(self.signature.read_text())
         value["signature"] = base64.b64encode(b"short").decode("ascii")

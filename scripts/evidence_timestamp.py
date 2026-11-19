@@ -18,13 +18,14 @@ from cryptography.hazmat.primitives import hashes
 from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID
 
 ENVELOPE_FIELDS = {"schema_version", "algorithm", "key_id", "signed_at", "evidence_root", "signature"}
+ATTESTATION_FIELDS = {"schema_version", "algorithm", "key_id", "attested_at", "report_sha256", "verifier_bundle_sha256", "verifier_identity", "claims_sha256", "signature"}
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def load_signature(path: Path) -> tuple[dict[str, Any], bytes]:
     value = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(value, dict) or set(value) != ENVELOPE_FIELDS:
-        raise ValueError("invalid Ed25519 signature envelope")
+    if not isinstance(value, dict) or set(value) not in (ENVELOPE_FIELDS, ATTESTATION_FIELDS):
+        raise ValueError("invalid Ed25519 signature or TSA attestation envelope")
     if value.get("schema_version") != 1 or value.get("algorithm") != "Ed25519":
         raise ValueError("unsupported signature envelope")
     try:
