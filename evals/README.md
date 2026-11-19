@@ -553,3 +553,42 @@ python scripts/review_evidence.py verify-proof --report evals/report.json --mode
 ```
 
 The root is a commitment, not a signature. Retain the global review_evidence_root independently or sign it externally to detect replacement of the entire report. Existing report sidecars still bind exact report/response bytes; Merkle proofs add case-level inclusion verification.
+
+## Ed25519 signatures and external key trust
+
+For third-party authenticity, sign the report’s verified `review_evidence_root` with an Ed25519 private key held outside the repository. Install the optional dependency with `python -m pip install -r requirements-evidence-signing.txt`.
+
+Generate keys in a controlled environment (never commit the private key):
+
+```bash
+openssl genpkey -algorithm ED25519 -out evidence-private.pem
+openssl pkey -in evidence-private.pem -pubout -out evidence-public.pem
+```
+
+Create a detached signature envelope:
+
+```bash
+python scripts/evidence_signing.py sign --report evals/report.json --private-key /secure/path/evidence-private.pem --key-id release-2026 --output evals/report.signature.json
+```
+
+Verify against an independently provisioned trust store:
+
+```json
+{
+  "schema_version": 1,
+  "keys": {
+    "release-2026": {
+      "public_key_pem": "-----BEGIN PUBLIC KEY-----\\n...\\n-----END PUBLIC KEY-----\\n",
+      "status": "active"
+    }
+  }
+}
+```
+
+```bash
+python scripts/evidence_signing.py verify --report evals/report.json --signature evals/report.signature.json --trust-store trusted-keys.json
+```
+
+The detached envelope signs a domain-separated tuple of schema version, algorithm, key ID, UTC signing timestamp, and evidence root. Verification checks the full Merkle report before checking the root binding and Ed25519 signature. A key whose trust-store status is not `active` is rejected. For rotation, provision the new public key under a new key ID before using it; retain historical public keys while they remain trusted, and mark compromised keys revoked. Protect and distribute the trust store through a separate trusted channel.
+
+The timestamp is a signer assertion, not a trusted timestamp. Use an external timestamp authority when independently verifiable time evidence is required. Private-key bytes are never embedded in the report, signature envelope, CLI output, or repository; protect key storage, backups, access, and rotation outside this project.
