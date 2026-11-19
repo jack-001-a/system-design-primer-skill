@@ -699,6 +699,7 @@ python scripts/tsa_validation_report.py \
   --gen-time 2026-11-19T12:00:00Z \
   --crl-result tsa-crl-result.json \
   --ocsp-result tsa-ocsp-result.json \
+  --ocsp-responder-revocation-result tsa-ocsp-responder-crl-result.json \
   --output tsa-validation-report.json
 ```
 
@@ -720,6 +721,8 @@ python scripts/verify_tsa_ocsp.py \
   --issuer-roots-sha256 INDEPENDENTLY_RECORDED_ROOT_BUNDLE_SHA256 \
   --response tsa-status.ocsp.der \
   --intermediates tsa-responder-chain.pem \
+  --responder-certificate tsa-responder-signer.pem \
+  --responder-certificate-sha256 INDEPENDENTLY_RECORDED_RESPONDER_CERT_SHA256 \
   --at-time 2026-11-19T12:00:00Z
 ```
 
@@ -727,5 +730,5 @@ In this mode the helper passes OpenSSL `-attime` so responder certificate path v
 
 Use the exact RFC 3161 token `genTime` as `--at-time`. The unified report accepts historical OCSP output only when `historical_at_time` and `validation_time` both exactly match the supplied `genTime`; it independently rejects a `producedAt` later than `genTime` and rechecks that the signed `thisUpdate`–`nextUpdate` interval covers `genTime`. This prevents a hand-edited or mismatched verifier JSON file from bypassing the historical-time checks merely because its top-level scope claims historical validation.
 
-**Responder revocation remains unassessed.** The current helper validates the BasicOCSPResponse signature and responder path/authorization at the target instant, but it does not independently expose and bind the actual response-signing certificate fingerprint or establish that certificate's own revocation status at `genTime`. The unified report therefore emits `historical_ocsp_responder_revocation_assessment.status = not_assessed`; never interpret a valid response signature or delegated responder path as proof that the responder certificate was not revoked. A separate responder-certificate revocation verifier must first bind the exact signer certificate to the BasicOCSPResponse and validate its issuer's applicable revocation evidence. The helper also does not check a request nonce (the original request is not available) or replace independent RFC 3161 token verification.
+**Responder identity and revocation:** when `--responder-certificate` and its independent SHA-256 pin are supplied, the helper parses the BasicOCSPResponse ResponderID and requires it to match that exact certificate (by responder name or the RFC 6960 SHA-1 public-key identifier). It then invokes OpenSSL with `-no_intern -verify_other` and a bundle containing that certificate plus supplied intermediates, preventing an embedded alternate certificate from silently becoming the selected signer. The output records `responder_certificate_sha256`. The certificate's own revocation status is still not established by OCSP signature verification. Run `verify_tsa_revocation.py` with the responder certificate, its issuer roots, applicable CRL, and the same `genTime`; pass that JSON as `--ocsp-responder-revocation-result` to the unified report. The report only emits `not_revoked_at_gen_time` when the CRL result is verified, time-matched, and its certificate fingerprint exactly equals the OCSP signer's pinned fingerprint. Without both signer identity binding and this CRL evidence, the report keeps the responder state `not_assessed`. The helper also does not check a request nonce (the original request is not available) or replace independent RFC 3161 token verification.
 

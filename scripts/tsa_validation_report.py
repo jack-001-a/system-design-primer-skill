@@ -35,7 +35,9 @@ def require_digest(value: Any, field: str) -> str:
 
 def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                             crl_result_sha256: str, ocsp_result: dict[str, Any] | None = None,
-                            ocsp_result_sha256: str | None = None) -> dict[str, Any]:
+                            ocsp_result_sha256: str | None = None,
+                            responder_revocation_result: dict[str, Any] | None = None,
+                            responder_revocation_result_sha256: str | None = None) -> dict[str, Any]:
     parse_utc(gen_time, "gen_time")
     require_digest(crl_result_sha256, "crl_result_sha256")
     if crl_result.get("verified") is not True:
@@ -51,6 +53,10 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "provided": False,
         "assessment": "not_provided",
         "historical_status_claim": False,
+    }
+    responder_revocation_section: dict[str, Any] = {
+        "status": "not_assessed",
+        "reason": "No CRL result bound to the exact OCSP responder certificate was supplied.",
     }
     if ocsp_result is not None:
         require_digest(ocsp_result_sha256, "ocsp_result_sha256")
@@ -92,6 +98,9 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                 raise ValueError("historical OCSP producedAt is later than RFC 3161 genTime")
             if this_dt > gen_dt or next_dt < gen_dt:
                 raise ValueError("historical OCSP signed validity interval does not cover RFC 3161 genTime")
+        responder_digest = ocsp_result.get("responder_certificate_sha256")
+        if responder_digest is not None:
+            responder_digest = require_digest(responder_digest, "OCSP responder_certificate_sha256")
         ocsp_digest = require_digest(ocsp_result.get("response_sha256"), "OCSP response_sha256")
         ocsp_roots_digest = require_digest(ocsp_result.get("issuer_roots_sha256"), "OCSP issuer_roots_sha256")
         ocsp_section = {
@@ -107,7 +116,30 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "nonce_checked": False,
             "response_sha256": ocsp_digest,
             "issuer_roots_sha256": ocsp_roots_digest,
+            "responder_certificate_sha256": responder_digest,
             "result_file_sha256": ocsp_result_sha256,
+        }
+    if responder_revocation_result is not None:
+        if ocsp_result is None or scope != historical_scope:
+            raise ValueError("responder revocation evidence requires historical OCSP result")
+        if responder_digest is None:
+            raise ValueError("OCSP result does not bind an explicit responder certificate fingerprint")
+        require_digest(responder_revocation_result_sha256, "responder_revocation_result_sha256")
+        if responder_revocation_result.get("verified") is not True:
+            raise ValueError("OCSP responder CRL result is not explicitly verified")
+        if responder_revocation_result.get("status") != "not_revoked_at_validation_time":
+            raise ValueError("OCSP responder CRL result does not assert non-revocation")
+        if responder_revocation_result.get("at_time") != gen_time:
+            raise ValueError("OCSP responder CRL validation time does not exactly match RFC 3161 genTime")
+        if require_digest(responder_revocation_result.get("certificate_sha256"), "responder CRL certificate_sha256") != responder_digest:
+            raise ValueError("responder CRL result refers to a different certificate than the OCSP signer")
+        responder_revocation_section = {
+            "status": "not_revoked_at_gen_time",
+            "validation_time": gen_time,
+            "responder_certificate_sha256": responder_digest,
+            "crl_sha256": require_digest(responder_revocation_result.get("crl_sha256"), "responder CRL crl_sha256"),
+            "issuer_roots_sha256": require_digest(responder_revocation_result.get("issuer_roots_sha256"), "responder CRL issuer_roots_sha256"),
+            "result_file_sha256": responder_revocation_result_sha256,
         }
     return {
         "schema_version": 1,
@@ -124,11 +156,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "result_file_sha256": crl_result_sha256,
         },
         "current_ocsp_assessment": ocsp_section,
-        "historical_ocsp_responder_revocation_assessment": {
-            "status": "not_assessed",
-            "responder_certificate_identity": "not_independently_exposed_or_bound_by_the_current_ocsp_verifier",
-            "reason": "No independently verified responder-certificate revocation result is supplied; do not infer non-revocation from BasicOCSPResponse signature or responder-path validation.",
-        },
+        "historical_ocsp_responder_revocation_assessment": responder_revocation_section,
         "overall_assessment": "historical_crl_check_passed_with_scope_limitations",
         "limitations": [
             "This report does not independently verify the RFC 3161 token or derive genTime; it binds the caller-supplied time to the CRL result.",
@@ -136,7 +164,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "An OCSP result is current-time evidence only and is never treated as historical status at genTime.",
             "The OCSP verifier does not check a request nonce; nonce_checked is false.",
             "OCSP responder certificate revocation is not assessed: response-signature and responder-path verification do not establish that the responder certificate was not revoked at genTime.",
-            "The current OCSP verifier does not expose and independently bind the actual BasicOCSPResponse signer certificate fingerprint into this report.",
+            "Responder revocation can only be assessed when the OCSP verifier is given a separately pinned signer certificate, proves its ResponderID matches the BasicOCSPResponse, forces OpenSSL to verify using that exact certificate, and a separately pinned issuer CRL result is bound to the same certificate and genTime.",
             "This report is an aggregation record, not a digital signature or an independent trust anchor.",
         ],
     }
@@ -152,6 +180,7 @@ def main() -> int:
     parser.add_argument("--gen-time", required=True)
     parser.add_argument("--crl-result", type=Path, required=True)
     parser.add_argument("--ocsp-result", type=Path)
+    parser.add_argument("--ocsp-responder-revocation-result", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
@@ -160,15 +189,20 @@ def main() -> int:
             ocsp_result, ocsp_digest = load_json(args.ocsp_result)
         else:
             ocsp_result, ocsp_digest = None, None
+        if args.ocsp_responder_revocation_result:
+            responder_result, responder_digest = load_json(args.ocsp_responder_revocation_result)
+        else:
+            responder_result, responder_digest = None, None
         report = build_validation_report(args.gen_time, crl_result, crl_digest,
-                                         ocsp_result, ocsp_digest)
+                                         ocsp_result, ocsp_digest, responder_result, responder_digest)
         report_digest = write_report(args.output, report)
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError, TypeError) as exc:
         print("ERROR: " + str(exc), file=sys.stderr)
         return 1
     print(json.dumps({"created": True, "report_sha256": report_digest,
                       "historical_status": report["historical_revocation_assessment"]["status"],
-                      "ocsp_assessment": report["current_ocsp_assessment"]["assessment"]},
+                      "ocsp_assessment": report["current_ocsp_assessment"]["assessment"],
+                      "ocsp_responder_revocation": report["historical_ocsp_responder_revocation_assessment"]["status"]},
                      sort_keys=True, indent=2))
     return 0
 

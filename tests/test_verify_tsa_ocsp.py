@@ -15,7 +15,8 @@ class TsaOcspTests(unittest.TestCase):
         self.issuer = self.root / "issuer.pem"
         self.roots = self.root / "roots.pem"
         self.response = self.root / "response.der"
-        for path, data in ((self.cert,b"cert"),(self.issuer,b"issuer"),(self.roots,b"roots"),(self.response,b"response")):
+        self.responder = self.root / "responder.pem"
+        for path, data in ((self.cert,b"cert"),(self.issuer,b"issuer"),(self.roots,b"roots"),(self.response,b"response"),(self.responder,b"responder")):
             path.write_bytes(data)
         self.now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
         self.output = """Response verify OK
@@ -83,6 +84,27 @@ Next Update: Nov 19 12:05:00 2026 GMT
         target = datetime(2026, 11, 19, 12, 11, tzinfo=timezone.utc)
         with self.assertRaisesRegex(ValueError, "stale"):
             self.run_historical(target)
+
+
+    def test_pinned_responder_certificate_is_forced_as_the_only_signer_candidate(self):
+        digest = hashlib.sha256(self.responder.read_bytes()).hexdigest()
+        with patch("scripts.verify_tsa_ocsp.bind_responder_certificate", return_value=(Mock(), digest)), \
+             patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), \
+             patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
+            run.side_effect = [Mock(returncode=0, stdout="", stderr=""),
+                               Mock(returncode=0, stdout=self.output, stderr="")]
+            result = verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
+                self.pin(), now=self.now, responder_certificate=self.responder,
+                expected_responder_certificate_sha256=digest)
+            command = run.call_args_list[1].args[0]
+            self.assertIn("-no_intern", command)
+            self.assertIn("-verify_other", command)
+            self.assertEqual(result["responder_certificate_sha256"], digest)
+
+    def test_rejects_responder_certificate_without_independent_pin(self):
+        with self.assertRaisesRegex(ValueError, "must be supplied together"):
+            verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
+                self.pin(), now=self.now, responder_certificate=self.responder)
 
     def test_rejects_bad_clock_skew(self):
         with self.assertRaisesRegex(ValueError, "between 0 and 3600"):

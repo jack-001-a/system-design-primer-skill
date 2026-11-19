@@ -12,6 +12,10 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.x509 import ocsp
+
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
 DATE_FORMAT = "%b %d %H:%M:%S %Y GMT"
 
@@ -21,10 +25,72 @@ def parse_openssl_time(value: str) -> datetime:
     except ValueError as exc:
         raise ValueError("unrecognized OpenSSL OCSP time: " + value) from exc
 
+
+def _der_tlv(data: bytes, offset: int = 0) -> tuple[int, bytes, int]:
+    if offset >= len(data):
+        raise ValueError("truncated DER SubjectPublicKeyInfo")
+    tag = data[offset]
+    offset += 1
+    if offset >= len(data):
+        raise ValueError("truncated DER length")
+    first = data[offset]
+    offset += 1
+    if first & 0x80:
+        count = first & 0x7f
+        if count == 0 or count > 4 or offset + count > len(data):
+            raise ValueError("invalid DER length")
+        length = int.from_bytes(data[offset:offset + count], "big")
+        offset += count
+    else:
+        length = first
+    end = offset + length
+    if end > len(data):
+        raise ValueError("truncated DER value")
+    return tag, data[offset:end], end
+
+
+def bind_responder_certificate(response_path: Path, certificate_path: Path,
+                               expected_sha256: str) -> tuple[x509.Certificate, str]:
+    if not isinstance(expected_sha256, str) or not HEX256.fullmatch(expected_sha256):
+        raise ValueError("expected responder-certificate SHA-256 must be 64 lowercase hex characters")
+    certificate_bytes = certificate_path.read_bytes()
+    digest = hashlib.sha256(certificate_bytes).hexdigest()
+    if digest != expected_sha256:
+        raise ValueError("OCSP responder-certificate SHA-256 pin mismatch")
+    try:
+        try:
+            certificate = x509.load_pem_x509_certificate(certificate_bytes)
+        except ValueError:
+            certificate = x509.load_der_x509_certificate(certificate_bytes)
+        response = ocsp.load_der_ocsp_response(response_path.read_bytes())
+    except ValueError as exc:
+        raise ValueError("could not parse OCSP response or responder certificate") from exc
+    if response.response_status is not ocsp.OCSPResponseStatus.SUCCESSFUL:
+        raise ValueError("OCSP response status is not successful")
+    if response.responder_name is not None:
+        matches = response.responder_name == certificate.subject
+    else:
+        spki = certificate.public_key().public_bytes(
+            serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo
+        )
+        tag, sequence, end = _der_tlv(spki)
+        if tag != 0x30 or end != len(spki):
+            raise ValueError("invalid responder SubjectPublicKeyInfo")
+        _, _, offset = _der_tlv(sequence, 0)
+        bit_tag, bit_string, bit_end = _der_tlv(sequence, offset)
+        if bit_tag != 0x03 or bit_end != len(sequence) or not bit_string or bit_string[0] != 0:
+            raise ValueError("invalid responder subjectPublicKey BIT STRING")
+        matches = response.responder_key_hash == hashlib.sha1(bit_string[1:]).digest()
+    if not matches:
+        raise ValueError("pinned responder certificate does not match OCSP ResponderID")
+    return certificate, digest
+
 def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response: Path,
                          expected_roots_sha256: str, intermediates: Path | None = None,
                          now: datetime | None = None, skew_seconds: int = 300,
-                         at_time: datetime | None = None) -> dict[str, Any]:
+                         at_time: datetime | None = None,
+                         responder_certificate: Path | None = None,
+                         expected_responder_certificate_sha256: str | None = None) -> dict[str, Any]:
     if not isinstance(expected_roots_sha256, str) or not HEX256.fullmatch(expected_roots_sha256):
         raise ValueError("expected issuer-root SHA-256 must be 64 lowercase hex characters")
     if isinstance(skew_seconds, bool) or not isinstance(skew_seconds, int) or not 0 <= skew_seconds <= 3600:
@@ -35,6 +101,13 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
     executable = shutil.which("openssl")
     if not executable:
         raise ValueError("OpenSSL CLI is required for OCSP response verification")
+    responder_digest = None
+    if (responder_certificate is None) != (expected_responder_certificate_sha256 is None):
+        raise ValueError("responder certificate and its SHA-256 pin must be supplied together")
+    if responder_certificate is not None:
+        _, responder_digest = bind_responder_certificate(
+            response, responder_certificate, expected_responder_certificate_sha256 or ""
+        )
     with tempfile.TemporaryDirectory(prefix="tsa-ocsp-") as temporary:
         request_path = Path(temporary) / "request.der"
         request_command = [executable, "ocsp", "-issuer", str(issuer), "-cert", str(certificate),
@@ -45,7 +118,16 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
             raise ValueError("OpenSSL could not construct the certificate-bound OCSP request: " + detail[-2000:])
         command = [executable, "ocsp", "-reqin", str(request_path), "-respin", str(response),
                    "-CAfile", str(roots), "-text", "-no_nonce"]
-        if intermediates is not None:
+        if responder_certificate is not None:
+            signer_bundle = Path(temporary) / "responder-signer-bundle.pem"
+            signer_pem = x509.load_pem_x509_certificate(responder_certificate.read_bytes()).public_bytes(
+                serialization.Encoding.PEM
+            ) if responder_certificate.read_bytes().lstrip().startswith(b"-----BEGIN") else x509.load_der_x509_certificate(
+                responder_certificate.read_bytes()
+            ).public_bytes(serialization.Encoding.PEM)
+            signer_bundle.write_bytes(signer_pem + (intermediates.read_bytes() if intermediates is not None else b""))
+            command.extend(["-no_intern", "-verify_other", str(signer_bundle)])
+        elif intermediates is not None:
             command.extend(["-verify_other", str(intermediates)])
         if at_time is not None:
             if at_time.tzinfo is None or at_time.utcoffset() is None:
@@ -87,6 +169,7 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
         "status": status,
         "validation_time": instant.isoformat().replace("+00:00", "Z"),
         "certificate_sha256": hashlib.sha256(certificate.read_bytes()).hexdigest(),
+        "responder_certificate_sha256": responder_digest,
         "produced_at": produced.isoformat().replace("+00:00", "Z"),
         "this_update": this_update.isoformat().replace("+00:00", "Z"),
         "next_update": next_update.isoformat().replace("+00:00", "Z"),
@@ -106,6 +189,10 @@ def main() -> int:
     parser.add_argument("--issuer-roots-sha256", required=True)
     parser.add_argument("--response", type=Path, required=True)
     parser.add_argument("--intermediates", type=Path)
+    parser.add_argument("--responder-certificate", type=Path,
+                        help="explicit certificate expected to sign the BasicOCSPResponse")
+    parser.add_argument("--responder-certificate-sha256",
+                        help="independently recorded SHA-256 pin for --responder-certificate")
     parser.add_argument("--clock-skew-seconds", type=int, default=300)
     parser.add_argument("--at-time", help="historical RFC 3339 UTC instant ending in Z")
     args = parser.parse_args()
@@ -118,7 +205,9 @@ def main() -> int:
         result = verify_ocsp_response(args.certificate, args.issuer, args.issuer_roots,
                                       args.response, args.issuer_roots_sha256,
                                       args.intermediates, skew_seconds=args.clock_skew_seconds,
-                                      at_time=historical_time)
+                                      at_time=historical_time,
+                                      responder_certificate=args.responder_certificate,
+                                      expected_responder_certificate_sha256=args.responder_certificate_sha256)
     except (OSError, ValueError, TypeError) as exc:
         print("ERROR: " + str(exc), file=sys.stderr)
         return 1

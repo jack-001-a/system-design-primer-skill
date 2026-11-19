@@ -89,6 +89,46 @@ class TsaValidationReportTests(unittest.TestCase):
             build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
                                     historical, self.ocsp_file_hash)
 
+
+    def responder_result(self, **overrides):
+        value = {
+            "verified": True,
+            "status": "not_revoked_at_validation_time",
+            "at_time": self.gen_time,
+            "certificate_sha256": hashlib.sha256(b"responder").hexdigest(),
+            "crl_sha256": hashlib.sha256(b"responder crl").hexdigest(),
+            "issuer_roots_sha256": hashlib.sha256(b"responder roots").hexdigest(),
+        }
+        value.update(overrides)
+        return value
+
+    def historical_ocsp_with_signer(self):
+        return dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
+                    historical_at_time=self.gen_time, validation_time=self.gen_time,
+                    produced_at="2026-11-19T11:59:00Z", this_update="2026-11-19T11:58:00Z",
+                    responder_certificate_sha256=hashlib.sha256(b"responder").hexdigest())
+
+    def test_binds_responder_crl_to_exact_ocsp_signer_and_gen_time(self):
+        report = build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
+            self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+            self.responder_result(), hashlib.sha256(b"responder result").hexdigest())
+        self.assertEqual(report["historical_ocsp_responder_revocation_assessment"]["status"],
+                         "not_revoked_at_gen_time")
+
+    def test_rejects_responder_crl_for_different_certificate(self):
+        with self.assertRaisesRegex(ValueError, "different certificate"):
+            build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
+                self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+                self.responder_result(certificate_sha256=hashlib.sha256(b"other").hexdigest()),
+                hashlib.sha256(b"responder result").hexdigest())
+
+    def test_rejects_responder_crl_at_different_time(self):
+        with self.assertRaisesRegex(ValueError, "does not exactly match"):
+            build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
+                self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+                self.responder_result(at_time="2026-11-19T12:00:01Z"),
+                hashlib.sha256(b"responder result").hexdigest())
+
     def test_rejects_crl_time_not_equal_to_token_gen_time(self):
         bad = dict(self.crl, at_time="2026-11-19T12:00:01Z")
         with self.assertRaisesRegex(ValueError, "does not exactly match"):
