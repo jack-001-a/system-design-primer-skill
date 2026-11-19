@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any
 
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
-UTC = re.compile(r"^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z$")
+UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 def parse_utc(value: str, field: str) -> datetime:
     if not isinstance(value, str) or not UTC.fullmatch(value):
@@ -119,7 +119,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
     }
 
 def write_report(output: Path, report: dict[str, Any]) -> str:
-    encoded = (json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\\n").encode("utf-8")
+    encoded = (json.dumps(report, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n").encode("utf-8")
     with output.open("xb") as stream:
         stream.write(encoded)
     return hashlib.sha256(encoded).hexdigest()
