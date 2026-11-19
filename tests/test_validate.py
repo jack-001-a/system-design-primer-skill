@@ -123,6 +123,13 @@ class PackageTests(unittest.TestCase):
             "edge-computing-readiness-template.md",
         }.issubset(REQUIRED_TEMPLATES))
 
+    def test_evaluation_cases_are_present_and_validated(self):
+        import json
+        cases = json.loads((ROOT / "evals" / "system-design-cases.json").read_text(encoding="utf-8"))["cases"]
+        self.assertGreaterEqual(len(cases), 5)
+        self.assertEqual(len({case["id"] for case in cases}), len(cases))
+        self.assertTrue(all(case["expected_mode"] for case in cases))
+
     def test_invalid_name_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
