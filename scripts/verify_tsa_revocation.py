@@ -39,7 +39,8 @@ def verify_crl_status(certificate: Path, issuer_roots: Path, crl: Path, at_time:
     if not detail or not re.search(r":\s*OK(?:\s|$)", detail):
         raise ValueError("OpenSSL did not return an explicit successful certificate verification")
     return {"verified": True, "status": "not_revoked_at_validation_time",
-            "at_time": at_time, "issuer_roots_sha256": roots_digest,
+            "at_time": at_time, "certificate_sha256": hashlib.sha256(certificate.read_bytes()).hexdigest(),
+            "issuer_roots_sha256": roots_digest,
             "crl_sha256": hashlib.sha256(crl.read_bytes()).hexdigest(),
             "verification": "OpenSSL certificate path and CRL validation at supplied Unix epoch"}
 

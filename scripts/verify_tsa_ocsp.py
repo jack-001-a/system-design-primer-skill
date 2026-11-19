@@ -81,6 +81,7 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
         "verified": True,
         "status": status,
         "validation_time": instant.isoformat().replace("+00:00", "Z"),
+        "certificate_sha256": hashlib.sha256(certificate.read_bytes()).hexdigest(),
         "produced_at": produced.isoformat().replace("+00:00", "Z"),
         "this_update": this_update.isoformat().replace("+00:00", "Z"),
         "next_update": next_update.isoformat().replace("+00:00", "Z"),

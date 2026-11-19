@@ -688,3 +688,21 @@ The helper delegates response signature and responder-chain verification plus Ce
 **Important boundaries:** this command evaluates freshness against the current validation clock. It does not prove status at the RFC 3161 `genTime`. The helper uses `-no_nonce` because it does not possess the original OCSP request; therefore the response nonce is not checked (`nonce_checked: false`). Preserve the original request if nonce binding is part of your evidence policy. The verifier also depends on OpenSSL's responder authorization and chain policy; provide the correct issuer, trust roots, and responder intermediates. Do not infer historical status from a currently good response. For historical validation, retain a response whose signed validity interval covers the target time and use a verifier that evaluates every OCSP time and authorization constraint at that target instant.
 
 References: [OpenSSL OCSP command](https://docs.openssl.org/master/man1/openssl-ocsp/) and [RFC 6960](https://www.rfc-editor.org/rfc/rfc6960).
+
+
+## Unified TSA long-term validation report
+
+After verifying the RFC 3161 token and extracting its signed `genTime`, run the CRL verifier at that exact UTC instant. Optionally run the OCSP verifier for a current-time supplemental status check. Then combine the verifier JSON outputs:
+
+```bash
+python scripts/tsa_validation_report.py \
+  --gen-time 2026-11-19T12:00:00Z \
+  --crl-result tsa-crl-result.json \
+  --ocsp-result tsa-ocsp-result.json \
+  --output tsa-validation-report.json
+```
+
+The report refuses to combine a CRL result whose validation time differs from the supplied token `genTime`, requires explicit successful CRL status and SHA-256 bindings, and requires any OCSP result to identify the same TSA certificate. It retains exact result-file digests and source-object digests. OCSP remains a separate current-time assessment and can never upgrade or replace the historical CRL finding. Omitting OCSP is permitted and reported as `not_provided`.
+
+The report's historical finding is deliberately scoped to the supplied certificate path and CRL. The report does not itself verify the timestamp token, establish completeness of revocation sources or trust policy, validate a nonce, or provide a digital signature. Preserve the report and its SHA-256 digest through an independent trusted channel. Do not treat a report file or its hash as a substitute for signed source evidence.
+
