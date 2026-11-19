@@ -143,7 +143,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
             bind_responder_certificate(self.response, self.responder, "0" * 64)
 
     def test_pinned_responder_certificate_is_forced_as_the_only_signer_candidate(self):
-        digest = hashlib.sha256(self.responder.read_bytes()).hexdigest()
+        digest = self.make_responder_response(ocsp.OCSPResponderEncoding.NAME)
         with patch("scripts.verify_tsa_ocsp.bind_responder_certificate", return_value=(Mock(), digest)), \
              patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), \
              patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
