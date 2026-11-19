@@ -1,5 +1,9 @@
 # Incident Management, On-call, and Postmortems
 
+## Scope and boundaries
+
+This document owns operational incident response: severity, command roles, communications, triage, recovery verification, on-call practice, and postmortem follow-through. Use [chaos engineering](60-chaos-engineering-and-resilience-experiments.md) for planned fault injection, [failure analysis](15-failure-analysis.md) for design-time fault registers, and [reliability architecture](07-reliability-and-resilience.md) for service-level resilience patterns. Technical replay, failover, and reconciliation procedures must link to the relevant queue, data, and regional-architecture references rather than being inferred from incident process alone.
+
 ## Operational model
 Define severity levels by user/business impact, not by component count or internal effort. Establish incident command, technical lead, communications lead, and scribe roles appropriate to incident scale. Publish escalation paths, service ownership, dependency contacts, and decision authority.
 
