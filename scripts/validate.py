@@ -31,6 +31,12 @@ REQUIRED_REFERENCES = {
     "19-agent-security-and-permissions.md",
     "20-agent-state-and-memory.md",
     "21-agent-evaluation-and-observability.md",
+    "22-kubernetes-and-container-platforms.md",
+    "23-service-mesh-and-traffic-management.md",
+    "24-multi-region-and-disaster-recovery.md",
+    "25-platform-engineering-and-developer-experience.md",
+    "26-finops-and-cloud-cost.md",
+    "27-production-observability-and-slo.md",
 }
 REQUIRED_TEMPLATES = {
     "adr-template.md",
@@ -42,6 +48,9 @@ REQUIRED_TEMPLATES = {
     "agent-system-design-template.md",
     "agent-security-review-template.md",
     "agent-evaluation-plan-template.md",
+    "production-readiness-checklist-template.md",
+    "multi-region-disaster-recovery-template.md",
+    "cloud-cost-model-template.md",
 }
 PACKAGE_ENTRIES = (
     "SKILL.md", "references", "templates", "scripts",
