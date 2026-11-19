@@ -344,6 +344,7 @@ def main() -> int:
     parser.add_argument("--cases", type=Path, default=Path("evals/system-design-cases.json"))
     parser.add_argument("--responses", type=Path, required=True, help="JSONL file with model outputs and optional reviews")
     parser.add_argument("--output", type=Path, help="Optional path for the JSON report")
+    parser.add_argument("--integrity-sidecar", type=Path, help="Create a new report integrity sidecar; requires --output")
     parser.add_argument("--manifest", type=Path, help="Sealed run manifest; requires every response to carry its run_id and manifest_sha256")
     parser.add_argument("--verify-chain", action="store_true", help="Require and verify a versioned SHA-256 chain on the input JSONL")
     parser.add_argument("--expected-chain-head-hash", help="Optional independently retained SHA-256 head hash for detecting tail truncation or full-chain replacement")
@@ -353,6 +354,8 @@ def main() -> int:
     parser.add_argument("--enforce-security-gate", action="store_true",
                         help="Exit non-zero unless every model has a complete, passing security review")
     args = parser.parse_args()
+    if args.integrity_sidecar and not args.output:
+        parser.error("--integrity-sidecar requires --output")
     try:
         cases = load_cases(args.cases)
         if args.expected_chain_head_hash and not args.verify_chain:
@@ -387,6 +390,18 @@ def main() -> int:
     rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     if args.output:
         args.output.write_text(rendered, encoding="utf-8")
+        if args.integrity_sidecar:
+            try:
+                from .report_integrity import seal_report
+            except ImportError:
+                from report_integrity import seal_report
+            try:
+                sidecar = seal_report(args.output, args.responses, chain_status, report["run_manifest"])
+                with args.integrity_sidecar.open("x", encoding="utf-8") as stream:
+                    stream.write(json.dumps(sidecar, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+            except (OSError, ValueError) as exc:
+                print(f"ERROR: cannot create report integrity sidecar: {exc}", file=sys.stderr)
+                return 1
     else:
         sys.stdout.write(rendered)
     if args.enforce_security_gate and any(
