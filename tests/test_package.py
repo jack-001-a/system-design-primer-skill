@@ -8,7 +8,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "tools"))
-import package as package_builder  # noqa: E402\nimport verify_package as package_verifier  # noqa: E402
+import package as package_builder  # noqa: E402
+import verify_package as package_verifier  # noqa: E402
 
 
 class DistributionTests(unittest.TestCase):
@@ -56,6 +57,58 @@ class DistributionTests(unittest.TestCase):
             digest, filename = checksum.read_text(encoding="ascii").split()
             self.assertEqual(filename, archive.name)
             self.assertEqual(digest, hashlib.sha256(archive.read_bytes()).hexdigest())
+
+    def test_archive_verifies_and_extracts_to_a_valid_skill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "dist"
+            archive, checksum = package_builder.build(output)
+            self.assertEqual(package_verifier.verify_archive(archive, checksum), [])
+            extracted = Path(tmp) / "extracted"
+            with zipfile.ZipFile(archive) as bundle:
+                bundle.extractall(extracted)
+            self.assertEqual(
+                package_builder.validate(extracted / "system-design-primer"), []
+            )
+
+    def test_verifier_rejects_payload_tampering_even_with_updated_outer_checksum(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            output = Path(tmp) / "dist"
+            archive, _ = package_builder.build(output)
+            tampered = Path(tmp) / "tampered.zip"
+            with zipfile.ZipFile(archive) as source, zipfile.ZipFile(tampered, "w") as target:
+                for item in source.infolist():
+                    payload = source.read(item.filename)
+                    if item.filename == "system-design-primer/SKILL.md":
+                        payload += b"\n# tampered"
+                    target.writestr(item, payload)
+            digest = hashlib.sha256(tampered.read_bytes()).hexdigest()
+            tampered_checksum = Path(tmp) / "tampered.zip.sha256"
+            tampered_checksum.write_text(
+                f"{digest}  {tampered.name}\n", encoding="ascii"
+            )
+            errors = package_verifier.verify_archive(tampered, tampered_checksum)
+            self.assertTrue(
+                any("manifest SHA-256 mismatch" in error for error in errors)
+            )
+
+    def test_verifier_rejects_unsafe_zip_paths(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            archive = Path(tmp) / "unsafe.zip"
+            checksum = Path(tmp) / "unsafe.zip.sha256"
+            manifest = {
+                "schema_version": 1,
+                "files": [{"path": "../outside.txt", "size": 1, "sha256": "0" * 64}],
+            }
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr(
+                    "system-design-primer/MANIFEST.sha256.json", json.dumps(manifest)
+                )
+                bundle.writestr("../outside.txt", "x")
+            digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            checksum.write_text(f"{digest}  {archive.name}\n", encoding="ascii")
+            errors = package_verifier.verify_archive(archive, checksum)
+            self.assertTrue(any("unsafe ZIP entry path" in error for error in errors))
+            self.assertTrue(any("unsafe manifest path" in error for error in errors))
 
 
 if __name__ == "__main__":
