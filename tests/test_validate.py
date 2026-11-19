@@ -48,6 +48,12 @@ class PackageTests(unittest.TestCase):
             "25-platform-engineering-and-developer-experience.md",
             "26-finops-and-cloud-cost.md",
             "27-production-observability-and-slo.md",
+            "28-event-streaming-and-kafka-pulsar.md",
+            "29-event-sourcing-and-cqrs.md",
+            "30-change-data-capture-and-debezium.md",
+            "31-data-lakehouse-and-stream-batch.md",
+            "32-workflow-orchestration-and-temporal.md",
+            "33-schema-registry-and-event-governance.md",
         }.issubset(REQUIRED_REFERENCES))
         self.assertTrue({
             "architecture-decision-matrix-template.md",
@@ -59,6 +65,9 @@ class PackageTests(unittest.TestCase):
             "production-readiness-checklist-template.md",
             "multi-region-disaster-recovery-template.md",
             "cloud-cost-model-template.md",
+            "event-streaming-design-template.md",
+            "event-sourcing-cqrs-template.md",
+            "cdc-data-pipeline-template.md",
         }.issubset(REQUIRED_TEMPLATES))
 
     def test_invalid_name_is_rejected(self):
