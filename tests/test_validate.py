@@ -30,6 +30,19 @@ class PackageTests(unittest.TestCase):
     def test_repository_package_is_valid(self):
         self.assertEqual(validate(ROOT), [])
 
+    def test_architecture_intelligence_references_and_templates_are_required(self):
+        from validate import REQUIRED_REFERENCES, REQUIRED_TEMPLATES
+        self.assertTrue({
+            "13-architecture-intelligence.md",
+            "14-api-and-data-contracts.md",
+            "15-failure-analysis.md",
+        }.issubset(REQUIRED_REFERENCES))
+        self.assertTrue({
+            "architecture-decision-matrix-template.md",
+            "architecture-review-scorecard-template.md",
+            "failure-analysis-template.md",
+        }.issubset(REQUIRED_TEMPLATES))
+
     def test_invalid_name_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
