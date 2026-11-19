@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "2.1.0"
+  version: "2.2.0"
   language: "en"
 ---
 
@@ -306,6 +306,31 @@ Start with a falsifiable hypothesis and user-visible steady state. Bound scope, 
 ### Incident management and postmortems
 Define severity by user impact, incident roles, escalation, communication, actionable alerts, and safe runbooks. Stabilize before deep diagnosis; verify recovery with user-facing signals and data reconciliation. Use blameless, evidence-based postmortems with owned, dated, effectiveness-tested actions. See references/61-incident-management-and-postmortems.md and templates/incident-postmortem-template.md.
 
+## Networking, edge, and infrastructure workflows
+
+Choose network and infrastructure mechanisms from measured latency, traffic, trust, availability, and data-locality requirements. Keep routing, identity, authorization, and data consistency as separate design concerns.
+
+### DNS and service discovery
+Define authoritative zones, private/public namespaces, record lifecycle, TTL and negative caching, registration health, endpoint freshness, and resolver failure behavior. DNS and registry metadata are routing inputs, not authorization. See `references/62-dns-and-service-discovery.md`.
+
+### Load balancing and global traffic management
+Separate global steering, regional ingress, application load balancing, and service-to-service balancing. Specify algorithm, health semantics, affinity, draining, retry ownership, failover, and failback. Account for resolver caching, locality, data consistency, and correlated dependency failures. See `references/63-load-balancing-and-global-traffic-management.md`.
+
+### CDN and edge caching
+Classify public, personalized, and sensitive content; define cache keys, freshness, stale serving, invalidation, origin shielding, and bypass protection. Model cache poisoning, cross-tenant leakage, stampedes, purge propagation, and cost. Use `references/64-cdn-and-edge-caching.md` and `templates/cdn-and-edge-strategy-template.md`.
+
+### Cloud networking and connectivity
+Design non-overlapping addressing, IPv6/NAT capacity, segmentation, routing, transit, private connectivity, DNS, MTU, and egress. Test asymmetric paths, route convergence, gateway saturation, and failure-domain independence. Treat network location as one signal, not an identity boundary. See `references/65-cloud-networking-and-connectivity.md` and `templates/network-architecture-design-template.md`.
+
+### Edge computing
+Adopt edge placement only for demonstrated latency, locality, bandwidth, or offline requirements. Define device/site/region/cloud responsibility, local authority, synchronization, conflict resolution, signed updates, fleet identity, revocation, and offline recovery. Model field support and lifecycle costs. See `references/66-edge-computing-architecture.md` and `templates/edge-computing-readiness-template.md`.
+
+### Storage infrastructure
+Select block, file, object, local, or distributed storage from access pattern, consistency, IOPS, throughput, latency, durability, and recovery objectives. Distinguish replication, backup, availability, and durability; benchmark repair/rebuild behavior and include lifecycle and retrieval costs. See `references/67-storage-infrastructure-and-storage-systems.md` and `templates/storage-architecture-design-template.md`.
+
+### TCP, QUIC, and network performance
+Decompose DNS, connection, TLS, RTT, congestion, queueing, and transfer time. Measure cold/warm paths, loss, retransmission, MTU, BDP, pool behavior, and reconnect storms before tuning. Evaluate HTTP/3 against client and intermediary compatibility. See `references/68-tcp-quic-and-network-performance.md`.
+
 ## Progressive reference loading
 
 - Requirements and estimation: `references/01-requirements-and-capacity.md`
@@ -357,7 +382,15 @@ Define severity by user impact, incident roles, escalation, communication, actio
 - Threat modeling, STRIDE, and attack trees: `references/53-threat-modeling-stride-and-attack-trees.md`
 - Privacy engineering and data governance: `references/54-privacy-engineering-and-data-governance.md`
 
-When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, cloud cost modeling, event streaming, event sourcing/CQRS, CDC/data pipelines, API and real-time systems, identity and access architecture, threat modeling, supply chain security, and privacy governance, observability architecture, performance testing, chaos experiments, and incident postmortems.
+- DNS and service discovery: `references/62-dns-and-service-discovery.md`
+- Load balancing and global traffic management: `references/63-load-balancing-and-global-traffic-management.md`
+- CDN and edge caching: `references/64-cdn-and-edge-caching.md`
+- Cloud networking and connectivity: `references/65-cloud-networking-and-connectivity.md`
+- Edge computing architecture: `references/66-edge-computing-architecture.md`
+- Storage infrastructure and storage systems: `references/67-storage-infrastructure-and-storage-systems.md`
+- TCP, QUIC, and network performance: `references/68-tcp-quic-and-network-performance.md`
+
+When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, cloud cost modeling, event streaming, event sourcing/CQRS, CDC/data pipelines, API and real-time systems, identity and access architecture, threat modeling, supply chain security, and privacy governance, observability architecture, performance testing, chaos experiments, incident postmortems, network architecture, CDN/edge strategy, storage architecture, and edge computing readiness.
 
 ## Tools, evidence, and untrusted-input boundaries
 
