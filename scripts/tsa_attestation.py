@@ -11,7 +11,7 @@ import hashlib
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from cryptography.hazmat.primitives import serialization
@@ -191,16 +191,31 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
             raise ValueError("RFC 3161 timestamp did not establish a verified, valid TSA signer")
         timestamp_gen_time = parse_utc(trusted_timestamp.get("gen_time"), "timestamp gen_time")
         require_sha256(trusted_timestamp.get("tsa_signer_certificate_sha256"), "TSA signer certificate SHA-256")
+        # RFC 3161 Accuracy is an uncertainty bound. Without an explicit value,
+        # genTime alone is not used to prove existence preceded a key event.
+        accuracy = trusted_timestamp.get("accuracy")
+        timestamp_accuracy = None
+        timestamp_upper_bound = None
+        if accuracy is not None:
+            if not isinstance(accuracy, dict) or not accuracy or set(accuracy) - {"seconds", "millis", "micros"}:
+                raise ValueError("RFC 3161 timestamp accuracy must be a non-empty seconds/millis/micros object")
+            if any(type(value) is not int or value < 0 for value in accuracy.values()):
+                raise ValueError("RFC 3161 timestamp accuracy components must be non-negative integers")
+            if any(accuracy.get(unit, 0) > 999 for unit in ("millis", "micros")):
+                raise ValueError("RFC 3161 timestamp millis/micros accuracy must not exceed 999")
+            timestamp_accuracy = timedelta(seconds=accuracy.get("seconds", 0),
+                milliseconds=accuracy.get("millis", 0), microseconds=accuracy.get("micros", 0))
+            timestamp_upper_bound = timestamp_gen_time + timestamp_accuracy
         expected_signature_digest = hashlib.sha256(signature_bytes).hexdigest()
         if trusted_timestamp.get("signature_sha256") != expected_signature_digest:
             raise ValueError("RFC 3161 timestamp is not bound to the exact attestation signature")
     now = datetime.now(timezone.utc)
     currently_authorized = (entry["status"] == "active" and not_before <= now <= not_after
                             and (revoked_at is None or now < revoked_at))
-    signature_existed_before_revocation = (trusted_timestamp is not None and
-        revoked_at is not None and timestamp_gen_time < revoked_at)
+    signature_existed_before_revocation = (timestamp_upper_bound is not None and
+        revoked_at is not None and timestamp_upper_bound < revoked_at)
     signature_existed_before_key_validity = (
-        trusted_timestamp is not None and timestamp_gen_time < not_before
+        timestamp_upper_bound is not None and timestamp_upper_bound < not_before
     )
     # This enum is a compact evidence classification, not a historical-validity
     # verdict. The independent booleans above retain simultaneous boundary facts.
@@ -220,6 +235,8 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
             "signature_existed_before_revocation": bool(signature_existed_before_revocation),
             "signature_existence_proven_before_key_not_before": bool(signature_existed_before_key_validity),
             "trusted_signature_timestamp": trusted_timestamp,
+            "trusted_timestamp_upper_bound": timestamp_upper_bound.isoformat().replace("+00:00", "Z") if timestamp_upper_bound else None,
+            "timestamp_accuracy_assessed": timestamp_upper_bound is not None,
             "currently_authorized": currently_authorized, "key_id": key_id,
             "attested_at": envelope["attested_at"], "report_sha256": report_digest,
             "verifier_bundle_sha256": envelope["verifier_bundle_sha256"],
