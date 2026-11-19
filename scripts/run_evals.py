@@ -34,8 +34,6 @@ def invoke_adapter(
         "task": case["task"],
         "expected_mode": case.get("expected_mode"),
         "references": case.get("references", []),
-        "required_outputs": case["required_outputs"],
-        "guardrails": case["guardrails"],
     }
     started = time.monotonic()
     try:
