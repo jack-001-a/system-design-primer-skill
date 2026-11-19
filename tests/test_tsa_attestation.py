@@ -182,6 +182,23 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertTrue(result["signature_existed_before_revocation"])
 
     @patch("scripts.tsa_attestation.verify_timestamp")
+    def test_accuracy_outside_datetime_range_is_rejected_cleanly(self, timestamp):
+        import base64
+        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
+        timestamp.return_value = {
+            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "gen_time": "2026-11-19T12:00:00Z", "accuracy": {"seconds": 10 ** 30},
+            "tsa_signer_valid_at_gen_time": True,
+            "tsa_signer_certificate_sha256": "a" * 64,
+        }
+        request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
+        for path in (request, response, ca):
+            path.write_bytes(b"fixture")
+        with self.assertRaisesRegex(ValueError, "exceeds the supported datetime range"):
+            verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
+                request, response, ca, hashlib.sha256(b"fixture").hexdigest())
+
+    @patch("scripts.tsa_attestation.verify_timestamp")
     def test_invalid_accuracy_components_rejected(self, timestamp):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])

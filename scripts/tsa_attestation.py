@@ -210,12 +210,15 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
                 raise ValueError("RFC 3161 timestamp accuracy components must be non-negative integers")
             if field in {"millis", "micros"} and not 1 <= value <= 999:
                 raise ValueError("RFC 3161 timestamp millis and micros must be between 1 and 999")
-        uncertainty = timedelta(
-            seconds=accuracy.get("seconds", 0),
-            milliseconds=accuracy.get("millis", 0),
-            microseconds=accuracy.get("micros", 0),
-        )
-        timestamp_upper_bound = timestamp_gen_time + uncertainty
+        try:
+            uncertainty = timedelta(
+                seconds=accuracy.get("seconds", 0),
+                milliseconds=accuracy.get("millis", 0),
+                microseconds=accuracy.get("micros", 0),
+            )
+            timestamp_upper_bound = timestamp_gen_time + uncertainty
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("RFC 3161 timestamp accuracy exceeds the supported datetime range") from exc
         timestamp_accuracy_assessed = True
 
     now = datetime.now(timezone.utc)
