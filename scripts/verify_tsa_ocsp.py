@@ -112,7 +112,7 @@ def main() -> int:
     try:
         historical_time = None
         if args.at_time is not None:
-            if not re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(?:\\.\\d+)?Z", args.at_time):
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z", args.at_time):
                 raise ValueError("--at-time must be an RFC 3339 UTC timestamp ending in Z")
             historical_time = datetime.fromisoformat(args.at_time[:-1] + "+00:00")
         result = verify_ocsp_response(args.certificate, args.issuer, args.issuer_roots,
