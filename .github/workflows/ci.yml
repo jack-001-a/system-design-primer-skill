@@ -32,8 +32,14 @@ jobs:
         run: bash -n scripts/install.sh tests/test_install.sh
       - name: Test Bash installer
         run: bash tests/test_install.sh
-      - name: Build deterministic distribution
-        run: python tools/package.py --output-dir dist
+      - name: Build and verify deterministic distribution
+        run: |
+          python tools/package.py --output-dir dist
+          python tools/verify_package.py dist/system-design-primer-v$(tr -d '[:space:]' < VERSION).zip
+      - name: Verify npm package contents
+        run: |
+          npm pack --dry-run --json > npm-pack.json
+          python -c "import json; files={item['path'] for item in json.load(open('npm-pack.json', encoding='utf-8'))[0]['files']}; required={'evals/README.md','evals/system-design-cases.json','SKILL.md'}; missing=required-files; assert not missing, f'npm package missing: {sorted(missing)}'"
       - name: Upload distribution
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
