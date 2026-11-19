@@ -206,6 +206,8 @@ class PackageTests(unittest.TestCase):
             "incident-backlog-recovery",
             "agent-tool-result-injection",
             "agent-approval-scope-drift",
+            "agent-multiturn-tool-chain-injection",
+            "agent-cross-tenant-export-and-replay",
         }
         self.assertTrue(required_regressions.issubset({case["id"] for case in cases}))
         for case in cases:
@@ -213,6 +215,9 @@ class PackageTests(unittest.TestCase):
             self.assertTrue(case["references"])
             self.assertTrue(case["required_outputs"])
             self.assertTrue(case["guardrails"])
+            if case.get("security_categories") is not None:
+                self.assertTrue(case["security_categories"])
+                self.assertEqual(len(case["security_categories"]), len(set(case["security_categories"])))
 
     def test_eval_rubric_and_reference_integrity_are_validated(self):
         import json
