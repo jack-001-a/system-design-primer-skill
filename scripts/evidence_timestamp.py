@@ -71,11 +71,11 @@ def parse_openssl_gen_time(value: str) -> str:
 
 
 def parse_accuracy(details: str) -> dict[str, int] | None:
-    match = re.search(r"^Accuracy:\\s*(.+)$", details, re.I | re.M)
+    match = re.search(r"^Accuracy:\s*(.+)$", details, re.I | re.M)
     if not match:
         return None
     result: dict[str, int] = {}
-    for amount, unit in re.findall(r"(\\d+)\\s*(seconds?|millis(?:econds?)?|micros(?:econds?)?)", match.group(1), re.I):
+    for amount, unit in re.findall(r"(\d+)\s*(seconds?|millis(?:econds?)?|micros(?:econds?)?)", match.group(1), re.I):
         key = "seconds" if unit.lower().startswith("second") else ("millis" if unit.lower().startswith("milli") else "micros")
         if key in result:
             raise ValueError("timestamp token contains duplicate accuracy components")
@@ -108,11 +108,11 @@ def verify_timestamp(
         command.extend(["-untrusted", str(chain_path)])
     run_openssl(command)
     details = run_openssl(["ts", "-reply", "-in", str(response_path), "-text"])
-    gen_time = re.search(r"^Time(?: stamp)?\\s*:\\s*(.+)$", details, re.I | re.M)
-    policy = re.search(r"^Policy OID\\s*:\\s*(\\S+)", details, re.I | re.M)
-    serial = re.search(r"^Serial number\\s*:\\s*(\\S+)", details, re.I | re.M)
-    response_algorithm = re.search(r"^Hash Algorithm:\\s*([A-Za-z0-9-]+)", details, re.I | re.M)
-    response_imprint = re.search(r"^Message data:\\s*(?:0x)?([0-9a-fA-F]+)", details, re.I | re.M)
+    gen_time = re.search(r"^Time(?: stamp)?\s*:\s*(.+)$", details, re.I | re.M)
+    policy = re.search(r"^Policy OID\s*:\s*(\S+)", details, re.I | re.M)
+    serial = re.search(r"^Serial number\s*:\s*(\S+)", details, re.I | re.M)
+    response_algorithm = re.search(r"^Hash Algorithm:\s*([A-Za-z0-9-]+)", details, re.I | re.M)
+    response_imprint = re.search(r"^Message data:\s*(?:0x)?([0-9a-fA-F]+)", details, re.I | re.M)
     if not gen_time:
         raise ValueError("verified timestamp token did not expose a generation time")
     if not policy or not serial:
@@ -121,8 +121,8 @@ def verify_timestamp(
         raise ValueError("timestamp token message-imprint algorithm is not SHA-256")
     if not response_imprint or response_imprint.group(1).lower() != expected_imprint:
         raise ValueError("timestamp token message imprint does not bind the supplied Ed25519 signature")
-    ordering = re.search(r"^Ordering:\\s*(yes|no)", details, re.I | re.M)
-    nonce = re.search(r"^Nonce:\\s*(\\S+)", details, re.I | re.M)
+    ordering = re.search(r"^Ordering:\s*(yes|no)", details, re.I | re.M)
+    nonce = re.search(r"^Nonce:\s*(\S+)", details, re.I | re.M)
     return {
         "verified": True,
         "signature_sha256": expected_imprint,

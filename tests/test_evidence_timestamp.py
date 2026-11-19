@@ -68,6 +68,46 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(len(result["response_sha256"]), 64)
         self.assertEqual(run.call_args_list[1].args[0][:3], ["ts", "-verify", "-queryfile"])
 
+
+    def test_rejects_response_token_imprint_mismatch(self):
+        self.request.write_bytes(b"request")
+        import hashlib as h
+        digest = h.sha256(b"s" * 64).hexdigest()
+        with patch("scripts.evidence_timestamp.run_openssl") as run:
+            run.side_effect = [
+                "Hash Algorithm: sha256\\nMessage data: " + digest,
+                "",
+                "Time stamp: Nov 19 12:00:00 2026 GMT\\nPolicy OID: 1.2.3\\nSerial number: 01\\nHash Algorithm: sha256\\nMessage data: " + "0" * 64,
+            ]
+            with self.assertRaisesRegex(ValueError, "does not bind"):
+                verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
+
+    def test_rejects_missing_policy_or_serial(self):
+        self.request.write_bytes(b"request")
+        import hashlib as h
+        digest = h.sha256(b"s" * 64).hexdigest()
+        with patch("scripts.evidence_timestamp.run_openssl") as run:
+            run.side_effect = [
+                "Hash Algorithm: sha256\\nMessage data: " + digest,
+                "",
+                "Time stamp: Nov 19 12:00:00 2026 GMT\\nHash Algorithm: sha256\\nMessage data: " + digest,
+            ]
+            with self.assertRaisesRegex(ValueError, "policy OID or serial"):
+                verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
+
+    def test_rejects_unparseable_gen_time(self):
+        self.request.write_bytes(b"request")
+        import hashlib as h
+        digest = h.sha256(b"s" * 64).hexdigest()
+        with patch("scripts.evidence_timestamp.run_openssl") as run:
+            run.side_effect = [
+                "Hash Algorithm: sha256\\nMessage data: " + digest,
+                "",
+                "Time stamp: not-a-time\\nPolicy OID: 1.2.3\\nSerial number: 01\\nHash Algorithm: sha256\\nMessage data: " + digest,
+            ]
+            with self.assertRaisesRegex(ValueError, "genTime"):
+                verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
+
     def test_wrong_request_imprint_rejected_before_token_verification(self):
         self.request.write_bytes(b"request")
         with patch("scripts.evidence_timestamp.run_openssl", return_value="Hash Algorithm: sha256\nMessage data: " + "0" * 64):
