@@ -50,7 +50,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
         with self.assertRaisesRegex(ValueError, "did not confirm"):
             self.run_valid(self.output.replace("Response verify OK", "Response verify failure"))
     def test_rejects_stale_response(self):
-        output = self.output.replace("Nov 19 12:05:00 2026 GMT", "Nov 19 11:59:00 2026 GMT")
+        output = self.output.replace("Nov 19 12:05:00 2026 GMT", "Nov 19 11:50:00 2026 GMT")
         with self.assertRaisesRegex(ValueError, "stale"):
             self.run_valid(output)
     def test_rejects_missing_next_update(self):
