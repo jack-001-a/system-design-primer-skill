@@ -106,3 +106,26 @@ Only one response per case/model pair is accepted in a run.
 - Do not put API keys, credentials, customer data, or other secrets in response files.
 - Keep raw outputs and reports out of version control unless they are sanitized and
   intentionally approved for publication.
+
+
+## Regression coverage
+
+The current fixture set contains thirteen cases:
+
+| Case | Primary behavior under review |
+|---|---|
+| `review-critical-path` | Evidence-based repository review |
+| `capacity-estimation` | Capacity formulas, units, and uncertainty |
+| `measured-optimization` | Controlled performance investigation |
+| `security-threat-review` | Agent trust boundaries and tool permissions |
+| `database-migration` | Schema evolution and safe cutover |
+| `distributed-business-transaction` | Ambiguous outcomes and business invariants |
+| `tenant-authorization-review` | Tenant scope and authorization freshness |
+| `architecture-decision` | Simplicity and explicit decision constraints |
+| `cache-replica-consistency` | Cache/replica staleness and read guarantees |
+| `evidence-boundary-review` | Facts, inferences, assumptions, and unknowns |
+| `agent-indirect-prompt-injection` | Untrusted retrieved content and tool authorization |
+| `agent-resume-ambiguous-side-effect` | Checkpoint recovery after uncertain external effects |
+| `incident-backlog-recovery` | Safe replay, backlog drain, and recovery criteria |
+
+The cases are scenario prompts, not automated correctness proofs. A model must be run through the adapter and its outputs reviewed before any quality claim is made.
