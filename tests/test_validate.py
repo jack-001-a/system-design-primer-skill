@@ -27,6 +27,16 @@ class FrontmatterTests(unittest.TestCase):
 
 
 class PackageTests(unittest.TestCase):
+    def test_templates_must_be_discoverable_from_skill_entrypoint(self):
+        from validate import _undiscoverable_templates
+        self.assertEqual(
+            _undiscoverable_templates(
+                "Use `templates/adr-template.md`.",
+                {"adr-template.md", "orphan-template.md"},
+            ),
+            ["orphan-template.md"],
+        )
+
     def test_repository_package_is_valid(self):
         self.assertEqual(validate(ROOT), [])
 
