@@ -23,6 +23,7 @@ try:
     from .reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior, summarize_review_data_quality
     from .statistical_analysis import comparative_analysis
     from .evaluation_catalog import fingerprint_dataset
+    from .review_evidence import attach_review_evidence
 except ImportError:  # Direct execution: python scripts/evaluate.py
     from run_manifest import load_verified_manifest
     from review_provenance import validate_review_history
@@ -30,6 +31,7 @@ except ImportError:  # Direct execution: python scripts/evaluate.py
     from reviewer_calibration import aggregate_reviewer_calibration, summarize_reviewer_behavior, summarize_review_data_quality
     from statistical_analysis import comparative_analysis
     from evaluation_catalog import fingerprint_dataset
+    from review_evidence import attach_review_evidence
 
 
 AUDIT_CHAIN_VERSION = 1
@@ -439,6 +441,7 @@ def main() -> int:
                 bool(args.run_config_id),
             )),
         }
+        attach_review_evidence(report, records)
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
