@@ -15,6 +15,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+try:
+    from .run_manifest import load_verified_manifest
+except ImportError:  # Direct execution: python scripts/evaluate.py
+    from run_manifest import load_verified_manifest
+
 
 AUDIT_CHAIN_VERSION = 1
 AUDIT_FIELD = "_audit"
@@ -145,7 +150,12 @@ def validate_tool_trace(trace: Any, line_number: int = 0) -> None:
         raise ValueError(prefix + "tool_trace sequence values must be unique and increasing")
 
 
-def read_responses(path: Path, cases: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+def read_responses(
+    path: Path,
+    cases: dict[str, dict[str, Any]],
+    expected_run_id: str | None = None,
+    expected_manifest_sha256: str | None = None,
+) -> list[dict[str, Any]]:
     records: list[dict[str, Any]] = []
     seen: set[tuple[str, str]] = set()
     for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
@@ -158,6 +168,11 @@ def read_responses(path: Path, cases: dict[str, dict[str, Any]]) -> list[dict[st
         if not isinstance(item, dict):
             raise ValueError(f"line {line_number}: response must be a JSON object")
         case_id, model, output = item.get("case_id"), item.get("model"), item.get("output")
+        if expected_run_id is not None or expected_manifest_sha256 is not None:
+            if item.get("run_id") != expected_run_id:
+                raise ValueError(f"line {line_number}: response run_id does not match the supplied manifest")
+            if item.get("manifest_sha256") != expected_manifest_sha256:
+                raise ValueError(f"line {line_number}: response manifest_sha256 does not match the supplied manifest")
         if case_id not in cases:
             raise ValueError(f"line {line_number}: unknown case_id {case_id!r}")
         if not isinstance(model, str) or not model.strip():
@@ -231,6 +246,8 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             review = item["review"]
             case_results[item["case_id"]] = {
                 "reviewed": review is not None,
+                "run_id": item.get("run_id"),
+                "manifest_sha256": item.get("manifest_sha256"),
                 "tool_trace": item.get("tool_trace"),
                 "tool_trace_reviewed": review is not None and review.get("tool_trace_guardrails") is not None,
                 "tool_trace_findings": review.get("tool_trace_findings", []) if review is not None else [],
@@ -327,6 +344,7 @@ def main() -> int:
     parser.add_argument("--cases", type=Path, default=Path("evals/system-design-cases.json"))
     parser.add_argument("--responses", type=Path, required=True, help="JSONL file with model outputs and optional reviews")
     parser.add_argument("--output", type=Path, help="Optional path for the JSON report")
+    parser.add_argument("--manifest", type=Path, help="Sealed run manifest; requires every response to carry its run_id and manifest_sha256")
     parser.add_argument("--verify-chain", action="store_true", help="Require and verify a versioned SHA-256 chain on the input JSONL")
     parser.add_argument("--expected-chain-head-hash", help="Optional independently retained SHA-256 head hash for detecting tail truncation or full-chain replacement")
     parser.add_argument("--system-prompt-sha256", help="SHA-256 fingerprint of the evaluated system prompt")
@@ -340,8 +358,17 @@ def main() -> int:
         if args.expected_chain_head_hash and not args.verify_chain:
             raise ValueError("--expected-chain-head-hash requires --verify-chain")
         chain_status = verify_audit_chain(args.responses, args.expected_chain_head_hash) if args.verify_chain else None
-        records = read_responses(args.responses, cases)
+        manifest = load_verified_manifest(args.manifest) if args.manifest else None
+        expected_run_id = manifest["run"]["run_id"] if manifest else None
+        expected_manifest_hash = manifest["fingerprints"]["manifest_sha256"] if manifest else None
+        records = read_responses(args.responses, cases, expected_run_id, expected_manifest_hash)
         report = summarize(records, cases)
+        report["run_manifest"] = ({
+            "verified": True, "run_id": expected_run_id,
+            "manifest_sha256": expected_manifest_hash,
+            "configuration_sha256": manifest["fingerprints"]["configuration_sha256"],
+            "response_binding_verified": True,
+        } if manifest else {"verified": False, "status": "not-supplied"})
         report["audit_chain"] = chain_status or {"verified": False, "status": "not-checked"}
         report["evaluation_provenance"] = {
             "model_labels": sorted({record["model"] for record in records}),
