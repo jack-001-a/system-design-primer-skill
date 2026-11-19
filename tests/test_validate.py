@@ -159,6 +159,26 @@ class PackageTests(unittest.TestCase):
             self.assertTrue(any("unsafe reference path" in item for item in errors))
             self.assertTrue(any("required_outputs entries must be unique" in item for item in errors))
 
+    def test_specialist_references_require_scope_boundaries(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "SKILL.md").write_text(
+                "---\\nname: example-skill\\ndescription: test\\n---\\nbody\\n",
+                encoding="utf-8",
+            )
+            refs = root / "references"
+            refs.mkdir()
+            (refs / "05-async-and-messaging.md").write_text(
+                "# Async messaging\\n\\n## Delivery semantics\\n",
+                encoding="utf-8",
+            )
+            errors = validate(root)
+            self.assertTrue(any(
+                "missing its required scope boundary section" in item
+                and "05-async-and-messaging.md" in item
+                for item in errors
+            ))
+
     def test_task_routing_index_rejects_escaped_newlines(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
