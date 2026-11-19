@@ -20,9 +20,12 @@ def parse_utc(value: str, field: str) -> datetime:
     except ValueError as exc:
         raise ValueError(field + " is not a valid UTC timestamp") from exc
 
-def load_json(path: Path) -> tuple[dict[str, Any], str]:
+def load_json(path: Path, expected_sha256: str) -> tuple[dict[str, Any], str]:
     raw = path.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
+    require_digest(expected_sha256, str(path) + " expected SHA-256")
+    if digest != expected_sha256:
+        raise ValueError(str(path) + " SHA-256 does not match the independently supplied pin")
     value = json.loads(raw.decode("utf-8"))
     if not isinstance(value, dict):
         raise ValueError(str(path) + " must contain a JSON object")
@@ -182,6 +185,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "gen_time_source": "caller_supplied_from_independently_verified_rfc3161_token",
         "tsa_certificate_sha256": certificate_digest,
         "timestamp_result_sha256": timestamp_result_sha256,
+        "result_digest_policy": "required_independent_sha256_pins_for_all_supplied_result_files",
         "timestamp_signer_serial_number": timestamp_result.get("tsa_signer_serial_number"),
         "historical_revocation_assessment": {
             "source": "verified_crl",
@@ -204,6 +208,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "The OCSP verifier does not check a request nonce; nonce_checked is false.",
             "OCSP responder certificate revocation is not assessed: response-signature and responder-path verification do not establish that the responder certificate was not revoked at genTime.",
             "Responder revocation can only be assessed when the OCSP verifier is given a separately pinned signer certificate, proves its ResponderID matches the BasicOCSPResponse, forces OpenSSL to verify using that exact certificate, and a separately pinned issuer CRL result is bound to the same certificate and genTime.",
+            "Result JSON files are accepted only when their byte digests match independently supplied pins; a digest generated from the same untrusted file is not an authenticity guarantee.",
+            "The independent pins must be retained through a separate trusted channel. This report does not prove who produced the result JSON or which verifier binary executed.",
             "This report is an aggregation record, not a digital signature or an independent trust anchor.",
         ],
     }
@@ -218,20 +224,33 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gen-time", required=True)
     parser.add_argument("--timestamp-result", type=Path, required=True)
+    parser.add_argument("--timestamp-result-sha256", required=True,
+                        help="independently recorded SHA-256 of timestamp result JSON")
     parser.add_argument("--crl-result", type=Path, required=True)
+    parser.add_argument("--crl-result-sha256", required=True,
+                        help="independently recorded SHA-256 of CRL result JSON")
     parser.add_argument("--ocsp-result", type=Path)
+    parser.add_argument("--ocsp-result-sha256",
+                        help="independently recorded SHA-256 of OCSP result JSON")
     parser.add_argument("--ocsp-responder-revocation-result", type=Path)
+    parser.add_argument("--ocsp-responder-revocation-result-sha256",
+                        help="independently recorded SHA-256 of responder CRL result JSON")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:
-        timestamp_result, timestamp_digest = load_json(args.timestamp_result)
-        crl_result, crl_digest = load_json(args.crl_result)
+        if bool(args.ocsp_result) != bool(args.ocsp_result_sha256):
+            raise ValueError("--ocsp-result and --ocsp-result-sha256 must be supplied together")
+        if bool(args.ocsp_responder_revocation_result) != bool(args.ocsp_responder_revocation_result_sha256):
+            raise ValueError("--ocsp-responder-revocation-result and its SHA-256 pin must be supplied together")
+        timestamp_result, timestamp_digest = load_json(args.timestamp_result, args.timestamp_result_sha256)
+        crl_result, crl_digest = load_json(args.crl_result, args.crl_result_sha256)
         if args.ocsp_result:
-            ocsp_result, ocsp_digest = load_json(args.ocsp_result)
+            ocsp_result, ocsp_digest = load_json(args.ocsp_result, args.ocsp_result_sha256)
         else:
             ocsp_result, ocsp_digest = None, None
         if args.ocsp_responder_revocation_result:
-            responder_result, responder_digest = load_json(args.ocsp_responder_revocation_result)
+            responder_result, responder_digest = load_json(
+                args.ocsp_responder_revocation_result, args.ocsp_responder_revocation_result_sha256)
         else:
             responder_result, responder_digest = None, None
         report = build_validation_report(args.gen_time, crl_result, crl_digest,
