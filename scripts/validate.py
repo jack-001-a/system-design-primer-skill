@@ -254,6 +254,41 @@ def _undiscoverable_templates(skill_content: str, template_names: set[str]) -> l
     )
 
 
+def _workflow_security_errors(workflows_dir: Path) -> list[str]:
+    """Check release workflow supply-chain invariants without a YAML dependency."""
+    errors: list[str] = []
+    if not workflows_dir.is_dir():
+        return errors
+    for workflow in sorted(workflows_dir.glob("*.yml")):
+        content = workflow.read_text(encoding="utf-8")
+        for line_number, line in enumerate(content.splitlines(), 1):
+            match = re.match(r"^\\s*uses:\\s*([^\\s#]+)", line)
+            if not match:
+                continue
+            action = match.group(1)
+            if action.startswith("./"):
+                continue
+            if not re.search(r"@[0-9a-fA-F]{40}$", action):
+                errors.append(
+                    f"{workflow.name}:{line_number} action must be pinned to a full commit SHA: {action}"
+                )
+        if re.search(r"(?m)^\\s*permissions:\\s*write-all\\s*$", content):
+            errors.append(f"{workflow.name} must not grant write-all permissions")
+        if workflow.name in {"release.yml", "npm-publish.yml"}:
+            if "fetch-depth: 0" not in content:
+                errors.append(f"{workflow.name} must fetch full history before checking tag ancestry")
+            if 'git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main' not in content:
+                errors.append(f"{workflow.name} must require the tagged commit to be reachable from main")
+        if workflow.name == "npm-publish.yml":
+            if not re.search(r"(?m)^\\s+id-token:\\s*write\\s*$", content):
+                errors.append("npm-publish.yml must grant job-scoped id-token: write for npm OIDC")
+            if "NPM_TOKEN" in content or "NODE_AUTH_TOKEN" in content:
+                errors.append("npm-publish.yml must not depend on a long-lived npm publish token")
+            if "npm stage publish" not in content:
+                errors.append("npm-publish.yml must use staged publishing for maintainer approval")
+    return errors
+
+
 def validate(root: Path) -> list[str]:
     errors: list[str] = []
     root = root.resolve()
@@ -484,6 +519,7 @@ def validate(root: Path) -> list[str]:
         if package.get("private") is True:
             errors.append("package.json private must not be true for an npm release")
 
+    errors.extend(_workflow_security_errors(root / ".github" / "workflows"))
     return errors
 
 
