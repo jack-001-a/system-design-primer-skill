@@ -20,7 +20,7 @@ answer = call_your_model(
     model=request["model"],
     prompt=request["task"],
 )
-print(json.dumps({"output": answer}))
+print(json.dumps({"output": answer, "tool_trace": []}))
 ```
 
 Run all seventeen fixtures sequentially:
