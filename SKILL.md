@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "1.4.0"
+  version: "1.5.0"
   language: "en"
 ---
 
@@ -141,6 +141,34 @@ For APIs, events, schemas, and read models, define ownership, consumers, authZ, 
 
 For critical journeys, enumerate failure modes, triggers, detection, blast radius, user impact, containment, degraded behavior, recovery, reconciliation, and validation. Define business RTO/RPO and test restores; do not equate restart or successful backup with recovery. Use `references/15-failure-analysis.md` and `templates/failure-analysis-template.md`.
 
+## AI agent architecture workflows
+
+Use these workflows when the system includes autonomous or semi-autonomous agents, model-driven tool use, or multi-step AI workflows. Treat the model as an untrusted planner—not an authorization boundary or source of truth.
+
+### Multi-agent system design
+
+Start with a single-agent or deterministic workflow baseline. Introduce multiple agents only when bounded specialization, independent context, parallel work, or separate trust boundaries justify coordination overhead. Define each agent's responsibility, allowed tools/data, input/output contract, owner, and termination condition. Select a topology deliberately (supervisor/worker, sequential pipeline, router, peer collaboration, or hierarchical delegation); bound fan-out, depth, concurrency, tokens, time, and retries. Define shared-state ownership, message correlation, duplicate handling, conflict resolution, cancellation, partial completion, and human escalation. See `references/16-multi-agent-architecture.md`.
+
+### Agent harness and runtime
+
+Specify the control loop (observe → plan → authorize → act → validate → persist/continue), context assembly, tool registry, policy enforcement, execution sandbox, budgets, cancellation, checkpoints, and stop conditions. Keep deterministic control and policy in application code; do not rely on prompt instructions to enforce security or resource limits. Treat tool results and retrieved content as untrusted. See `references/17-agent-harness-and-runtime.md`.
+
+### MCP and tool integration
+
+Model MCP clients, servers, transports, sessions, capability negotiation, Tools, Resources, and Prompts as explicit protocol and trust boundaries. Distinguish protocol discovery from authorization: validate every invocation server-side, scope credentials to the caller and tenant, constrain network and filesystem access, and audit side effects. Version contracts and test compatibility; verify current protocol behavior against official documentation before implementation. See `references/18-mcp-architecture.md`.
+
+### Agent security and permissions
+
+Threat-model prompt injection, confused-deputy behavior, tool abuse, SSRF, path traversal, data exfiltration, cross-tenant access, secret leakage, supply-chain risk, and unsafe generated code. Enforce least privilege, per-action authorization, allowlists, egress controls, isolation, approval gates, and tamper-resistant audit. Model approval and denial paths explicitly. See `references/19-agent-security-and-permissions.md`.
+
+### State, memory, and recovery
+
+Separate ephemeral context, conversation history, durable workflow state, user-approved memory, and external source-of-truth data. Define ownership, retention, deletion, provenance, tenant isolation, encryption, checkpoint atomicity, replay/idempotency, schema evolution, and recovery after interruption. Never treat model context as durable state. See `references/20-agent-state-and-memory.md`.
+
+### Agent evaluation and operations
+
+Define task-level success criteria and version evaluation datasets, prompts, models, tools, policies, and graders. Measure task completion, correctness, groundedness, tool selection/arguments, policy compliance, recovery, latency, token/cost budgets, and human intervention. Combine deterministic tests, adversarial cases, trajectory review, fault injection, and staged online evaluation. Do not use a single aggregate score to hide critical safety failures. See `references/21-agent-evaluation-and-observability.md`.
+
 ## Progressive reference loading
 
 - Requirements and estimation: `references/01-requirements-and-capacity.md`
@@ -159,6 +187,12 @@ For critical journeys, enumerate failure modes, triggers, detection, blast radiu
 - Architecture decisions and evidence-based reviews: `references/13-architecture-intelligence.md`
 - API and data contracts: `references/14-api-and-data-contracts.md`
 - Failure analysis: `references/15-failure-analysis.md`
+- Multi-agent architecture: `references/16-multi-agent-architecture.md`
+- Agent harness and runtime: `references/17-agent-harness-and-runtime.md`
+- MCP architecture: `references/18-mcp-architecture.md`
+- Agent security and permissions: `references/19-agent-security-and-permissions.md`
+- Agent state and memory: `references/20-agent-state-and-memory.md`
+- Agent evaluation and observability: `references/21-agent-evaluation-and-observability.md`
 
 When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design, architecture review, ADR, decision matrix, review scorecard, and failure analysis.
 
