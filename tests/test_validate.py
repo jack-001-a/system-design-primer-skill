@@ -36,11 +36,20 @@ class PackageTests(unittest.TestCase):
             "13-architecture-intelligence.md",
             "14-api-and-data-contracts.md",
             "15-failure-analysis.md",
+            "16-multi-agent-architecture.md",
+            "17-agent-harness-and-runtime.md",
+            "18-mcp-architecture.md",
+            "19-agent-security-and-permissions.md",
+            "20-agent-state-and-memory.md",
+            "21-agent-evaluation-and-observability.md",
         }.issubset(REQUIRED_REFERENCES))
         self.assertTrue({
             "architecture-decision-matrix-template.md",
             "architecture-review-scorecard-template.md",
             "failure-analysis-template.md",
+            "agent-system-design-template.md",
+            "agent-security-review-template.md",
+            "agent-evaluation-plan-template.md",
         }.issubset(REQUIRED_TEMPLATES))
 
     def test_invalid_name_is_rejected(self):
