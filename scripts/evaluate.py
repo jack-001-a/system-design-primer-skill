@@ -36,22 +36,38 @@ def validate_tool_trace(trace: Any, line_number: int = 0) -> None:
     prefix = f"line {line_number}: " if line_number else ""
     if not isinstance(trace, list):
         raise ValueError(prefix + "tool_trace must be an array")
-    allowed = {"sequence", "tool", "operation", "authorization", "tenant_ref", "resource_ref", "approval_ref", "side_effect", "outcome"}
+    allowed = {"sequence", "event_id", "session_id", "turn_id", "turn_sequence", "parent_event_id", "tool", "operation", "authorization", "tenant_ref", "resource_ref", "approval_ref", "side_effect", "outcome"}
+    seen_events: dict[str, dict[str, Any]] = {}
+    previous_turn = 0
     for index, event in enumerate(trace):
         if not isinstance(event, dict) or set(event) - allowed:
             raise ValueError(prefix + f"tool_trace event {index} must use the documented fields only")
         if type(event.get("sequence")) is not int or event["sequence"] < 1:
             raise ValueError(prefix + f"tool_trace event {index} requires a positive integer sequence")
-        for field in ("tool", "operation", "authorization", "outcome"):
+        for field in ("event_id", "session_id", "turn_id", "tool", "operation", "authorization", "outcome"):
             if not isinstance(event.get(field), str) or not event[field].strip():
                 raise ValueError(prefix + f"tool_trace event {index} requires non-empty {field}")
+        if event.get("event_id") in seen_events:
+            raise ValueError(prefix + f"tool_trace event {index} has duplicate event_id")
+        if type(event.get("turn_sequence")) is not int or event["turn_sequence"] < 1:
+            raise ValueError(prefix + f"tool_trace event {index} requires a positive turn_sequence")
+        if event["turn_sequence"] < previous_turn:
+            raise ValueError(prefix + f"tool_trace event {index} moves backwards across turns")
+        previous_turn = event["turn_sequence"]
+        parent_id = event.get("parent_event_id")
+        if parent_id is not None and (parent_id not in seen_events or seen_events[parent_id]["session_id"] != event["session_id"]):
+            raise ValueError(prefix + f"tool_trace event {index} has an unknown or cross-session parent_event_id")
+        approval_id = event.get("approval_ref")
+        if approval_id is not None and (approval_id not in seen_events or seen_events[approval_id]["operation"] != "approval" or seen_events[approval_id]["outcome"] != "approved"):
+            raise ValueError(prefix + f"tool_trace event {index} has no preceding approved approval_ref")
         if event["authorization"] not in ("allowed", "denied", "not-applicable", "unknown"):
             raise ValueError(prefix + f"tool_trace event {index} has invalid authorization")
         if event.get("side_effect", "none") not in ("none", "read", "write", "external"):
             raise ValueError(prefix + f"tool_trace event {index} has invalid side_effect")
-        for field in ("tenant_ref", "resource_ref", "approval_ref"):
+        for field in ("tenant_ref", "resource_ref", "approval_ref", "parent_event_id"):
             if field in event and (not isinstance(event[field], str) or not event[field].strip()):
                 raise ValueError(prefix + f"tool_trace event {index} has invalid {field}")
+        seen_events[event["event_id"]] = event
     sequences = [event["sequence"] for event in trace]
     if sequences != sorted(set(sequences)):
         raise ValueError(prefix + "tool_trace sequence values must be unique and increasing")
@@ -86,6 +102,18 @@ def read_responses(path: Path, cases: dict[str, dict[str, Any]]) -> list[dict[st
             validate_tool_trace(trace, line_number)
         if review is not None:
             validate_review(review, cases[case_id], line_number)
+            findings = review.get("tool_trace_findings", [])
+            if not isinstance(findings, list):
+                raise ValueError(f"line {line_number}: review.tool_trace_findings must be an array")
+            known_event_ids = {event["event_id"] for event in (trace or [])}
+            for finding in findings:
+                if (not isinstance(finding, dict)
+                        or set(finding) != {"event_id", "guardrail_index", "outcome"}
+                        or finding.get("event_id") not in known_event_ids
+                        or type(finding.get("guardrail_index")) is not int
+                        or not 0 <= finding["guardrail_index"] < len(cases[case_id]["guardrails"])
+                        or finding.get("outcome") not in ("violation", "compliant")):
+                    raise ValueError(f"line {line_number}: invalid tool_trace_findings entry")
             trace_scores = review.get("tool_trace_guardrails")
             if trace_scores is not None:
                 if not isinstance(trace_scores, list) or len(trace_scores) != len(cases[case_id]["guardrails"]):
@@ -133,6 +161,7 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
                 "reviewed": review is not None,
                 "tool_trace": item.get("tool_trace"),
                 "tool_trace_reviewed": review is not None and review.get("tool_trace_guardrails") is not None,
+                "tool_trace_findings": review.get("tool_trace_findings", []) if review is not None else [],
                 "tool_trace_guardrails": [
                     {"guardrail": guardrail, "passed": review["tool_trace_guardrails"][index]}
                     for index, guardrail in enumerate(case["guardrails"])
@@ -179,8 +208,13 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             covered_categories.update(cases[case_id].get("security_categories", []))
             response_failed = any(not item["passed"] for item in result["guardrails"])
             trace_failed = any(not item["passed"] for item in result["tool_trace_guardrails"])
-            if response_failed or trace_failed:
+            trace_findings = [finding for finding in result["tool_trace_findings"] if finding["outcome"] == "violation"]
+            if response_failed or trace_failed or trace_findings:
                 violations.append(case_id)
+                for finding in trace_findings:
+                    finding["case_id"] = case_id
+                    finding["guardrail"] = cases[case_id]["guardrails"][finding["guardrail_index"]]
+                    metrics.setdefault("security_violation_events", []).append(finding)
         metrics["security_gate"] = {
             "status": "fail" if violations else ("incomplete" if incomplete else "pass"),
             "hard_fail": bool(violations),
@@ -193,6 +227,7 @@ def summarize(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -
             "uncovered_categories": sorted(set(all_security_categories) - covered_categories),
             "guardrail_violation_case_ids": violations,
             "incomplete_case_ids": incomplete,
+            "violation_event_count": len(metrics.get("security_violation_events", [])),
         }
     return {
         "schema_version": 1,
