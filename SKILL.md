@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "1.5.0"
+  version: "1.6.0"
   language: "en"
 ---
 
@@ -169,6 +169,38 @@ Separate ephemeral context, conversation history, durable workflow state, user-a
 
 Define task-level success criteria and version evaluation datasets, prompts, models, tools, policies, and graders. Measure task completion, correctness, groundedness, tool selection/arguments, policy compliance, recovery, latency, token/cost budgets, and human intervention. Combine deterministic tests, adversarial cases, trajectory review, fault injection, and staged online evaluation. Do not use a single aggregate score to hide critical safety failures. See `references/21-agent-evaluation-and-observability.md`.
 
+## Production architecture workflows
+
+Use these workflows for production infrastructure, cloud-native platforms, and operational readiness. Select only the mechanisms justified by workload, risk, and team capability.
+
+### Kubernetes and container platforms
+
+Evaluate Kubernetes against managed containers, serverless containers, PaaS, and VMs. Model cluster boundaries, workload isolation, requests/limits, probes, disruption budgets, topology spread, autoscaling, graceful termination, storage, upgrades, quotas, and control-plane dependencies. Include immutable artifacts, provenance, admission policy, RBAC, workload identity, network policy, and recovery testing. Do not recommend Kubernetes solely because traffic is high. See `references/22-kubernetes-and-container-platforms.md`.
+
+### Service mesh and traffic management
+
+Separate north-south and east-west traffic. Define ownership for ingress, gateways, service discovery, mesh data plane, and egress. Specify workload identity, mTLS, certificate lifecycle, authorization, routing, canary cohorts, end-to-end deadlines, retry budgets, circuit breaking, and failure policy. Measure proxy overhead, tail latency, telemetry, and operational complexity; compare a mesh with simpler libraries and gateways. See `references/23-service-mesh-and-traffic-management.md`.
+
+### Multi-region architecture and disaster recovery
+
+Start from business impact analysis and journey-specific RTO/RPO. Map correlated failure domains and global dependencies. Compare backup/restore, pilot light, warm standby, active-passive, and active-active per workload and data domain. Define replication lag, consistency, conflict policy, fencing, split-brain prevention, failover authority, failback reconciliation, and tested restore procedures. Replication is not a backup. See `references/24-multi-region-and-disaster-recovery.md` and `templates/multi-region-disaster-recovery-template.md`.
+
+### Platform engineering
+
+Treat the internal developer platform as a product. Define developer personas, paved paths, self-service capabilities, golden-path guardrails, escape hatches, service ownership, support, compatibility, and deprecation. Measure lead time, deployment outcomes, toil, adoption, and developer experience. Keep product teams accountable for service behavior unless ownership is explicitly transferred. See `references/25-platform-engineering-and-developer-experience.md`.
+
+### FinOps and cloud cost architecture
+
+Build transparent allocation and unit economics. Include compute, idle headroom, storage/IOPS, replicas, backups, egress, inter-region transfer, observability, licenses, support, and operational labor. Optimize from measured baselines and validate savings against SLO, security, and delivery outcomes. Model commitment break-even, forecast uncertainty, degraded-mode cost, and exit cost. Never cut backups, redundancy, or telemetry blindly. See `references/26-finops-and-cloud-cost.md` and `templates/cloud-cost-model-template.md`.
+
+### Production observability and SLOs
+
+Define user-centered SLIs, SLOs, measurement windows, exclusions, error-budget policy, and ownership. Design bounded-cardinality metrics, structured/redacted logs, distributed traces, and profiling. Alert on actionable user impact and burn rates; provide runbooks, escalation, and incident roles. Bound telemetry buffers, retries, sampling, retention, and cost; application availability must not depend on synchronous telemetry delivery. See `references/27-production-observability-and-slo.md`.
+
+### Production readiness gate
+
+Before launch, review workload and capacity evidence, SLOs, failure behavior, security controls, recovery exercises, deployment/rollback, on-call ownership, telemetry, cost forecast, and unresolved risks. Record Ready / Ready with actions / Not ready, blocking issues, owners, and due dates. Use `templates/production-readiness-checklist-template.md`.
+
 ## Progressive reference loading
 
 - Requirements and estimation: `references/01-requirements-and-capacity.md`
@@ -193,8 +225,14 @@ Define task-level success criteria and version evaluation datasets, prompts, mod
 - Agent security and permissions: `references/19-agent-security-and-permissions.md`
 - Agent state and memory: `references/20-agent-state-and-memory.md`
 - Agent evaluation and observability: `references/21-agent-evaluation-and-observability.md`
+- Kubernetes and container platforms: `references/22-kubernetes-and-container-platforms.md`
+- Service mesh and traffic management: `references/23-service-mesh-and-traffic-management.md`
+- Multi-region architecture and disaster recovery: `references/24-multi-region-and-disaster-recovery.md`
+- Platform engineering and developer experience: `references/25-platform-engineering-and-developer-experience.md`
+- FinOps and cloud cost: `references/26-finops-and-cloud-cost.md`
+- Production observability and SLOs: `references/27-production-observability-and-slo.md`
 
-When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design, architecture review, ADR, decision matrix, review scorecard, and failure analysis.
+When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design and review, ADR, decision matrix, review scorecard, failure analysis, agent system design/security/evaluation, production readiness, multi-region disaster recovery, and cloud cost modeling.
 
 ## Tools, evidence, and untrusted-input boundaries
 
