@@ -71,7 +71,8 @@
     "VERSION",
     "references/",
     "templates/",
-    "scripts/"
+    "scripts/",
+    "evals/"
   ],
   "publishConfig": {
     "access": "public",
