@@ -155,7 +155,7 @@ def comparative_analysis(records: list[dict[str, Any]], cases: dict[str, dict[st
         "status": "paired_descriptive_and_inferential_analysis",
         "minimum_paired_cases": MIN_PAIRED_CASES,
         "practical_effect_threshold_absolute": PRACTICAL_EFFECT_THRESHOLD,
-        "model_coverage": coverage, "comparisons": comparisons,
+        "model_coverage": coverage, "comparisons": comparisons,\n        "robustness_analysis": robustness_analysis(records, cases),
         "limitations": [
             "Comparisons use only cases reviewed for both models; unequal coverage can create selection bias.",
             "Case weights and strata are caller-supplied design metadata, not inferred corrections.",
@@ -163,5 +163,145 @@ def comparative_analysis(records: list[dict[str, Any]], cases: dict[str, dict[st
             "Paired sign-flip tests assume exchangeable signs under the null; clustered cases can invalidate nominal p-values.",
             "Bootstrap intervals quantify observed-sample uncertainty and do not repair non-representative sampling.",
             "Statistical significance, practical effect threshold, and sample sufficiency are separate outputs.",
+        ],
+    }
+
+
+BOOTSTRAP_RANK_ITERATIONS = 1000
+RANK_MIN_CASES = 5
+
+
+def _average_ranks(scores: dict[str, float]) -> dict[str, float]:
+    ordered = sorted(scores.items(), key=lambda item: (-item[1], item[0]))
+    ranks = {}
+    index = 0
+    while index < len(ordered):
+        end = index + 1
+        while end < len(ordered) and abs(ordered[end][1] - ordered[index][1]) <= 1e-12:
+            end += 1
+        rank = ((index + 1) + end) / 2
+        for model, _ in ordered[index:end]:
+            ranks[model] = rank
+        index = end
+    return ranks
+
+
+def robustness_analysis(records: list[dict[str, Any]], cases: dict[str, dict[str, Any]]) -> dict[str, Any]:
+    """Describe review missingness and test ranking sensitivity without imputing scores."""
+    by_model: dict[str, dict[str, dict[str, Any]]] = {}
+    for record in records:
+        case_id = record["case_id"]
+        by_model.setdefault(record["model"], {})[case_id] = {
+            "metrics": _case_metrics(record, cases[case_id]),
+        }
+    models = sorted(by_model)
+    strata = sorted({str(case.get("evaluation_stratum", "default")) for case in cases.values()})
+    coverage = []
+    for model in models:
+        observed = by_model[model]
+        for stratum in strata:
+            ids = sorted(k for k, c in cases.items()
+                         if str(c.get("evaluation_stratum", "default")) == stratum)
+            reviewed = [k for k in ids if k in observed and observed[k]["metrics"] is not None]
+            coverage.append({
+                "model": model, "stratum": stratum, "case_count": len(ids),
+                "reviewed_count": len(reviewed),
+                "reviewed_coverage": round(len(reviewed) / len(ids), 6) if ids else None,
+                "reviewed_case_ids": reviewed,
+                "unreviewed_case_ids": [k for k in ids if k in observed and observed[k]["metrics"] is None],
+                "missing_case_ids": [k for k in ids if k not in observed],
+            })
+    gaps = {}
+    for model in models:
+        rates = [r["reviewed_coverage"] for r in coverage
+                 if r["model"] == model and r["reviewed_coverage"] is not None]
+        gaps[model] = round(max(rates) - min(rates), 6) if rates else None
+
+    ids = sorted(cases)
+    base = {k: float(cases[k].get("evaluation_weight", 1.0)) for k in ids}
+    scenarios = {
+        "baseline": base,
+        "alternating_minus_plus_25_percent": {
+            k: base[k] * (0.75 if i % 2 == 0 else 1.25) for i, k in enumerate(ids)},
+        "alternating_plus_minus_25_percent": {
+            k: base[k] * (1.25 if i % 2 == 0 else 0.75) for i, k in enumerate(ids)},
+    }
+    sensitivity = {}
+    for metric in ("required_output_score", "guardrail_pass_rate"):
+        rows = {}
+        baseline_ranks = None
+        for name, weights in scenarios.items():
+            scores = {}
+            for model, observed in by_model.items():
+                pairs = [(item["metrics"][metric], weights[k])
+                         for k, item in observed.items() if item["metrics"] is not None]
+                if pairs:
+                    scores[model] = _weighted_mean([p[0] for p in pairs], [p[1] for p in pairs])
+            ranks = _average_ranks(scores)
+            if name == "baseline":
+                baseline_ranks = ranks
+            rows[name] = {"model_scores": {k: round(v, 8) for k, v in sorted(scores.items())},
+                          "ranks": ranks}
+        orders = [tuple(k for k, _ in sorted(row["ranks"].items(), key=lambda x: (x[1], x[0])))
+                  for row in rows.values()]
+        sensitivity[metric] = {
+            "scenarios": rows, "ranking_stable_across_scenarios": len(set(orders)) <= 1,
+            "weight_perturbation": "deterministic case-specific +/-25%; original caller weights unchanged",
+        }
+
+    common = sorted(set.intersection(*[
+        {k for k, item in observed.items() if item["metrics"] is not None}
+        for observed in by_model.values()
+    ])) if models else []
+    rank_bootstrap = {}
+    for metric_index, metric in enumerate(("required_output_score", "guardrail_pass_rate")):
+        if len(models) < 2 or len(common) < RANK_MIN_CASES:
+            rank_bootstrap[metric] = {"status": "insufficient_paired_sample",
+                                      "paired_case_count": len(common),
+                                      "minimum_paired_cases": RANK_MIN_CASES,
+                                      "model_rank_distribution": {}}
+            continue
+        rng = random.Random(SEED + 700 + metric_index)
+        samples = {model: [] for model in models}
+        for _ in range(BOOTSTRAP_RANK_ITERATIONS):
+            picked = [common[rng.randrange(len(common))] for _ in common]
+            scores = {}
+            for model in models:
+                vals = [by_model[model][k]["metrics"][metric] for k in picked]
+                ws = [float(cases[k].get("evaluation_weight", 1.0)) for k in picked]
+                scores[model] = _weighted_mean(vals, ws)
+            for model, rank in _average_ranks(scores).items():
+                samples[model].append(rank)
+        distributions = {}
+        for model, values in samples.items():
+            ordered = sorted(values)
+            distributions[model] = {
+                "mean_rank": round(sum(values) / len(values), 6),
+                "rank_95_percentile_interval": [
+                    ordered[int(0.025 * (len(ordered) - 1))],
+                    ordered[int(0.975 * (len(ordered) - 1))]],
+                "top_rank_frequency": round(sum(v == 1.0 for v in values) / len(values), 6),
+                "rank_frequency": {str(r): round(values.count(r) / len(values), 6)
+                                   for r in sorted(set(values))},
+            }
+        rank_bootstrap[metric] = {
+            "status": "estimated", "paired_case_count": len(common),
+            "paired_case_ids": common, "iterations": BOOTSTRAP_RANK_ITERATIONS,
+            "method": "paired_case_bootstrap_shared_resamples",
+            "model_rank_distribution": distributions,
+        }
+    return {
+        "status": "descriptive_missingness_and_ranking_sensitivity",
+        "review_coverage_by_model_and_stratum": coverage,
+        "review_coverage_gap_by_model": gaps,
+        "missingness_policy": "missing and unreviewed are separate; neither is imputed as zero",
+        "weight_sensitivity": sensitivity,
+        "paired_bootstrap_rank_stability": rank_bootstrap,
+        "limitations": [
+            "Stratum coverage gaps are descriptive and do not identify a missingness mechanism.",
+            "Weight perturbations are stress scenarios, not corrected weights or confidence intervals.",
+            "Rank bootstrap uses shared case resamples over the complete reviewed intersection.",
+            "Bootstrap stability does not repair selection bias or non-representative sampling.",
+            "Tied scores receive average ranks; top-rank frequency counts only an unshared rank of one.",
         ],
     }

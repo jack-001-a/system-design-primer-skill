@@ -390,3 +390,25 @@ Statistical significance after Holm correction, a fixed 0.05 absolute practical-
 threshold, and minimum sample sufficiency are reported separately. These methods assume
 exchangeable paired differences and do not repair non-representative sampling, dependence,
 or unmeasured confounding. No human score or legacy aggregate is modified.
+
+
+## Missingness and ranking robustness diagnostics
+
+The paired comparison report also includes `robustness_analysis`. It reports reviewed,
+unreviewed, and absent response cases separately within each caller-supplied evaluation
+stratum, with descriptive coverage gaps by model. Missing or unreviewed cases are never
+converted to zero scores. Coverage gaps are diagnostics, not proof of a missingness mechanism.
+
+Weight sensitivity uses deterministic case-specific +/-25% perturbation scenarios around
+the caller's original weights and reports model scores and ranks for each scenario. This is
+a stress test only: it does not rewrite weights, estimate corrected weights, or produce a
+confidence interval. A ranking that changes across scenarios should not be presented as a
+robust unique winner.
+
+Paired bootstrap rank stability resamples the same case IDs for every model, using only the
+intersection reviewed for all compared models. It reports mean rank, percentile rank interval,
+rank frequencies, and unshared top-rank frequency; tied scores receive average ranks. Fewer
+than five common reviewed cases, or fewer than two models, yields an explicit insufficient
+sample status. Bootstrap stability is conditional on the observed complete-case sample and
+does not correct selection bias, dependent cases, or non-representative sampling. The fixed
+1,000-iteration bootstrap is deterministic for reproducible diagnostics.
