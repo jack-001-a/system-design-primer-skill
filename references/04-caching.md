@@ -19,7 +19,7 @@ Each layer has a different consistency and invalidation boundary.
 
 ### Cache-aside
 
-Read: cache lookup → on miss read source of truth → populate cache → return. Write: update source of truth → invalidate cache (or use a carefully designed refresh). Simple and common, but concurrent misses can stampede and stale refill races need handling.
+Read: cache lookup → on miss read source of truth → populate cache → return. Write: update source of truth → invalidate cache (or use a carefully designed refresh). This ordering alone does not make the database update and cache invalidation atomic; a crash or invalidation failure between them can leave stale data until repair/expiry. Concurrent misses can stampede and stale refill races need handling.
 
 ### Read-through
 
@@ -27,7 +27,7 @@ Application asks the cache; cache abstraction loads from backing store on miss. 
 
 ### Write-through
 
-Write path updates cache and backing store synchronously through a coordinated abstraction. Better immediate read freshness in some designs; write latency and failure semantics must be explicit.
+A coordinated abstraction attempts to update the cache and backing store in the write path. Do not assume this is an atomic distributed transaction: define ordering, partial-failure handling, retry/idempotency, and which store is authoritative. It can improve freshness for readers using that path, but direct database writes, other cache layers, or replica lag can still expose stale values.
 
 ### Write-behind / write-back
 
@@ -45,7 +45,7 @@ Cache invalidation is a correctness problem. Consider this race:
 2. Request B updates DB and deletes cache.
 3. Request A writes its old value into cache after B's deletion.
 
-Possible mitigations include versioned values, write ordering, short TTL as a safety net, compare-and-set, single-flight loading, or designing cache as a derived/replaceable view. Choose based on business tolerance.
+Possible mitigations include versioned values with a monotonic source version, conditional cache writes that reject older versions, invalidation generations/fencing, single-flight loading, or designing cache as a derived/replaceable view. A plain delete followed by an unguarded cache fill can still race; TTL limits the stale interval but does not prove correctness. Choose based on business tolerance and test the interleaving explicitly.
 
 For multi-instance caches, ensure the invalidation event reaches all relevant cache layers. Define behavior on invalidation failure.
 
