@@ -191,12 +191,12 @@ class PackageTests(unittest.TestCase):
             with self.subTest(filename=filename), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 (root / "SKILL.md").write_text(
-                    "---\\nname: example-skill\\ndescription: test\\n---\\nbody\\n",
+                    "---\nname: example-skill\ndescription: test\n---\nbody\n",
                     encoding="utf-8",
                 )
                 refs = root / "references"
                 refs.mkdir()
-                (refs / filename).write_text("# Example\\n\\n## Details\\n", encoding="utf-8")
+                (refs / filename).write_text("# Example\n\n## Details\n", encoding="utf-8")
                 errors = validate(root)
                 self.assertTrue(any(
                     "missing its required scope boundary section" in item
