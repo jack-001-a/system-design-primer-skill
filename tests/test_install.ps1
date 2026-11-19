@@ -32,13 +32,13 @@ try {
 
   $env:DSH_HOME = $null
   & $ScriptPath -Agent dsh -Scope user
-  if (-not (Test-Path (Join-Path $HomeDir '.dsh/skills/system-design-primer/SKILL.md'))) { throw 'Default user DSH install missing' }
+  if (-not (Test-Path (Join-Path $HOME '.dsh/skills/system-design-primer/SKILL.md'))) { throw 'Default user DSH install missing' }
   $env:DSH_HOME = $CustomDsh
   & $ScriptPath -Agent dsh -Scope user
   if (-not (Test-Path (Join-Path $CustomDsh 'skills/system-design-primer/SKILL.md'))) { throw 'Custom DSH_HOME install missing' }
   & $ScriptPath -Agent all -Scope user -Force
   foreach ($Relative in @('.agents/skills/system-design-primer/SKILL.md','.claude/skills/system-design-primer/SKILL.md','.copilot/skills/system-design-primer/SKILL.md')) {
-    if (-not (Test-Path (Join-Path $HomeDir $Relative))) { throw "Missing user install: $Relative" }
+    if (-not (Test-Path (Join-Path $HOME $Relative))) { throw "Missing user install: $Relative" }
   }
   Pop-Location
   Write-Host 'OK: PowerShell installer integration tests'
