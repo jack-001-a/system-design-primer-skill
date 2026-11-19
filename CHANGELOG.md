@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.1.0 — 2026-11-19
+
+- Add OpenTelemetry architecture and instrumentation guidance for traces, metrics, logs, Collector pipelines, sampling, privacy, and telemetry cost.
+- Add distributed tracing and context propagation guidance for synchronous/asynchronous boundaries, baggage, sampling, and latency interpretation.
+- Add continuous profiling and performance diagnostics covering CPU, memory, allocation, lock contention, runtime behavior, and profiler operations.
+- Add realistic load, stress, spike, and soak workload modeling with coordinated-omission controls and safe test execution.
+- Add capacity planning models for Little's Law, CPU demand, connection occupancy, queue stability, failure headroom, and sensitivity analysis.
+- Add controlled chaos engineering and resilience experiments plus incident management, on-call, and blameless postmortems.
+- Add observability, performance test, chaos experiment, and incident postmortem templates; extend required-package validation and tests.
+
+
 ## 2.0.0 — 2026-11-19
 
 - Add OAuth 2.1, OpenID Connect, and passkey architecture guidance for secure client flows, token lifecycle, WebAuthn, and account recovery.
