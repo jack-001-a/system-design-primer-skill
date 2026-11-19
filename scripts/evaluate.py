@@ -7,12 +7,71 @@ review annotations and reports criterion coverage, output scores, and guardrail 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+
+AUDIT_CHAIN_VERSION = 1
+AUDIT_FIELD = "_audit"
+
+def canonical_json(value: Any) -> bytes:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+def audit_record_hash(record: dict[str, Any], previous_hash: str | None) -> str:
+    payload = {"chain_version": AUDIT_CHAIN_VERSION, "previous_hash": previous_hash,
+               "record": {key: value for key, value in record.items() if key != AUDIT_FIELD}}
+    return hashlib.sha256(canonical_json(payload)).hexdigest()
+
+def seal_audit_chain(source: Path, destination: Path) -> int:
+    previous_hash: str | None = None
+    count = 0
+    with destination.open("x", encoding="utf-8", newline="\n") as output:
+        for line_number, line in enumerate(source.read_text(encoding="utf-8").splitlines(), 1):
+            if not line.strip():
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(f"line {line_number}: invalid JSON: {exc.msg}") from exc
+            if not isinstance(record, dict) or AUDIT_FIELD in record:
+                raise ValueError(f"line {line_number}: expected an unsealed JSON object")
+            digest = audit_record_hash(record, previous_hash)
+            record[AUDIT_FIELD] = {"version": AUDIT_CHAIN_VERSION, "previous_hash": previous_hash, "record_hash": digest}
+            output.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+            previous_hash = digest
+            count += 1
+    return count
+
+def verify_audit_chain(path: Path) -> dict[str, Any]:
+    previous_hash: str | None = None
+    count = 0
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"line {line_number}: invalid JSON: {exc.msg}") from exc
+        if not isinstance(record, dict):
+            raise ValueError(f"line {line_number}: audit record must be an object")
+        audit = record.get(AUDIT_FIELD)
+        if (not isinstance(audit, dict) or set(audit) != {"version", "previous_hash", "record_hash"}
+                or audit.get("version") != AUDIT_CHAIN_VERSION):
+            raise ValueError(f"line {line_number}: missing or unsupported audit metadata")
+        if audit.get("previous_hash") != previous_hash:
+            raise ValueError(f"line {line_number}: audit chain link mismatch")
+        expected = audit_record_hash(record, previous_hash)
+        if not isinstance(audit.get("record_hash"), str) or audit["record_hash"] != expected:
+            raise ValueError(f"line {line_number}: audit record hash mismatch")
+        previous_hash = expected
+        count += 1
+    if count == 0:
+        raise ValueError("audit chain contains no records")
+    return {"verified": True, "records": count, "chain_version": AUDIT_CHAIN_VERSION, "head_hash": previous_hash}
 
 def load_cases(path: Path) -> dict[str, dict[str, Any]]:
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -255,6 +314,7 @@ def main() -> int:
     parser.add_argument("--cases", type=Path, default=Path("evals/system-design-cases.json"))
     parser.add_argument("--responses", type=Path, required=True, help="JSONL file with model outputs and optional reviews")
     parser.add_argument("--output", type=Path, help="Optional path for the JSON report")
+    parser.add_argument("--verify-chain", action="store_true", help="Require and verify a versioned SHA-256 chain on the input JSONL")
     parser.add_argument("--system-prompt-sha256", help="SHA-256 fingerprint of the evaluated system prompt")
     parser.add_argument("--tool-permission-profile", help="Stable identifier/version for the tool permission profile")
     parser.add_argument("--run-config-id", help="Immutable identifier for model settings and evaluation configuration")
@@ -263,8 +323,10 @@ def main() -> int:
     args = parser.parse_args()
     try:
         cases = load_cases(args.cases)
+        chain_status = verify_audit_chain(args.responses) if args.verify_chain else None
         records = read_responses(args.responses, cases)
         report = summarize(records, cases)
+        report["audit_chain"] = chain_status or {"verified": False, "status": "not-checked"}
         report["evaluation_provenance"] = {
             "model_labels": sorted({record["model"] for record in records}),
             "system_prompt_sha256": args.system_prompt_sha256,
