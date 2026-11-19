@@ -37,9 +37,11 @@ class AuditChainTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "link mismatch"):
             verify_audit_chain(self.sealed)
     def test_external_head_anchor_detects_tail_truncation(self) -> None:
-        seal_audit_chain(self.source, self.sealed)\n        head = verify_audit_chain(self.sealed)["head_hash"]
+        seal_audit_chain(self.source, self.sealed)
+        head = verify_audit_chain(self.sealed)["head_hash"]
         lines = self.sealed.read_text(encoding="utf-8").splitlines()
-        self.sealed.write_text(lines[0] + "\\n", encoding="utf-8")\n        with self.assertRaisesRegex(ValueError, "external anchor"):
+        self.sealed.write_text(lines[0] + "\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "external anchor"):
             verify_audit_chain(self.sealed, head)
 
     def test_unsealed_or_empty_file_is_rejected(self) -> None:
