@@ -272,6 +272,8 @@ def validate(root: Path) -> list[str]:
         except (OSError, json.JSONDecodeError) as exc:
             errors.append(f"evaluation case file is invalid JSON: {exc}")
             evaluation = {}
+        if not isinstance(evaluation, dict) or evaluation.get("schema_version") != 1:
+            errors.append("evaluation case file must be an object with schema_version 1")
         cases = evaluation.get("cases", []) if isinstance(evaluation, dict) else []
         if not isinstance(cases, list) or not cases:
             errors.append("evaluation case file must contain a non-empty 'cases' array")
@@ -289,16 +291,26 @@ def validate(root: Path) -> list[str]:
                     errors.append(f"duplicate evaluation case id: {case_id}")
                 else:
                     seen_case_ids.add(case_id)
-                for field in ("task", "expected_mode", "required_outputs", "guardrails"):
-                    if not case.get(field):
-                        errors.append(f"{prefix} is missing required field: {field}")
-                references = case.get("references", [])
-                if not isinstance(references, list):
-                    errors.append(f"{prefix} references must be an array")
-                else:
-                    for reference in references:
-                        if not isinstance(reference, str) or not (refs_dir / reference).is_file():
-                            errors.append(f"{prefix} references a missing reference: {reference!r}")
+                for field in ("task", "expected_mode"):
+                    value = case.get(field)
+                    if not isinstance(value, str) or not value.strip():
+                        errors.append(f"{prefix} must have a non-empty string {field}")
+                for field in ("required_outputs", "guardrails", "references"):
+                    values = case.get(field)
+                    if not isinstance(values, list) or not values:
+                        errors.append(f"{prefix} must have a non-empty {field} array")
+                        continue
+                    if any(not isinstance(value, str) or not value.strip() for value in values):
+                        errors.append(f"{prefix} {field} entries must be non-empty strings")
+                        continue
+                    if len(set(values)) != len(values):
+                        errors.append(f"{prefix} {field} entries must be unique")
+                    if field == "references":
+                        for reference in values:
+                            if Path(reference).name != reference or reference in {".", ".."}:
+                                errors.append(f"{prefix} has an unsafe reference path: {reference!r}")
+                            elif not (refs_dir / reference).is_file():
+                                errors.append(f"{prefix} references a missing reference: {reference!r}")
 
     package_file = root / "package.json"
     if not package_file.is_file():
