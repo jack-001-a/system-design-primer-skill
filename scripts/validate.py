@@ -262,7 +262,7 @@ def _workflow_security_errors(workflows_dir: Path) -> list[str]:
     for workflow in sorted(workflows_dir.glob("*.yml")):
         content = workflow.read_text(encoding="utf-8")
         for line_number, line in enumerate(content.splitlines(), 1):
-            match = re.match(r"^\s*uses:\s*([^\s#]+)", line)
+            match = re.match(r"^\s*(?:-\s*)?uses:\s*([^\s#]+)", line)
             if not match:
                 continue
             action = match.group(1)
