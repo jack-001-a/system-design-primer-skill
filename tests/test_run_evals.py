@@ -61,7 +61,7 @@ class ModelRunnerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "fingerprint mismatch"):
             load_verified_manifest(path)
 
-    def test_does_not_disclose_scoring_rubric_to_model(self) -> None
+    def test_does_not_disclose_scoring_rubric_to_model(self) -> None:
         source = "import json,sys\nrequest=json.load(sys.stdin)\nprint(json.dumps({'output': json.dumps(request, sort_keys=True)}))\n"
         adapter = self.adapter(source)
         output, _, _ = invoke_adapter(adapter, [], self.case, "model", 5)
