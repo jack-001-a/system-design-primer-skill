@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.0.0 — 2026-11-19
+
+- Add OAuth 2.1, OpenID Connect, and passkey architecture guidance for secure client flows, token lifecycle, WebAuthn, and account recovery.
+- Add IAM and authorization model guidance covering RBAC, ABAC, ReBAC, tenant boundaries, policy evaluation, and access governance.
+- Add Zero Trust and workload identity guidance for short-lived credentials, mTLS, trust distribution, and service authorization.
+- Add secrets management, KMS, and PKI guidance for key hierarchy, rotation, recovery, and audit.
+- Add software supply chain security guidance for SBOMs, provenance, attestations, isolated builds, and artifact verification.
+- Add STRIDE and attack-tree threat modeling plus privacy engineering and data governance guidance.
+- Add identity, threat-modeling, supply-chain, and privacy templates; extend validation and tests.
+
+
 ## 1.9.0 — 2026-11-19
 
 - Add API gateway and edge architecture guidance for routing, trust boundaries, deadlines, resilience, and operations.
