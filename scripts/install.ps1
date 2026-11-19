@@ -49,7 +49,7 @@ switch ($Agent + ':' + $Scope) {
 }
 
 $Items = @('SKILL.md','references','templates','evals','ATTRIBUTION.md','LICENSE','VERSION')
-$ScriptItems = @('install.sh','install.ps1','validate.py')
+$ScriptItems = @('install.sh','install.ps1')
 foreach ($Item in $Items) {
   if (-not (Test-Path -LiteralPath (Join-Path $Source $Item))) {
     throw "Required package entry is missing: $Item"
