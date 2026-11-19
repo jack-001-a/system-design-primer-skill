@@ -2,6 +2,10 @@
 
 Choose an event-streaming platform based on durability, ordering, replay, throughput, multi-tenancy, operations, and ecosystem requirements—not brand popularity. Compare Kafka, Pulsar, managed cloud streams, and simpler queues.
 
+## Scope and boundaries
+
+This document owns Kafka/Pulsar and event-streaming-specific design: partitions, broker replication, producer/consumer behavior, offsets, retention, rebalances, and platform operations. Use [asynchronous processing](05-async-and-messaging.md) for broker-agnostic delivery and queue fundamentals; [CDC](30-change-data-capture-and-debezium.md) for database-log capture; [event sourcing and CQRS](29-event-sourcing-and-cqrs.md) for domain event history and projections; and [schema governance](33-schema-registry-and-event-governance.md) for compatibility policy. Broker transactions do not by themselves make external side effects atomic.
+
 ## Domain and topic design
 Define event ownership, topic purpose, key, partitioning strategy, retention, compaction, schema, compatibility, and access policy. Use stable business keys when per-entity ordering matters. Partition count determines parallelism and affects ordering, storage, and reassignment cost. Hot keys can bottleneck a partition even when cluster capacity is available.
 
