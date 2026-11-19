@@ -40,11 +40,11 @@ Version 2.2.0 adds DNS and service discovery, load balancing and global traffic 
 
 We recommend downloading the versioned ZIP from [GitHub Releases](https://github.com/jack-001-a/system-design-primer-skill/releases). You can also download the source ZIP from the [main branch](https://github.com/jack-001-a/system-design-primer-skill/archive/refs/heads/main.zip).
 
-The release ZIP contains a `system-design-primer/` directory, an embedded `MANIFEST.sha256.json`, and a matching `.sha256` checksum file. Checksums use SHA-256. A Release is published only after the Git tag matches `VERSION` and CI passes.
+The release ZIP contains a `system-design-primer/` directory, an embedded `MANIFEST.sha256.json`, and a matching `.sha256` checksum file. Checksums use SHA-256. A Release is published only after the Git tag matches `VERSION`, its commit is reachable from `main`, and all three platform validation jobs pass.
 
 ## Install via npm
 
-This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 70 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies.
+This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 70 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies. CI submits npm versions through OIDC-backed staged publishing; a maintainer must review and approve the staged version before it becomes public.
 
 Run the following in the target project root:
 
