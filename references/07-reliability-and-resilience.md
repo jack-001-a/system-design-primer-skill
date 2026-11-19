@@ -1,5 +1,9 @@
 # Reliability, availability, recovery, and resilience
 
+## Scope and boundaries
+
+This document owns service-level reliability design: availability assumptions, SLOs, timeouts, retry budgets, isolation, degradation, failover, backup, RTO, and RPO. Use [failure analysis](15-failure-analysis.md) for a structured fault/blast-radius register; [multi-region architecture](24-multi-region-and-disaster-recovery.md) for regional data ownership and failback; [chaos engineering](60-chaos-engineering-and-resilience-experiments.md) for controlled experiments; and [incident management](61-incident-management-and-postmortems.md) for live response and post-incident learning.
+
 ## 1. Availability math
 
 For serial dependencies that must all work, approximate availability is the product of their availabilities only when the measurement windows, request populations, and dependency boundaries align and independence assumptions are reasonable. For independent redundant paths where either can serve, approximate availability is `1 - product(1 - A_i)` only if failover actually works and the paths fail independently. Include failover detection, routing convergence, capacity after failover, state consistency, and shared dependencies; redundancy without these conditions does not provide the calculated availability. Real systems have common-mode failures (shared region, network, identity provider, deployment, configuration, operator error), so independence is often overstated.
