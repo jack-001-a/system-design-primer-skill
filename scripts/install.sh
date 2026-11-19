@@ -8,10 +8,11 @@ FORCE=0
 usage() {
   cat <<'EOF'
 Install the system-design-primer Agent Skill.
-Usage: bash scripts/install.sh [--agent all|codex|claude|cursor|copilot] [--scope project|user] [--dry-run] [--force]
-Targets: all -> .agents/skills + .claude/skills + .github/skills (project)
-              .agents/skills + .claude/skills + .copilot/skills (user)
+Usage: bash scripts/install.sh [--agent all|dsh|codex|claude|cursor|copilot] [--scope project|user] [--dry-run] [--force]
+Targets: all -> .dsh/skills + .agents/skills + .claude/skills + .github/skills (project)
+              .dsh/skills + .agents/skills + .claude/skills + .copilot/skills (user)
 Run from the target project's root for --scope project.
+DeepSeek Harness discovers project Skills under .dsh/skills and user Skills under ~/.dsh/skills.
 Only distributable Skill files are copied; .git, CI, and tests are excluded.
 Existing installs are never replaced unless --force is supplied.
 EOF
@@ -27,7 +28,7 @@ while (($#)); do
     *) usage >&2; fail "unknown argument: $1" ;;
   esac
 done
-case "$AGENT" in all|codex|claude|cursor|copilot) ;; *) fail "invalid agent: $AGENT" ;; esac
+case "$AGENT" in all|dsh|codex|claude|cursor|copilot) ;; *) fail "invalid agent: $AGENT" ;; esac
 case "$SCOPE" in project|user) ;; *) fail "invalid scope: $SCOPE" ;; esac
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 SOURCE="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
@@ -37,8 +38,9 @@ BASE="$PWD"
 [[ -n "$BASE" && -d "$BASE" ]] || fail "target root does not exist: $BASE"
 declare -a PARENTS=()
 case "$AGENT:$SCOPE" in
-  all:project) PARENTS=("$BASE/.agents/skills" "$BASE/.claude/skills" "$BASE/.github/skills") ;;
-  all:user) PARENTS=("$BASE/.agents/skills" "$BASE/.claude/skills" "$BASE/.copilot/skills") ;;
+  all:project) PARENTS=("$BASE/.dsh/skills" "$BASE/.agents/skills" "$BASE/.claude/skills" "$BASE/.github/skills") ;;
+  all:user) PARENTS=("$BASE/.dsh/skills" "$BASE/.agents/skills" "$BASE/.claude/skills" "$BASE/.copilot/skills") ;;
+  dsh:*) PARENTS=("$BASE/.dsh/skills") ;;
   codex:*) PARENTS=("$BASE/.agents/skills") ;;
   claude:*) PARENTS=("$BASE/.claude/skills") ;;
   cursor:*) PARENTS=("$BASE/.cursor/skills") ;;
