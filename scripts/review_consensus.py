@@ -1,6 +1,7 @@
 from __future__ import annotations
 from datetime import datetime
 from typing import Any
+from .reviewer_calibration import pairwise_agreement
 
 def _aware(value: Any, field: str) -> None:
     if not isinstance(value, str) or not value.strip():
@@ -46,6 +47,8 @@ def validate_review_panel(submissions: Any, adjudication: Any, case: dict[str, A
     disagreement_count = sum(entry["disagreement"] for entry in criteria)
     result = {"reviewer_count": len(normalized), "submission_ids": sorted(ids),
               "criteria": criteria, "disagreement_count": disagreement_count,
+              "agreement_metrics": pairwise_agreement(normalized, case),
+              "submissions": normalized,
               "status": "disputed" if disagreement_count else "agreement"}
     if adjudication is not None:
         required = {"adjudicator_id", "decided_at", "rationale", "based_on_submission_ids", "review"}
