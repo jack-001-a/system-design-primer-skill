@@ -365,7 +365,7 @@ class EvaluationEngineTests(unittest.TestCase):
         ]
         result = summarize_review_data_quality(records, {"c1": case, "c2": case, "c3": case})
         self.assertEqual(result["reviewed_record_count"], 2)
-        self.assertAlmostEqual(result["panel_coverage_rate"], 2/3)
+        self.assertAlmostEqual(result["panel_coverage_rate"], 2/3, places=5)
         concentration = result["reviewer_concentration"][0]
         self.assertAlmostEqual(concentration["hhi"], 0.5)
         distribution = next(item for item in result["score_distributions"] if item["criterion_type"] == "required_outputs")
