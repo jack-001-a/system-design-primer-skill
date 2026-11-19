@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0 — 2026-11-19
+
+- Add Kubernetes and container-platform architecture guidance for workload isolation, scheduling, autoscaling, delivery, security, and cluster operations.
+- Add service-mesh and traffic-management guidance for workload identity, mTLS, routing, resilience semantics, and adoption economics.
+- Add multi-region and disaster-recovery design for RTO/RPO, replication consistency, failover fencing, failback, and recovery exercises.
+- Add platform-engineering guidance for internal developer platforms, golden paths, team ownership, adoption, and platform reliability.
+- Add FinOps and cloud-cost architecture for allocation, unit economics, forecasting, optimization, and budget governance.
+- Add production observability and SLO guidance for SLIs, error budgets, telemetry pipelines, alerting, and incident response.
+- Add production-readiness, multi-region recovery, and cloud-cost templates; extend package validation and tests.
+
 ## 1.5.0 — 2026-11-19
 
 - Add multi-agent topology and orchestration guidance with bounded delegation, contracts, conflict handling, and human escalation.

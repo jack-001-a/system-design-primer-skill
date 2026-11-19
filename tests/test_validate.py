@@ -42,6 +42,12 @@ class PackageTests(unittest.TestCase):
             "19-agent-security-and-permissions.md",
             "20-agent-state-and-memory.md",
             "21-agent-evaluation-and-observability.md",
+            "22-kubernetes-and-container-platforms.md",
+            "23-service-mesh-and-traffic-management.md",
+            "24-multi-region-and-disaster-recovery.md",
+            "25-platform-engineering-and-developer-experience.md",
+            "26-finops-and-cloud-cost.md",
+            "27-production-observability-and-slo.md",
         }.issubset(REQUIRED_REFERENCES))
         self.assertTrue({
             "architecture-decision-matrix-template.md",
@@ -50,6 +56,9 @@ class PackageTests(unittest.TestCase):
             "agent-system-design-template.md",
             "agent-security-review-template.md",
             "agent-evaluation-plan-template.md",
+            "production-readiness-checklist-template.md",
+            "multi-region-disaster-recovery-template.md",
+            "cloud-cost-model-template.md",
         }.issubset(REQUIRED_TEMPLATES))
 
     def test_invalid_name_is_rejected(self):
