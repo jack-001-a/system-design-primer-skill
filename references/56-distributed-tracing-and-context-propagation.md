@@ -1,5 +1,9 @@
 # Distributed Tracing and Context Propagation
 
+## Scope and boundaries
+
+This document owns distributed trace structure, context propagation, baggage, sampling behavior, and trace-based latency interpretation. Use [OpenTelemetry instrumentation](55-opentelemetry-and-instrumentation.md) for APIs/SDKs, semantic conventions, collectors, and exporters; [production observability](27-production-observability-and-slo.md) for SLIs/SLOs, alerting, and telemetry-backend operations; and [privacy engineering](54-privacy-engineering-and-data-governance.md) for authoritative data classification, retention, and deletion policy. A trace is diagnostic evidence, not proof of causality, authorization, or business completion; missing spans do not prove that work did not occur.
+
 ## Trace model
 A trace is a causal graph of spans, not necessarily a single linear tree. Define trace boundaries, parent-child relationships, span links, baggage policy, and the behavior of asynchronous work before interpreting latency or causality.
 
