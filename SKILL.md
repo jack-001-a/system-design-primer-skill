@@ -3,7 +3,7 @@ name: system-design-primer
 description: "Use when designing or changing a software system, reviewing a codebase architecture, diagnosing scalability, performance, or reliability risks, evaluating data, cache, messaging, API, or deployment choices, estimating capacity, planning migrations, or preparing for system-design interviews. Prefer evidence-based guidance; do not trigger for isolated trivial edits with no architectural impact."
 license: CC-BY-4.0
 metadata:
-  version: "1.3.1"
+  version: "1.4.0"
   language: "en"
 ---
 
@@ -123,6 +123,24 @@ A full Design normally includes: conclusion and recommendation; requirements, co
 
 Quick Design may include only the conclusion, key assumptions, a diagram or flow, major trade-offs, and next steps. Do not force full sections into a small task. Review findings are ordered Critical/High/Medium/Low and include evidence. Optimize emphasizes baselines, bottlenecks, experiments, and regression results. Migration emphasizes compatibility, cutover, validation, and rollback. For code changes, include a summary, test commands actually run, and uncovered risks.
 
+## Architecture intelligence workflows
+
+### Architecture decision matrix
+
+For consequential architecture or technology choices, compare the simplest viable baseline with credible alternatives. Separate hard constraints from weighted preferences. Assess performance/scalability, consistency/data integrity, reliability, security/compliance, total cost of ownership, operational complexity, team capability, migration/exit cost, and ecosystem risk. Weight criteria only when priorities are supplied or clearly labeled as assumptions. Mark unknown evidence explicitly and run sensitivity analysis; do not let an aggregate score override a hard constraint. Record the rationale and revisit triggers in an ADR. Use `references/13-architecture-intelligence.md` and `templates/architecture-decision-matrix-template.md`.
+
+### Evidence-based architecture review scorecard
+
+Assess Architecture and Boundaries, Data Integrity, Scalability and Performance, Reliability and Recovery, Security and Privacy, Observability and Operations, Maintainability and Delivery, and Cost Efficiency. Use Pass / Needs work / Fail / Not assessed. Every material assessment needs evidence, impact, and a validation path. Never average dimensions into a single health percentage or dilute critical risks. Use `references/13-architecture-intelligence.md` and `templates/architecture-review-scorecard-template.md`.
+
+### API and data contract design
+
+For APIs, events, schemas, and read models, define ownership, consumers, authZ, schema, errors, idempotency, ordering, pagination, versioning, deprecation, compatibility windows, and source of truth. Plan expand-migrate-contract, avoid uncoordinated dual writes, and validate producer/consumer compatibility. Use `references/14-api-and-data-contracts.md`.
+
+### Failure analysis
+
+For critical journeys, enumerate failure modes, triggers, detection, blast radius, user impact, containment, degraded behavior, recovery, reconciliation, and validation. Define business RTO/RPO and test restores; do not equate restart or successful backup with recovery. Use `references/15-failure-analysis.md` and `templates/failure-analysis-template.md`.
+
 ## Progressive reference loading
 
 - Requirements and estimation: `references/01-requirements-and-capacity.md`
@@ -138,8 +156,11 @@ Quick Design may include only the conclusion, key assumptions, a diagram or flow
 - Workflows and checklists: `references/10-workflows-and-checklists.md`
 - Case studies: `references/11-case-studies.md`
 - Primer mapping and attribution: `references/00-primer-map-and-attribution.md`
+- Architecture decisions and evidence-based reviews: `references/13-architecture-intelligence.md`
+- API and data contracts: `references/14-api-and-data-contracts.md`
+- Failure analysis: `references/15-failure-analysis.md`
 
-When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim.
+When delivering documents, use and populate templates in `templates/`; do not copy blank templates verbatim. Available templates include architecture design, architecture review, ADR, decision matrix, review scorecard, and failure analysis.
 
 ## Tools, evidence, and untrusted-input boundaries
 
