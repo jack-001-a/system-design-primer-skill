@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+from scripts.evidence_timestamp import verify_timestamp
 
 SCHEMA_VERSION = 1
 DOMAIN = b"system-design-primer-tsa-validation-attestation-v1\0"
@@ -111,7 +112,12 @@ def create_attestation(report_path: Path, private_key_path: Path, key_id: str,
 
 
 def verify_attestation(report_path: Path, attestation_path: Path, trust_store_path: Path,
-                       expected_trust_store_sha256: str) -> dict[str, Any]:
+                       expected_trust_store_sha256: str,
+                       timestamp_request_path: Path | None = None,
+                       timestamp_response_path: Path | None = None,
+                       tsa_ca_path: Path | None = None,
+                       expected_tsa_ca_sha256: str | None = None,
+                       tsa_chain_path: Path | None = None) -> dict[str, Any]:
     raw_report = report_path.read_bytes()
     report = json.loads(raw_report.decode("utf-8"))
     if not isinstance(report, dict):
@@ -164,10 +170,9 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     revoked_at = None if entry["revoked_at"] is None else parse_utc(entry["revoked_at"], "revoked_at")
     if entry["status"] == "revoked" and revoked_at is None:
         raise ValueError("revoked trust-store keys must declare revoked_at for historical evaluation")
-    if not_before > attested_time or attested_time > not_after:
-        raise ValueError("attestation timestamp is outside key validity interval")
-    if revoked_at is not None and attested_time >= revoked_at:
-        raise ValueError("attestation timestamp is at or after key revocation effective time")
+    timestamp_args = (timestamp_request_path, timestamp_response_path, tsa_ca_path, expected_tsa_ca_sha256)
+    if any(value is not None for value in timestamp_args) and not all(value is not None for value in timestamp_args):
+        raise ValueError("RFC 3161 attestation timestamp requires request, response, TSA CA bundle, and CA SHA-256 pin together")
     public_key = serialization.load_pem_public_key(entry["public_key_pem"].encode("ascii"))
     if not isinstance(public_key, Ed25519PublicKey):
         raise ValueError("trust-store key must be Ed25519")
@@ -175,12 +180,27 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
         public_key.verify(base64.b64decode(envelope["signature"], validate=True), signed_payload(envelope))
     except Exception as exc:
         raise ValueError("Ed25519 attestation signature verification failed") from exc
+    trusted_timestamp = None
+    if all(value is not None for value in timestamp_args):
+        trusted_timestamp = verify_timestamp(
+            attestation_path, timestamp_request_path, timestamp_response_path,
+            tsa_ca_path, expected_tsa_ca_sha256, tsa_chain_path)
+        if not trusted_timestamp.get("verified") or not trusted_timestamp.get("tsa_signer_valid_at_gen_time"):
+            raise ValueError("RFC 3161 timestamp did not establish a verified, valid TSA signer")
+        expected_signature_digest = hashlib.sha256(signature_bytes).hexdigest()
+        if trusted_timestamp.get("signature_sha256") != expected_signature_digest:
+            raise ValueError("RFC 3161 timestamp is not bound to the exact attestation signature")
     now = datetime.now(timezone.utc)
     currently_authorized = (entry["status"] == "active" and not_before <= now <= not_after
                             and (revoked_at is None or now < revoked_at))
-    return {"verified": True, "historically_valid": True,
-            "historical_validity_basis": "attester_asserted_attested_at_without_trusted_timestamp",
-            "historical_time_cryptographically_proven": False,
+    signature_existed_before_revocation = (trusted_timestamp is not None and
+        (revoked_at is None or parse_utc(trusted_timestamp["gen_time"], "timestamp gen_time") < revoked_at))
+    return {"verified": True, "signature_valid": True, "historically_valid": False,
+            "historical_validity_basis": "signature_creation_time_not_proven; RFC3161 proves existence no later than genTime only" if trusted_timestamp else "attester_asserted_attested_at_is_not_trusted_time",
+            "historical_time_cryptographically_proven": trusted_timestamp is not None,
+            "signature_existence_proven_by_trusted_timestamp": trusted_timestamp is not None,
+            "signature_existed_before_revocation": signature_existed_before_revocation,
+            "trusted_signature_timestamp": trusted_timestamp,
             "currently_authorized": currently_authorized, "key_id": key_id,
             "attested_at": envelope["attested_at"], "report_sha256": report_digest,
             "verifier_bundle_sha256": envelope["verifier_bundle_sha256"],
@@ -204,6 +224,11 @@ def main() -> int:
     verify.add_argument("--attestation", type=Path, required=True)
     verify.add_argument("--trust-store", type=Path, required=True)
     verify.add_argument("--trust-store-sha256", required=True)
+    verify.add_argument("--timestamp-request", type=Path)
+    verify.add_argument("--timestamp-response", type=Path)
+    verify.add_argument("--tsa-ca", type=Path)
+    verify.add_argument("--tsa-ca-sha256")
+    verify.add_argument("--tsa-chain", type=Path)
     args = parser.parse_args()
     try:
         if args.command == "sign":
@@ -217,7 +242,9 @@ def main() -> int:
                       "report_sha256": result["report_sha256"], "output": str(args.output)}
         else:
             output = verify_attestation(args.report, args.attestation, args.trust_store,
-                                        args.trust_store_sha256)
+                                        args.trust_store_sha256, args.timestamp_request,
+                                        args.timestamp_response, args.tsa_ca,
+                                        args.tsa_ca_sha256, args.tsa_chain)
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
         print("ERROR: " + str(exc), file=sys.stderr)
         return 1

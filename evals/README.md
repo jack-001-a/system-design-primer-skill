@@ -841,3 +841,45 @@ evaluated. For trusted signing-time evidence, obtain and independently verify
 an RFC 3161 timestamp over the exact detached signature bytes, and retain the
 original timestamp request/response and TSA trust material. This still does
 not establish that the declared verifier binary actually executed.
+
+
+#### Verify the attestation's RFC 3161 signing-time evidence
+
+The detached Ed25519 signature can be timestamped using the existing
+`evidence_timestamp.py` request/verify workflow. The request must be created
+from the exact attestation envelope (the helper hashes the decoded Ed25519
+signature bytes). Then supply the original request/response and a separately
+pinned TSA CA bundle to the attestation verifier:
+
+```bash
+python scripts/evidence_timestamp.py request \
+  --signature evals/tsa-validation-report.attestation.json \
+  --output evals/tsa-attestation.tsq
+
+# Submit the request to an approved RFC 3161 TSA and preserve its DER response.
+
+python scripts/tsa_attestation.py verify \
+  --report evals/tsa-validation-report.json \
+  --attestation evals/tsa-validation-report.attestation.json \
+  --trust-store /secure/path/attester-trust-store.json \
+  --trust-store-sha256 TRUST_STORE_SHA256_FROM_INDEPENDENT_CHANNEL \
+  --timestamp-request evals/tsa-attestation.tsq \
+  --timestamp-response evals/tsa-attestation.tsr \
+  --tsa-ca /secure/path/tsa-roots.pem \
+  --tsa-ca-sha256 TSA_ROOT_BUNDLE_SHA256_FROM_INDEPENDENT_CHANNEL \
+  --tsa-chain /secure/path/tsa-intermediates.pem
+```
+
+The verifier checks the RFC 3161 CMS signature/chain, request binding, TSA
+signer profile, and SHA-256 imprint against the exact detached Ed25519
+signature bytes. Timestamping proves that this signature existed **no later
+than** the signed TSA `genTime`; it does not reveal the exact signing instant.
+Consequently the result sets `signature_existence_proven_by_trusted_timestamp`
+and, when `genTime` precedes the trust-store `revoked_at`, sets
+`signature_existed_before_revocation`. It deliberately does not claim
+`historically_valid`: a timestamp is an upper bound on existence, not proof
+that signature creation occurred after `not_before` or at any exact instant.
+Without all four timestamp inputs (request, response, TSA CA bundle, and
+independent CA-bundle pin), the verifier reports no cryptographically proven
+signing time. TSA clock accuracy and trust policy remain external trust
+assumptions; retain the original DER objects and trust inputs.

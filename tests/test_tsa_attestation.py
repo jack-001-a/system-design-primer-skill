@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from unittest.mock import patch
 from scripts.tsa_attestation import create_attestation, verify_attestation, digest_file
 
 class TsaAttestationTests(unittest.TestCase):
@@ -52,8 +53,10 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertTrue(result["verified"])
         self.assertFalse(result["execution_provenance_established"])
         self.assertFalse(result["historical_time_cryptographically_proven"])
+        self.assertFalse(result["historically_valid"])
+        self.assertTrue(result["signature_valid"])
         self.assertEqual(result["historical_validity_basis"],
-                         "attester_asserted_attested_at_without_trusted_timestamp")
+                         "attester_asserted_attested_at_is_not_trusted_time")
         self.assertEqual(result["verifier_bundle_sha256"], hashlib.sha256(b"verifier package").hexdigest())
 
     def test_report_replacement_rejected(self):
@@ -99,6 +102,37 @@ class TsaAttestationTests(unittest.TestCase):
         self.attestation.write_text(json.dumps(value))
         with self.assertRaisesRegex(ValueError, "unknown"):
             self.verify()
+
+
+    @patch("scripts.tsa_attestation.verify_timestamp")
+    def test_rfc3161_timestamp_binds_exact_signature_and_proves_pre_revocation_existence(self, timestamp):
+        import base64
+        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
+        timestamp.return_value = {
+            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "gen_time": "2026-11-19T12:00:00Z",
+            "tsa_signer_valid_at_gen_time": True,
+            "tsa_signer_certificate_sha256": "a" * 64,
+        }
+        request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
+        for path in (request, response, ca):
+            path.write_bytes(b"fixture")
+        store = json.loads(self.store.read_text())
+        store["keys"]["tsa-attester"]["status"] = "revoked"
+        store["keys"]["tsa-attester"]["revoked_at"] = "2026-11-20T00:00:00Z"
+        self.store.write_text(json.dumps(store, sort_keys=True))
+        result = verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
+            request, response, ca, hashlib.sha256(b"fixture").hexdigest())
+        self.assertTrue(result["signature_existence_proven_by_trusted_timestamp"])
+        self.assertTrue(result["signature_existed_before_revocation"])
+        self.assertTrue(result["historical_time_cryptographically_proven"])
+        self.assertFalse(result["historically_valid"])
+        timestamp.assert_called_once()
+
+    def test_timestamp_arguments_must_be_supplied_as_a_complete_set(self):
+        with self.assertRaisesRegex(ValueError, "requires request, response"):
+            verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
+                               timestamp_request_path=self.root / "request.tsq")
 
     def test_key_revocation_effective_time_rejected(self):
         store = json.loads(self.store.read_text())
