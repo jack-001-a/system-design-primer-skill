@@ -4,6 +4,13 @@
 
 Use this guide as the first-pass index for selecting knowledge. Route by the user's decision or observed failure, not by attempting to load the entire reference library. Start with one primary reference and add only the adjacent material needed to answer the concrete question. The table names the most relevant specialist references explicitly; do not make users or agents guess which file "matching" means.
 
+## Cross-domain ownership rules
+
+- **Data semantics:** `03-data-and-storage.md` owns portable data-model and transaction requirements; `34-postgresql-internals-and-performance.md` and `35-mysql-innodb-and-performance.md` own engine-specific behavior; `36-sharding-and-distributed-sql.md` owns partition movement and shard ownership.
+- **API, identity, and observability:** `08-api-security-observability.md` is the overview; `47-api-security-rate-limiting-and-abuse.md` owns API abuse controls; `49-iam-rbac-abac-rebac.md` owns authorization policy semantics; `27-production-observability-and-slo.md` owns telemetry and SLO design.
+- **Regional recovery:** `24-multi-region-and-disaster-recovery.md` owns regional replication, writer ownership, failover, and failback; `07-reliability-and-resilience.md` owns service-level resilience controls; `61-incident-management-and-postmortems.md` owns live incident command and postmortems.
+- **Evidence boundary:** authentication, routing, telemetry, broker transactions, and workflow history are not substitutes for resource authorization, external-side-effect reconciliation, or proof of durable business completion. State the exact boundary and verification evidence.
+
 ## Task-to-reference routing
 
 | Task signal | Start here | Add when relevant |
