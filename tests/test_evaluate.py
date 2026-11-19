@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.evaluate import load_cases, read_responses, summarize, validate_tool_trace
+from scripts.evaluate import load_cases, read_responses, summarize, validate_tool_trace, validate_review
 
 
 class EvaluationEngineTests(unittest.TestCase):
@@ -299,6 +299,26 @@ class EvaluationEngineTests(unittest.TestCase):
                     "review": review}
         with self.assertRaisesRegex(ValueError, "existing unique submission IDs"):
             validate_review_panel(submissions, decision, case, validate_review)
+
+    def test_pairwise_reviewer_calibration_uses_multiple_cases_and_separates_scales(self) -> None:
+        from scripts.reviewer_calibration import aggregate_reviewer_calibration
+        panels = []
+        rows = [([2, 1], [2, 1], [True], [True]),
+                ([0, 1], [0, 2], [False], [False]),
+                ([1, 2], [1, 2], [True], [False])]
+        for index, (a_scores, b_scores, a_guards, b_guards) in enumerate(rows):
+            panels.append({"submissions": [
+                {"reviewer_id": "r-a", "review": {"required_outputs": a_scores, "guardrails": a_guards}},
+                {"reviewer_id": "r-b", "review": {"required_outputs": b_scores, "guardrails": b_guards}}
+            ]})
+        result = aggregate_reviewer_calibration(panels)
+        self.assertEqual(result["method"], "pairwise_cohen_kappa")
+        self.assertEqual(len(result["results"]), 3)
+        output_metric = next(item for item in result["results"] if item["criterion_type"] == "required_outputs" and item["criterion_index"] == 0)
+        guard_metric = next(item for item in result["results"] if item["criterion_type"] == "guardrails")
+        self.assertIn("quadratic_weighted_kappa", output_metric)
+        self.assertNotIn("quadratic_weighted_kappa", guard_metric)
+        self.assertEqual(output_metric["observations"], 3)
 
 if __name__ == "__main__":
     unittest.main()
