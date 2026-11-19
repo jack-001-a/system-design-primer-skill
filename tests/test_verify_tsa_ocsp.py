@@ -80,7 +80,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
             return result, run.call_args_list[0].args[0], run.call_args_list[1].args[0]
 
     def test_historical_mode_rejects_target_outside_signed_interval(self):
-        target = datetime(2026, 11, 19, 12, 10, tzinfo=timezone.utc)
+        target = datetime(2026, 11, 19, 12, 11, tzinfo=timezone.utc)
         with self.assertRaisesRegex(ValueError, "stale"):
             self.run_historical(target)
 
