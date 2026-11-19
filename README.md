@@ -4,7 +4,7 @@
 
 An installable Agent Skill for software architecture design, architecture reviews, performance optimization, technology evaluation, and migration planning. It uses Donne Martin's System Design Primer as its knowledge foundation and adds modern production engineering practices.
 
-- **Version:** 1.3.0
+- **Version:** 1.3.1
 - **Language:** English, with standard technical terminology
 - **Runtime dependencies:** The Skill itself has no third-party runtime dependencies. Installation and validation require only Bash, PowerShell, or Python 3.
 
@@ -50,7 +50,7 @@ npm package: [system-design-primer-skill](https://www.npmjs.com/package/system-d
 | Cursor | `.cursor/skills/` or `.agents/skills/` | `~/.cursor/skills/` or `~/.agents/skills/` |
 | GitHub Copilot | `.github/skills/`, `.claude/skills/`, or `.agents/skills/` | `~/.copilot/skills/` |
 
-DeepSeek Harness's filesystem Skill provider discovers directory bundles containing `<skill-name>/SKILL.md` under `.dsh/skills` in a project or `~/.dsh/skills` for a user. The Skill bundle format used here is compatible; the references and templates remain alongside `SKILL.md`. DSH also scans `.agents/skills` for shared Agent Skills.
+DeepSeek Harness's filesystem Skill provider discovers directory bundles containing `<skill-name>/SKILL.md` under `.dsh/skills` in a project or `$DSH_HOME/skills` for a user. If `DSH_HOME` is unset, the user-level default is `~/.dsh`. The Skill bundle format used here is compatible; the references and templates remain alongside `SKILL.md`. DSH also scans `.agents/skills` for shared Agent Skills. When the same Skill is installed in both locations, DSH's documented source ranking prefers the native `.dsh/skills` copy; use `--agent dsh` for a DSH-only install if you want to avoid registering a duplicate copy with other hosts.
 
 For Cursor Cloud Agents, install personal Skills in `~/.cursor/skills/` and enable **Sync Skills** in Cursor Settings → Agents. The `~/.agents/skills/` directory may be discovered by local Cursor installations for compatibility, but it does not automatically sync to Cloud Agents. Project-level Skills can live in `.cursor/skills/` or `.agents/skills/` in the repository.
 
@@ -87,6 +87,9 @@ Extract the ZIP first. **Run the installation command from the root of the targe
     # Install into the current user's home directory
     bash /opt/system-design-primer/scripts/install.sh --agent all --scope user
 
+    # Install DSH under a custom DSH_HOME root (contains the skills/ directory)
+    DSH_HOME="$HOME/.config/deepseek-harness" bash /opt/system-design-primer/scripts/install.sh --agent dsh --scope user
+
 ### Windows PowerShell
 
     Set-Location C:\path\to\your-project
@@ -103,7 +106,8 @@ Extract the ZIP first. **Run the installation command from the root of the targe
 - `--dry-run` / `-WhatIf` previews target paths without creating or modifying files.
 - The installer checks all targets first, then stages replacements in a same-directory staging folder. If installation fails, it makes a best effort to restore the previous directory.
 - It copies only `SKILL.md`, `references`, `templates`, `scripts`, `ATTRIBUTION.md`, `LICENSE`, and `VERSION`. It does not copy `.git`, GitHub Actions, tests, or development tools.
-- With `--agent all`, project-level targets are `.dsh/skills`, `.agents/skills`, `.claude/skills`, and `.github/skills`; user-level targets are `~/.dsh/skills`, `~/.agents/skills`, `~/.claude/skills`, and `~/.copilot/skills`.
+- With `--agent all`, project-level targets are `.dsh/skills`, `.agents/skills`, `.claude/skills`, and `.github/skills`; user-level targets are `$DSH_HOME/skills`, `~/.agents/skills`, `~/.claude/skills`, and `~/.copilot/skills`. If `DSH_HOME` is unset, the DSH root defaults to `~/.dsh`.
+- DeepSeek Harness scans both its native `.dsh/skills` directory and the shared `.agents/skills` directory. Installing with `--agent all` therefore makes the same Skill available through both discovery paths; DSH's source ranking prefers the native DSH copy. Use `--agent dsh` when only DSH should discover this installation.
 - Cursor can also discover `.agents/skills` and `.claude/skills` for compatibility. If multiple hosts are enabled, prefer the corresponding single-host installation option to avoid duplicate discovery of the same Skill.
 - The installation scripts do not install dependencies or automatically execute scripts included in the Skill.
 

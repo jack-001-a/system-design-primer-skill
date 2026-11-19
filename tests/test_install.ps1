@@ -3,7 +3,9 @@ $ScriptPath = Join-Path $PSScriptRoot '..\scripts\install.ps1'
 $TempRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("system-design-test-" + [guid]::NewGuid().ToString('N'))
 $Project = Join-Path $TempRoot 'project'
 $HomeDir = Join-Path $TempRoot 'home'
-New-Item -ItemType Directory -Force -Path $Project, $HomeDir | Out-Null
+$CustomDsh = Join-Path $TempRoot 'custom-dsh'
+New-Item -ItemType Directory -Force -Path $Project, $HomeDir, $CustomDsh | Out-Null
+$PreviousDshHome = $env:DSH_HOME
 try {
   Push-Location $Project
   & $ScriptPath -Agent codex -Scope project -WhatIf
@@ -27,10 +29,22 @@ try {
   foreach ($Relative in @('.dsh/skills/system-design-primer/SKILL.md','.agents/skills/system-design-primer/SKILL.md','.claude/skills/system-design-primer/SKILL.md','.github/skills/system-design-primer/SKILL.md')) {
     if (-not (Test-Path (Join-Path $Project $Relative))) { throw "Missing project install: $Relative" }
   }
+
+  $env:DSH_HOME = $null
+  & $ScriptPath -Agent dsh -Scope user
+  if (-not (Test-Path (Join-Path $HOME '.dsh/skills/system-design-primer/SKILL.md'))) { throw 'Default user DSH install missing' }
+  $env:DSH_HOME = $CustomDsh
+  & $ScriptPath -Agent dsh -Scope user
+  if (-not (Test-Path (Join-Path $CustomDsh 'skills/system-design-primer/SKILL.md'))) { throw 'Custom DSH_HOME install missing' }
+  & $ScriptPath -Agent all -Scope user -Force
+  foreach ($Relative in @('.agents/skills/system-design-primer/SKILL.md','.claude/skills/system-design-primer/SKILL.md','.copilot/skills/system-design-primer/SKILL.md')) {
+    if (-not (Test-Path (Join-Path $HOME $Relative))) { throw "Missing user install: $Relative" }
+  }
   Pop-Location
   Write-Host 'OK: PowerShell installer integration tests'
 }
 finally {
+  $env:DSH_HOME = $PreviousDshHome
   while ((Get-Location).Path -eq $Project) { Pop-Location }
   Remove-Item -LiteralPath $TempRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
