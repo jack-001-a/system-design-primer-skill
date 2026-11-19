@@ -134,6 +134,27 @@ class TsaAttestationTests(unittest.TestCase):
             verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
                                timestamp_request_path=self.root / "request.tsq")
 
+    def test_intermediate_chain_requires_complete_timestamp_inputs(self):
+        with self.assertRaisesRegex(ValueError, "intermediate chain requires"):
+            verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
+                               tsa_chain_path=self.root / "chain.pem")
+
+    @patch("scripts.tsa_attestation.verify_timestamp")
+    def test_malformed_timestamp_gen_time_rejected(self, timestamp):
+        import base64
+        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
+        timestamp.return_value = {
+            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "gen_time": "not-a-time", "tsa_signer_valid_at_gen_time": True,
+            "tsa_signer_certificate_sha256": "a" * 64,
+        }
+        request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
+        for path in (request, response, ca):
+            path.write_bytes(b"fixture")
+        with self.assertRaisesRegex(ValueError, "timestamp gen_time must be an RFC3339 UTC"):
+            verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
+                request, response, ca, hashlib.sha256(b"fixture").hexdigest())
+
     def test_attester_clock_does_not_establish_historical_validity(self):
         store = json.loads(self.store.read_text())
         store["keys"]["tsa-attester"]["revoked_at"] = "2020-01-01T00:00:00Z"

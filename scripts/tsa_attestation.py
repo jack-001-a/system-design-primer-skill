@@ -171,6 +171,8 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     if entry["status"] == "revoked" and revoked_at is None:
         raise ValueError("revoked trust-store keys must declare revoked_at for historical evaluation")
     timestamp_args = (timestamp_request_path, timestamp_response_path, tsa_ca_path, expected_tsa_ca_sha256)
+    if tsa_chain_path is not None and not all(value is not None for value in timestamp_args):
+        raise ValueError("TSA intermediate chain requires the complete RFC 3161 timestamp evidence set")
     if any(value is not None for value in timestamp_args) and not all(value is not None for value in timestamp_args):
         raise ValueError("RFC 3161 attestation timestamp requires request, response, TSA CA bundle, and CA SHA-256 pin together")
     public_key = serialization.load_pem_public_key(entry["public_key_pem"].encode("ascii"))
@@ -187,6 +189,8 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
             tsa_ca_path, expected_tsa_ca_sha256, tsa_chain_path)
         if not trusted_timestamp.get("verified") or not trusted_timestamp.get("tsa_signer_valid_at_gen_time"):
             raise ValueError("RFC 3161 timestamp did not establish a verified, valid TSA signer")
+        timestamp_gen_time = parse_utc(trusted_timestamp.get("gen_time"), "timestamp gen_time")
+        require_sha256(trusted_timestamp.get("tsa_signer_certificate_sha256"), "TSA signer certificate SHA-256")
         expected_signature_digest = hashlib.sha256(signature_bytes).hexdigest()
         if trusted_timestamp.get("signature_sha256") != expected_signature_digest:
             raise ValueError("RFC 3161 timestamp is not bound to the exact attestation signature")
@@ -194,7 +198,7 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     currently_authorized = (entry["status"] == "active" and not_before <= now <= not_after
                             and (revoked_at is None or now < revoked_at))
     signature_existed_before_revocation = (trusted_timestamp is not None and
-        (revoked_at is None or parse_utc(trusted_timestamp["gen_time"], "timestamp gen_time") < revoked_at))
+        (revoked_at is None or timestamp_gen_time < revoked_at))
     return {"verified": True, "signature_valid": True, "historically_valid": False,
             "historical_validity_basis": "signature_creation_time_not_proven; RFC3161 proves existence no later than genTime only" if trusted_timestamp else "attester_asserted_attested_at_is_not_trusted_time",
             "historical_time_cryptographically_proven": trusted_timestamp is not None,
