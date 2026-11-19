@@ -183,10 +183,8 @@ class TsaRevocationTests(unittest.TestCase):
                                 reason=x509.ReasonFlags.key_compromise)
         self.issuer, self.leaf, self.listing = make_material(entry=entry)
         self.write_material()
-        with self.assertRaisesRegex(ValueError, "validation failed"):
-            with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
-                run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 2, "", "certificate revoked"
-                verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+        with self.assertRaisesRegex(ValueError, "applicability preflight failed"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_invalidity_date_after_revocation_date(self):
         entry = self.make_entry(NOW-timedelta(minutes=1), invalidity=NOW+timedelta(minutes=1))
