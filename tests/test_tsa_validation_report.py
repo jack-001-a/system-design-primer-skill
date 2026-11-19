@@ -85,7 +85,7 @@ class TsaValidationReportTests(unittest.TestCase):
                           produced_at="2026-11-19T11:59:00Z",
                           this_update="2026-11-19T11:58:00Z",
                           next_update="2026-11-19T11:59:59Z")
-        with self.assertRaisesRegex(ValueError, "does not cover RFC 3161 genTime"):
+        with self.assertRaisesRegex(ValueError, "does not cover its validation_time"):
             build_validation_report(self.gen_time, self.crl, self.crl_file_hash,
                                     historical, self.ocsp_file_hash)
 
