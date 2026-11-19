@@ -326,7 +326,8 @@ def main() -> int:
     try:
         cases = load_cases(args.cases)
         if args.expected_chain_head_hash and not args.verify_chain:
-            raise ValueError("--expected-chain-head-hash requires --verify-chain")\n        chain_status = verify_audit_chain(args.responses, args.expected_chain_head_hash) if args.verify_chain else None
+            raise ValueError("--expected-chain-head-hash requires --verify-chain")
+        chain_status = verify_audit_chain(args.responses, args.expected_chain_head_hash) if args.verify_chain else None
         records = read_responses(args.responses, cases)
         report = summarize(records, cases)
         report["audit_chain"] = chain_status or {"verified": False, "status": "not-checked"}
