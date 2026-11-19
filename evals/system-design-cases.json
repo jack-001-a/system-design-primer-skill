@@ -165,6 +165,28 @@
         "Do not recommend microservices solely for high concurrency",
         "Do not invent team or workload constraints"
       ]
+    },
+    {
+      "id": "cache-replica-consistency",
+      "task": "A multi-region API updates a database row, invalidates a distributed cache, and serves reads from asynchronous replicas. Users sometimes observe old values after a successful update. Analyze the consistency contract and design a safe remediation.",
+      "expected_mode": "Review",
+      "references": [
+        "04-caching.md",
+        "03-data-and-storage.md",
+        "06-distributed-systems.md",
+        "24-multi-region-and-disaster-recovery.md"
+      ],
+      "required_outputs": [
+        "define the promised read-after-write and staleness guarantees and identify the authoritative store",
+        "trace invalidation failure and stale-refill races across cache and replica layers",
+        "compare versioned cache writes, primary/session reads, replica waiting, and bounded stale serving",
+        "define observability, fault-injection interleavings, and recovery behavior"
+      ],
+      "guardrails": [
+        "Do not claim TTL alone guarantees correctness or immediate invalidation",
+        "Do not equate write acknowledgement with replica freshness",
+        "Do not use last-write-wins timestamps as a universal conflict-resolution strategy"
+      ]
     }
   ]
 }
