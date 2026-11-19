@@ -78,7 +78,8 @@ class ModelRunnerTests(unittest.TestCase):
             adapter = Path(directory) / "adapter.py"
             adapter.write_text(
                 "import json\nprint(json.dumps({'output':'ok','tool_trace':["
-                "{'sequence':1,'tool':'db.read','operation':'read',"
+                "{'sequence':1,'event_id':'evt-1','session_id':'sess-1','turn_id':'turn-1',"
+                "'turn_sequence':1,'tool':'db.read','operation':'read',"
                 "'authorization':'allowed','outcome':'success'}]}))\n",
                 encoding="utf-8",
             )
