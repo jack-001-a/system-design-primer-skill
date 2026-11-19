@@ -16,8 +16,10 @@ from typing import Any
 
 try:
     from .evaluate import load_cases, validate_tool_trace
+    from .run_manifest import load_verified_manifest
 except ImportError:  # Direct execution: python scripts/run_evals.py
     from evaluate import load_cases, validate_tool_trace
+    from run_manifest import load_verified_manifest
 
 
 def invoke_adapter(
@@ -75,6 +77,7 @@ def main() -> int:
     parser.add_argument("--adapter-arg", action="append", default=[], help="Argument passed to the adapter; may be repeated")
     parser.add_argument("--model", required=True, help="Stable provider/model/version label for this run")
     parser.add_argument("--output", type=Path, required=True, help="New JSONL file; existing files are never overwritten")
+    parser.add_argument("--manifest", type=Path, help="Sealed run manifest; embeds its run identity and fingerprint in every response")
     parser.add_argument("--timeout", type=int, default=180, help="Per-case adapter timeout in seconds (default: 180)")
     args = parser.parse_args()
 
@@ -84,8 +87,9 @@ def main() -> int:
         parser.error(f"adapter script does not exist: {args.adapter}")
     try:
         cases = load_cases(args.cases)
+        manifest = load_verified_manifest(args.manifest) if args.manifest else None
     except (OSError, json.JSONDecodeError, ValueError) as exc:
-        print(f"ERROR: cannot load cases: {exc}", file=sys.stderr)
+        print(f"ERROR: cannot load cases or verify manifest: {exc}", file=sys.stderr)
         return 1
 
     try:
@@ -105,6 +109,9 @@ def main() -> int:
                     "output": output,
                     "duration_ms": elapsed_ms,
                 }
+                if manifest is not None:
+                    record["run_id"] = manifest["run"]["run_id"]
+                    record["manifest_sha256"] = manifest["fingerprints"]["manifest_sha256"]
                 if tool_trace is not None:
                     record["tool_trace"] = tool_trace
                 stream.write(json.dumps(record, ensure_ascii=False) + "\n")
