@@ -879,6 +879,13 @@ and, when `genTime` precedes the trust-store `revoked_at`, sets
 `signature_existed_before_revocation`. It deliberately does not claim
 `historically_valid`: a timestamp is an upper bound on existence, not proof
 that signature creation occurred after `not_before` or at any exact instant.
+If the TSA `genTime` is earlier than `not_before`, the verifier separately
+reports `signature_existence_proven_before_key_not_before: true`, which is
+positive evidence that the signature already existed before the key's validity
+window. A `genTime` at or after `not_before` does not prove when within that
+window the signature was created. The pre-revocation existence finding uses a
+strict comparison: a `genTime` equal to `revoked_at` is not classified as
+before revocation.
 Without all four timestamp inputs (request, response, TSA CA bundle, and
 independent CA-bundle pin), the verifier reports no cryptographically proven
 signing time. TSA clock accuracy and trust policy remain external trust

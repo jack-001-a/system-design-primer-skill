@@ -198,12 +198,16 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     currently_authorized = (entry["status"] == "active" and not_before <= now <= not_after
                             and (revoked_at is None or now < revoked_at))
     signature_existed_before_revocation = (trusted_timestamp is not None and
-        (revoked_at is None or timestamp_gen_time < revoked_at))
+        revoked_at is not None and timestamp_gen_time < revoked_at)
+    signature_existed_before_key_validity = (
+        trusted_timestamp is not None and timestamp_gen_time < not_before
+    )
     return {"verified": True, "signature_valid": True, "historically_valid": False,
             "historical_validity_basis": "signature_creation_time_not_proven; RFC3161 proves existence no later than genTime only" if trusted_timestamp else "attester_asserted_attested_at_is_not_trusted_time",
             "historical_time_cryptographically_proven": trusted_timestamp is not None,
             "signature_existence_proven_by_trusted_timestamp": trusted_timestamp is not None,
             "signature_existed_before_revocation": signature_existed_before_revocation,
+            "signature_existence_proven_before_key_not_before": signature_existed_before_key_validity,
             "trusted_signature_timestamp": trusted_timestamp,
             "currently_authorized": currently_authorized, "key_id": key_id,
             "attested_at": envelope["attested_at"], "report_sha256": report_digest,
