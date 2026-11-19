@@ -17,12 +17,14 @@ try {
   $FailedAsExpected = $false
   try { & $ScriptPath -Agent codex -Scope project } catch { $FailedAsExpected = $true }
   if (-not $FailedAsExpected) { throw 'Existing-target guard did not reject overwrite' }
+  & $ScriptPath -Agent dsh -Scope project
+  if (-not (Test-Path '.dsh/skills/system-design-primer/SKILL.md')) { throw 'DSH project install missing' }
 
   Set-Content -Path (Join-Path $Destination 'SKILL.md') -Value 'sentinel'
   & $ScriptPath -Agent codex -Scope project -Force
   if ((Get-Content (Join-Path $Destination 'SKILL.md') -Raw) -match 'sentinel') { throw 'Force did not replace old content' }
   & $ScriptPath -Agent all -Scope project -Force
-  foreach ($Relative in @('.agents/skills/system-design-primer/SKILL.md','.claude/skills/system-design-primer/SKILL.md','.github/skills/system-design-primer/SKILL.md')) {
+  foreach ($Relative in @('.dsh/skills/system-design-primer/SKILL.md','.agents/skills/system-design-primer/SKILL.md','.claude/skills/system-design-primer/SKILL.md','.github/skills/system-design-primer/SKILL.md')) {
     if (-not (Test-Path (Join-Path $Project $Relative))) { throw "Missing project install: $Relative" }
   }
   Pop-Location
