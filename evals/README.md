@@ -462,3 +462,53 @@ The comparison is structural, not semantic: it cannot determine whether two diff
 worded criteria mean the same thing, whether a rubric change is more difficult, or whether
 scores can be statistically equated. Review the detailed field-level diff and preserve the
 original dataset bytes, fingerprint output, manifest, responses, and report together.
+
+
+## Rubric compatibility and historical score governance
+
+Use \`scripts/rubric_compatibility.py\` to compare two explicit rubric definition files.
+Each definition records its human-managed version, rubric fingerprint, score scale, and
+ordered criterion labels:
+
+\`\`\`json
+{
+  "rubric_version": "rubric-v3",
+  "rubric_sha256": "64-character-lowercase-sha256-or-null",
+  "score_scale": {
+    "minimum": 0,
+    "maximum": 2,
+    "labels": {"0": "missing", "1": "partial", "2": "complete"}
+  },
+  "criteria": {
+    "required_outputs": ["evidence", "tradeoffs"],
+    "guardrails": ["do not fabricate", "state uncertainty"],
+    "security_categories": ["prompt-injection"]
+  }
+}
+\`\`\`
+
+Run the comparison:
+
+\`\`\`bash
+python scripts/rubric_compatibility.py --left evals/rubrics/rubric-v2.json --right evals/rubrics/rubric-v3.json
+\`\`\`
+
+The checker uses conservative classifications:
+
+- \`compatible\`: definitions are identical, or an explicit equivalence declaration is supplied.
+- \`incompatible\`: score-scale changes, criterion count changes, or criterion ordering changes.
+- \`unknown\`: criterion wording changed, a fingerprint is missing, or a version changed without enough evidence.
+- \`mapped\`: an explicit migration declaration supplies a mapping and rationale. This is an opt-in assertion, not an automatic score conversion.
+
+For an approved editorial-only change, an optional migration file may declare
+\`from_version\`, \`to_version\`, \`decision: "equivalent"\`, a non-empty \`rationale\`,
+and an empty \`mapping\`. A \`decision: "mapped"\` declaration must provide a non-empty
+mapping. The version endpoints must exactly match the compared definitions. Keep migration
+declarations under review and retain them with the reports they authorize.
+
+A migration declaration does not rewrite historical review events or prove that reviewers
+applied a transformation correctly. Existing \`review_history\` events retain their own
+\`rubric_version\`; do not relabel old events when a rubric changes. Re-review historical
+outputs under the new rubric when strict same-rubric comparisons are required. Reports
+without sufficient rubric metadata remain unknown/incomparable; never infer compatibility
+from matching model names, aggregate scores, or version strings alone.
