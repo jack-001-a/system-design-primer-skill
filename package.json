@@ -1,7 +1,7 @@
 {
   "name": "system-design-primer-skill",
-  "version": "1.8.0",
-  "description": "A portable System Design Agent Skill for software architecture, database systems, distributed data, event-driven systems, cloud-native production operations, and AI systems.",
+  "version": "1.9.0",
+  "description": "A portable System Design Agent Skill for API architecture, real-time systems, databases, distributed data, cloud-native operations, and AI systems.",
   "license": "CC-BY-4.0",
   "repository": {
     "type": "git",
@@ -21,7 +21,14 @@
     "claude-code",
     "cursor",
     "github-copilot",
-    "deepseek-harness"
+    "deepseek-harness",
+    "api-gateway",
+    "rest-api",
+    "graphql",
+    "grpc",
+    "websocket",
+    "real-time-systems",
+    "api-security"
   ],
   "files": [
     "SKILL.md",
