@@ -204,6 +204,35 @@ class PackageTests(unittest.TestCase):
                     for item in errors
                 ))
 
+
+    def test_security_lifecycle_references_require_scope_boundaries(self):
+        required = {
+            "19-agent-security-and-permissions.md",
+            "20-agent-state-and-memory.md",
+            "49-iam-rbac-abac-rebac.md",
+            "51-secrets-kms-pki-and-key-management.md",
+            "54-privacy-engineering-and-data-governance.md",
+            "55-opentelemetry-and-instrumentation.md",
+            "59-capacity-planning-and-performance-modeling.md",
+            "67-storage-infrastructure-and-storage-systems.md",
+        }
+        for filename in required:
+            with self.subTest(filename=filename), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                (root / "SKILL.md").write_text(
+                    "---\\nname: example-skill\\ndescription: test\\n---\\nbody\\n",
+                    encoding="utf-8",
+                )
+                refs = root / "references"
+                refs.mkdir()
+                (refs / filename).write_text("# Example\\n\\n## Details\\n", encoding="utf-8")
+                errors = validate(root)
+                self.assertTrue(any(
+                    "missing its required scope boundary section" in item
+                    and filename in item
+                    for item in errors
+                ))
+
     def test_task_routing_index_rejects_escaped_newlines(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
