@@ -163,6 +163,7 @@ class TsaAttestationTests(unittest.TestCase):
     def test_attestation_accepts_consistent_historical_ocsp_claims(self):
         report = json.loads(self.report.read_text(encoding="utf-8"))
         report["current_ocsp_assessment"] = self._ocsp_fixture()
+        report["overall_assessment"] = "historical_crl_passed_and_historical_ocsp_good_with_scope_limitations"
         report["historical_ocsp_responder_revocation_assessment"] = {
             "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
             "responder_certificate_sha256": "d" * 64, "crl_sha256": "e" * 64,
