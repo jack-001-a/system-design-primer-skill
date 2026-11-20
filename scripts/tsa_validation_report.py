@@ -95,7 +95,7 @@ def validate_crl_issuer_validity(value: Any, field: str, gen_time: str) -> dict[
     for flag in ("valid_at_this_update", "basic_constraints_ca", "key_cert_sign", "crl_sign"):
         if value.get(flag) is not True:
             raise ValueError(field + " must affirm " + flag)
-    if value.get("time_basis") != "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime":
+    if value.get("time_basis") != "CRL issuer certificate validity and CA/keyCertSign/cRLSign authorization are checked at CRL thisUpdate; OpenSSL validates the full target certificate PKIX path, including the issuer path to the pinned trust anchor, at RFC3161 genTime bounds":
         raise ValueError(field + " time-basis declaration is missing or unsupported")
     return value
 def load_json(path: Path, expected_sha256: str) -> tuple[dict[str, Any], str]:
