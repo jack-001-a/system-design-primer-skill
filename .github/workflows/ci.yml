@@ -92,3 +92,24 @@ jobs:
       - name: Test PowerShell installer
         shell: pwsh
         run: ./tests/test_install.ps1
+
+  attest:
+    name: Attest main-branch distribution
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download verified distribution
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: system-design-primer-skill-linux
+          path: dist
+      - name: Generate SLSA build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*.zip
