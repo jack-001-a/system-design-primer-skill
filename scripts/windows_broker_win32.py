@@ -502,9 +502,9 @@ class OverlappedOperation:
         with self._lock:
             if self._state == self.CLOSED:
                 return
-            if self._state == self.PENDING:
+            if self._state in (self.STARTING, self.PENDING):
                 raise OverlappedLifecycleError(
-                    "cannot release OVERLAPPED resources while I/O is pending"
+                    "cannot release OVERLAPPED resources while I/O submission or completion is in progress"
                 )
             if self.event_handle:
                 if not self._close_handle(self.event_handle):
