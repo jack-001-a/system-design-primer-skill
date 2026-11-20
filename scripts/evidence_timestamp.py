@@ -76,7 +76,7 @@ def verification_time_bounds(value: datetime) -> tuple[int, ...]:
 def _parse_canonical_gen_time(value: str) -> tuple[datetime, bool]:
     """Parse an ISO UTC genTime while retaining whether any fractional value is nonzero."""
     match = re.fullmatch(
-        r"(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))?Z",
+        r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z",
         value,
     )
     if not match:
@@ -112,7 +112,7 @@ def verification_time_within_validity(
 def parse_openssl_gen_time(value: str) -> str:
     """Convert OpenSSL's display form without truncating arbitrary fractional precision."""
     match = re.fullmatch(
-        r"([A-Za-z]{3} +\\d{1,2} \\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))? (\\d{4}) GMT",
+        r"([A-Za-z]{3} +\d{1,2} \d{2}:\d{2}:\d{2})(?:\.(\d+))? (\d{4}) GMT",
         value.strip(),
     )
     if not match:
