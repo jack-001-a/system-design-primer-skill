@@ -122,6 +122,15 @@ def _version_tuple(output: str) -> tuple[int, int, int]:
     return tuple(int(part) for part in match.groups())
 
 
+
+def _sha256_file(path: Path) -> str:
+    """Hash a file incrementally so large artifacts do not require a full-size allocation."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
 def _validate_verified_statements(
     verified: Any, expected_sha256: str, expected_repository_id: int | None = None
 ) -> int:
@@ -231,7 +240,7 @@ def verify_build_provenance(
         artifact_snapshot = snapshot_dir / "artifact" / artifact.name
         artifact_snapshot.parent.mkdir()
         _copy_regular_file_snapshot(artifact, artifact_snapshot, "artifact")
-        artifact_sha256 = hashlib.sha256(artifact_snapshot.read_bytes()).hexdigest()
+        artifact_sha256 = _sha256_file(artifact_snapshot)
         bundle_snapshot = None
         if bundle is not None:
             bundle_snapshot = snapshot_dir / "bundle" / bundle.name

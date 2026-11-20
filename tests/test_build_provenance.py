@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.verify_build_provenance import (
-    PREDICATE_TYPE, _copy_regular_file_snapshot, _version_tuple, verify_build_provenance,
+    PREDICATE_TYPE, _copy_regular_file_snapshot, _sha256_file, _version_tuple, verify_build_provenance,
 )
 
 
@@ -278,6 +278,12 @@ class BuildProvenanceTests(unittest.TestCase):
         root.write_text("{}\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "only be used with an offline bundle"):
             verify_build_provenance(self.artifact, **self.policy, trusted_root=root)
+
+    def test_sha256_file_hashes_large_files_incrementally(self):
+        artifact = Path(self.temp.name) / "large-artifact.bin"
+        payload = (b"streaming-hash-check-" * 100000)
+        artifact.write_bytes(payload)
+        self.assertEqual(_sha256_file(artifact), hashlib.sha256(payload).hexdigest())
 
     def test_descriptor_snapshot_copies_verified_regular_file(self):
         source = Path(self.temp.name) / "source.bin"
