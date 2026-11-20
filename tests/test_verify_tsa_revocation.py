@@ -634,6 +634,7 @@ class TsaRevocationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "unrecognized version output"):
                 _require_supported_openssl("openssl")
+
     def test_reads_openssl_version_from_stderr_when_needed(self):
         with patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value = SimpleNamespace(
