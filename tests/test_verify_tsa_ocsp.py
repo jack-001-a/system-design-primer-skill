@@ -188,6 +188,26 @@ Next Update: Nov 19 12:05:00 2026 GMT
                 with self.assertRaisesRegex(ValueError, message):
                     _validate_der_primitive(tag, value)
 
+    def test_ocsp_profile_walk_rejects_noncanonical_primitive_fields(self):
+        cases = (
+            (0x01, b"\\x01", "00 or FF"),
+            (0x02, b"\\x00\\x7f", "redundant sign octets"),
+            (0x03, b"\\x03\\xa7", "non-zero padding bits"),
+            (0x05, b"\\x00", "empty contents"),
+            (0x06, b"\\x80\\x2b", "non-minimal subidentifier"),
+        )
+        for tag, value, message in cases:
+            with self.subTest(tag=hex(tag)):
+                certificate = der_value(0x30, der_value(tag, value))
+                response = synthetic_ocsp_response(
+                    b"20261120120000Z",
+                    b"20261120115800Z",
+                    b"20261120120500Z",
+                    extra_certs=der_value(0xA0, der_value(0x30, certificate)),
+                )
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_ocsp_generalized_time_profile(response)
+
     def test_ocsp_generalized_time_profile_accepts_whole_second_utc_values(self):
         response = synthetic_ocsp_response(
             b"20261120120000Z",
