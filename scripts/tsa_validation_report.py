@@ -227,7 +227,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         raise ValueError("CRL signature algorithm identity is missing")
     if crl_result.get("crl_signature_policy") != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
         raise ValueError("CRL signature policy evidence is missing or unsupported")
-    if crl_result.get("verification") != "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight":
+    if crl_result.get("verification") != "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight":
         raise ValueError("CRL verification provenance is missing or unsupported")
     crl_issuer_validity = validate_crl_issuer_validity(
         crl_result.get("crl_issuer_certificate_validity"), "CRL issuer validity", gen_time)
@@ -330,7 +330,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         responder_crl_policy = responder_revocation_result.get("crl_signature_policy")
         if responder_crl_policy != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
             raise ValueError("OCSP responder CRL signature policy evidence is missing or unsupported")
-        if responder_revocation_result.get("verification") != "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight":
+        if responder_revocation_result.get("verification") != "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight":
             raise ValueError("OCSP responder CRL verification provenance is missing or unsupported")
         responder_issuer_validity = validate_crl_issuer_validity(
             responder_revocation_result.get("crl_issuer_certificate_validity"), "OCSP responder CRL issuer validity", gen_time)
