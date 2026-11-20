@@ -140,6 +140,8 @@ class TsaRevocationTests(unittest.TestCase):
         self.assertIn("-attime", run.call_args.args[0])
         self.assertIn("-crl_check", run.call_args.args[0])
         self.assertIn("-CRLfile", run.call_args.args[0])
+        self.assertIn("-no-CApath", run.call_args.args[0])
+        self.assertIn("-no-CAstore", run.call_args.args[0])
 
     def test_rejects_crl_issuer_not_yet_valid_at_this_update(self):
         self.issuer, self.leaf, self.listing = make_material(issuer_not_before=NOW-timedelta(hours=12))
