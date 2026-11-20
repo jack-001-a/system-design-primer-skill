@@ -949,7 +949,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
 
     def test_connect_operation_must_be_closed_before_read_write_registration(self):
         fake = FakeKernel32()
-        fake.ConnectNamedPipe = lambda *_: 0
+        fake.ConnectNamedPipe = lambda *_: 1
         bindings = win32.Kernel32Bindings(
             fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
             fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
