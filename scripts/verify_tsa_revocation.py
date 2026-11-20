@@ -564,7 +564,7 @@ def validate_direct_crl_scope(
         "not_after": issuer_not_after.isoformat(timespec="seconds").replace("+00:00", "Z"),
         "valid_at_this_update": True, "basic_constraints_ca": True,
         "key_cert_sign": True, "crl_sign": True,
-        "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
+        "time_basis": "CRL issuer certificate validity and CA/keyCertSign/cRLSign authorization are checked at CRL thisUpdate; OpenSSL validates the full target certificate PKIX path, including the issuer path to the pinned trust anchor, at RFC3161 genTime bounds",
     }
 
     if crl.last_update_utc > target_time:
