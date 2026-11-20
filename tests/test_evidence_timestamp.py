@@ -226,11 +226,13 @@ class EvidenceTimestampTests(unittest.TestCase):
         from cryptography.hazmat.primitives.asymmetric import rsa
         from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        not_before = now - timedelta(days=1)
+        not_after = now + timedelta(days=1)
         subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "TSA signer")])
         cert = (x509.CertificateBuilder().subject_name(subject).issuer_name(issuer)
             .public_key(key.public_key()).serial_number(1234)
-            .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
+            .not_valid_before(not_before).not_valid_after(not_after)
             .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.TIME_STAMPING]), critical=True)
             .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
                 key_encipherment=False, data_encipherment=False, key_agreement=False,
@@ -251,8 +253,22 @@ class EvidenceTimestampTests(unittest.TestCase):
         with patch("scripts.evidence_timestamp.openssl_path", return_value="openssl"), patch(
             "scripts.evidence_timestamp.subprocess.run", side_effect=fake_run
         ):
-            result = inspect_tsa_signer_certificate(self.response, now.isoformat().replace("+00:00", "Z"))
+            result = inspect_tsa_signer_certificate(
+                self.response, (not_before + timedelta(microseconds=1)).isoformat()
+            )
+            end_result = inspect_tsa_signer_certificate(
+                self.response, (not_after - timedelta(microseconds=1)).isoformat()
+            )
+            with self.assertRaisesRegex(ValueError, "not valid at RFC 3161 genTime"):
+                inspect_tsa_signer_certificate(
+                    self.response, (not_before - timedelta(microseconds=1)).isoformat()
+                )
+            with self.assertRaisesRegex(ValueError, "not valid at RFC 3161 genTime"):
+                inspect_tsa_signer_certificate(
+                    self.response, (not_after + timedelta(microseconds=1)).isoformat()
+                )
         self.assertEqual(result["tsa_signer_certificate_sha256"], cert.fingerprint(hashes.SHA256()).hex())
+        self.assertTrue(end_result["tsa_signer_valid_at_gen_time"])
         self.assertIn("cms", calls[1])
         self.assertIn("-signer", calls[1])
 
