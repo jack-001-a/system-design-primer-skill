@@ -99,7 +99,7 @@ def synthetic_ocsp_response(
         response_data
         + der_value(0x30, der_value(0x06, bytes.fromhex("2b0e03021a"))
                     + der_value(0x05, b""))
-        + der_value(0x03, b"\x00signature")
+        + der_value(0x03, bytes([0]) + b"signature")
         + extra_certs,
     )
     response_bytes = der_value(
@@ -146,7 +146,7 @@ def synthetic_x509_certificate(
         der_value(0x17, b"261120000000Z") + der_value(0x17, b"271120000000Z"),
     )
     subject_public_key_info = der_value(
-        0x30, public_key_algorithm + der_value(0x03, b"\x00public-key")
+        0x30, public_key_algorithm + der_value(0x03, bytes([0]) + b"public-key")
     )
     encoded_version = (
         der_value(0xA0, der_value(0x02, bytes([version])))
@@ -165,7 +165,7 @@ def synthetic_x509_certificate(
     )
     return der_value(
         0x30,
-        tbs_certificate + signature_algorithm + der_value(0x03, b"\x00signature"),
+        tbs_certificate + signature_algorithm + der_value(0x03, bytes([0]) + b"signature"),
     )
 
 
