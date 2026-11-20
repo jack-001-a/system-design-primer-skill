@@ -100,21 +100,26 @@ def validate_crl_der_profile(raw: bytes, crl: x509.CertificateRevocationList) ->
     if tag != 0x30 or outer_next != len(raw):
         raise ValueError("CRL DER must be one complete SEQUENCE")
     tbs_tag, tbs_start, tbs_end, tbs_next = _read_der_tlv(raw, outer_start)
-    if tbs_tag != 0x30:
-        raise ValueError("CRL DER lacks TBSCertList SEQUENCE")
+    if tbs_tag != 0x30 or tbs_next > outer_end:
+        raise ValueError("CRL DER lacks a bounded TBSCertList SEQUENCE")
     cursor = tbs_start
     first_tag, first_start, first_end, first_next = _read_der_tlv(raw, cursor)
+    if first_next > tbs_end:
+        raise ValueError("TBSCertList field exceeds its enclosing SEQUENCE")
     version_present = first_tag == 0x02
     if version_present:
         if raw[first_start:first_end] != b"\x01":
             raise ValueError("CRL version must be v2")
         cursor = first_next
     inner_tag, inner_start, inner_end, inner_next = _read_der_tlv(raw, cursor)
-    if inner_tag != 0x30:
-        raise ValueError("TBSCertList lacks signature AlgorithmIdentifier")
+    if inner_tag != 0x30 or inner_next > tbs_end:
+        raise ValueError("TBSCertList lacks a bounded signature AlgorithmIdentifier")
     outer_alg_tag, outer_alg_start, outer_alg_end, outer_alg_next = _read_der_tlv(raw, tbs_next)
-    if outer_alg_tag != 0x30:
-        raise ValueError("CertificateList lacks signatureAlgorithm")
+    if outer_alg_tag != 0x30 or outer_alg_next > outer_end:
+        raise ValueError("CertificateList lacks a bounded signatureAlgorithm")
+    signature_tag, signature_start, signature_end, signature_next = _read_der_tlv(raw, outer_alg_next)
+    if signature_tag != 0x03 or signature_next != outer_end:
+        raise ValueError("CertificateList lacks a complete signature BIT STRING")
     if raw[cursor:inner_next] != raw[tbs_next:outer_alg_next]:
         raise ValueError("CRL inner and outer signature AlgorithmIdentifiers must match exactly")
     has_extensions = bool(crl.extensions) or any(bool(entry.extensions) for entry in crl)
@@ -125,12 +130,12 @@ def validate_crl_der_profile(raw: bytes, crl: x509.CertificateRevocationList) ->
 def load_crl(path: Path) -> x509.CertificateRevocationList:
     raw = path.read_bytes()
     pem_match = re.fullmatch(
-        rb"\\s*-----BEGIN X509 CRL-----\\s*(.*?)\\s*-----END X509 CRL-----\\s*",
+        rb"\s*-----BEGIN X509 CRL-----\s*(.*?)\s*-----END X509 CRL-----\s*",
         raw, re.DOTALL,
     )
     if pem_match:
         try:
-            der = base64.b64decode(re.sub(rb"\\s+", b"", pem_match.group(1)), validate=True)
+            der = base64.b64decode(re.sub(rb"\s+", b"", pem_match.group(1)), validate=True)
             crl = x509.load_pem_x509_crl(raw)
         except (ValueError, base64.binascii.Error) as exc:
             raise ValueError("CRL must be a parseable PEM or DER X.509 CRL") from exc
