@@ -1,5 +1,6 @@
 from __future__ import annotations
 import base64
+import hashlib
 import json
 import tempfile
 import unittest
@@ -226,12 +227,12 @@ class EvidenceTimestampTests(unittest.TestCase):
         verification_commands = []
 
         query_text = (
-            "Hash Algorithm: sha256\\nMessage data: 0x" + digest + "\\n"
+            "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\n"
         )
         reply_text = (
-            "Time stamp: Nov 19 12:00:00 2026 GMT\\n"
-            "Policy OID: 1.2.3\\nSerial number: 01\\n"
-            "Hash Algorithm: sha256\\nMessage data: 0x" + digest + "\\n"
+            "Time stamp: Nov 19 12:00:00 2026 GMT\n"
+            "Policy OID: 1.2.3\nSerial number: 01\n"
+            "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\n"
         )
 
         def fake_run_openssl(args):
