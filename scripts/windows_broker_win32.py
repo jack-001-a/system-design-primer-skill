@@ -25,6 +25,7 @@ ERROR_IO_PENDING = 997
 ERROR_IO_INCOMPLETE = 996
 ERROR_NOT_FOUND = 1168
 ERROR_OPERATION_ABORTED = 995
+ERROR_PIPE_CONNECTED = 535
 MAX_DWORD = 0xFFFFFFFF
 WAIT_OBJECT_0 = 0
 WAIT_TIMEOUT = 258
@@ -80,6 +81,8 @@ class Kernel32Bindings:
     GetOverlappedResultEx: Any
     ReadFile: Any
     WriteFile: Any
+    ConnectNamedPipe: Any
+    SetEvent: Any
 
 
 def _set_signature(function: Any, argtypes: list[Any], restype: Any) -> Any:
@@ -110,6 +113,8 @@ def load_kernel32(*, loader: Any = None) -> Kernel32Bindings:
         )
         read_file = _set_signature(library.ReadFile, [HANDLE, LPVOID, DWORD, ctypes.POINTER(DWORD), ctypes.POINTER(OVERLAPPED)], BOOL)
         write_file = _set_signature(library.WriteFile, [HANDLE, LPVOID, DWORD, ctypes.POINTER(DWORD), ctypes.POINTER(OVERLAPPED)], BOOL)
+        connect_named_pipe = _set_signature(library.ConnectNamedPipe, [HANDLE, ctypes.POINTER(OVERLAPPED)], BOOL)
+        set_event = _set_signature(library.SetEvent, [HANDLE], BOOL)
         get_result_ex = _set_signature(
             library.GetOverlappedResultEx,
             [
@@ -126,7 +131,7 @@ def load_kernel32(*, loader: Any = None) -> Kernel32Bindings:
             "kernel32 is missing a required overlapped-I/O API"
         ) from exc
     return Kernel32Bindings(
-        library, create_event, close_handle, wait, cancel, get_result, get_result_ex, read_file, write_file
+        library, create_event, close_handle, wait, cancel, get_result, get_result_ex, read_file, write_file, connect_named_pipe, set_event
     )
 
 
@@ -178,6 +183,31 @@ def get_overlapped_result_wait(
     ))
     error = None if succeeded else int(get_last_error())
     return succeeded, int(transferred.value), error
+
+
+def start_overlapped_connect(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, get_last_error: Callable[[], int] = last_error) -> tuple[str, int | None]:
+    """Start ConnectNamedPipe and normalize the already-connected race."""
+    if operation.state != operation.CREATED:
+        raise OverlappedLifecycleError(f"cannot start connect in state {operation.state}")
+    if not operation.event_handle:
+        raise ValueError("overlapped connect requires an event handle")
+    operation.overlapped.hEvent = operation.event_handle
+    succeeded = bool(bindings.ConnectNamedPipe(operation.file_handle, ctypes.byref(operation.overlapped)))
+    if succeeded:
+        operation.mark_completed()
+        return "connected", None
+    error = int(get_last_error())
+    if error == ERROR_IO_PENDING:
+        operation.mark_pending()
+        return "pending", None
+    if error == ERROR_PIPE_CONNECTED:
+        # A client connected after pipe creation but before this call.
+        signaled = bool(bindings.SetEvent(operation.event_handle))
+        signal_error = None if signaled else int(get_last_error())
+        operation.mark_completed()
+        return "connected", signal_error
+    operation.mark_completed()
+    return "failed", error
 
 
 def start_overlapped_io(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, buffer: Any, length: int, write: bool = False, get_last_error: Callable[[], int] = last_error) -> tuple[str, int, int | None]:

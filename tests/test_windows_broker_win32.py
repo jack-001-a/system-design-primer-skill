@@ -18,7 +18,7 @@ class FakeKernel32:
         for name in (
             "CreateEventW", "CloseHandle", "WaitForSingleObject",
             "CancelIoEx", "GetOverlappedResult", "GetOverlappedResultEx",
-            "ReadFile", "WriteFile",
+            "ReadFile", "WriteFile", "ConnectNamedPipe", "SetEvent",
         ):
             setattr(self, name, FakeFunction())
 
@@ -75,7 +75,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         fake.CreateEventW = lambda *args: calls.append(args) or None
         bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
             fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
-            fake.GetOverlappedResultEx)
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent)
         handle, error = win32.create_manual_reset_event(bindings, get_last_error=lambda: 123)
         self.assertIsNone(handle)
         self.assertEqual(error, 123)
@@ -88,7 +88,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         fake.CancelIoEx = lambda handle, pointer: seen.append((handle, pointer)) or 0
         bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
             fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
-            fake.GetOverlappedResultEx)
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent)
         operation = win32.OVERLAPPED()
         ok, error = win32.cancel_exact_io(bindings, 44, operation, get_last_error=lambda: 1168)
         self.assertFalse(ok)
@@ -104,12 +104,46 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         fake.GetOverlappedResult = failed
         bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
             fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
-            fake.GetOverlappedResultEx)
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent)
         ok, count, error = win32.get_overlapped_result_wait(
             bindings, 44, win32.OVERLAPPED(), True, get_last_error=lambda: 996
         )
         self.assertFalse(ok)
         self.assertEqual((count, error), (9, 996))
+
+    def test_loader_binds_connect_named_pipe_signature(self):
+        fake = FakeKernel32()
+        with patch.object(win32.os, "name", "nt"):
+            win32.load_kernel32(loader=lambda *args, **kwargs: fake)
+        self.assertEqual(fake.ConnectNamedPipe.argtypes[-1], ctypes.POINTER(win32.OVERLAPPED))
+
+    def test_connect_named_pipe_pending(self):
+        fake = FakeKernel32()
+        fake.ConnectNamedPipe = lambda *_: 0
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent)
+        operation = win32.OverlappedOperation(file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=20, buffer=None, close_handle=lambda _: True)
+        self.assertEqual(win32.start_overlapped_connect(bindings, operation, get_last_error=lambda: win32.ERROR_IO_PENDING), ("pending", None))
+        self.assertEqual(operation.state, operation.PENDING)
+        self.assertEqual(operation.overlapped.hEvent, 20)
+
+    def test_connect_named_pipe_already_connected_signals_event(self):
+        fake = FakeKernel32()
+        fake.ConnectNamedPipe = lambda *_: 0
+        events = []
+        fake.SetEvent = lambda handle: events.append(handle) or 1
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent)
+        operation = win32.OverlappedOperation(file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=20, buffer=None, close_handle=lambda _: True)
+        self.assertEqual(win32.start_overlapped_connect(bindings, operation, get_last_error=lambda: win32.ERROR_PIPE_CONNECTED), ("connected", None))
+        self.assertEqual(events, [20])
+        self.assertEqual(operation.state, operation.COMPLETED)
+
+    def test_connect_named_pipe_failure_preserves_error(self):
+        fake = FakeKernel32()
+        fake.ConnectNamedPipe = lambda *_: 0
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent)
+        operation = win32.OverlappedOperation(file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=20, buffer=None, close_handle=lambda _: True)
+        self.assertEqual(win32.start_overlapped_connect(bindings, operation, get_last_error=lambda: 5), ("failed", 5))
+        self.assertEqual(operation.state, operation.COMPLETED)
 
     def test_loader_binds_read_write_overlapped_signatures(self):
         fake = FakeKernel32()
@@ -122,7 +156,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         fake = FakeKernel32()
         seen = []
         fake.ReadFile = lambda *args: seen.append(args) or 0
-        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile)
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent)
         buffer = (ctypes.c_ubyte * 4)()
         operation = win32.OverlappedOperation(file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=20, buffer=buffer, close_handle=lambda _: True)
         result = win32.start_overlapped_io(bindings, operation, buffer=buffer, length=4, get_last_error=lambda: win32.ERROR_IO_PENDING)
@@ -136,7 +170,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
             transferred._obj.value = 3
             return 1
         fake.WriteFile = completed
-        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile)
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent)
         buffer = (ctypes.c_ubyte * 4)()
         operation = win32.OverlappedOperation(file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=20, buffer=buffer, close_handle=lambda _: True)
         self.assertEqual(win32.start_overlapped_io(bindings, operation, buffer=buffer, length=4, write=True), ("completed", 3, None))
