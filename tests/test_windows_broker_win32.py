@@ -318,7 +318,10 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(connection.state, connection.DISCONNECTED)
         operation.close()
         connection.unregister_operation(operation)
-        connection.mark_connected()
+        reconnect_operation, _ = self.make_operation()
+        self.assertEqual(connection.start_connect(bindings, reconnect_operation), ("connected", None))
+        reconnect_operation.close()
+        connection.unregister_operation(reconnect_operation)
         self.assertEqual(connection.state, connection.CONNECTED)
         self.assertEqual(calls, [10, 10])
 
@@ -434,7 +437,10 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(win32.disconnect_named_pipe(bindings, connection, operation), (True, None))
         operation.close()
         connection.unregister_operation(operation)
-        connection.mark_connected()
+        reconnect_operation, _ = self.make_operation()
+        self.assertEqual(connection.start_connect(bindings, reconnect_operation), ("connected", None))
+        reconnect_operation.close()
+        connection.unregister_operation(reconnect_operation)
         self.assertEqual(connection.state, connection.CONNECTED)
 
     def test_reconnected_pipe_uses_fresh_operation_resources(self):
@@ -458,7 +464,10 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         connection.unregister_operation(first)
         self.assertEqual(connection.state, connection.DISCONNECTED)
 
-        connection.mark_connected()
+        reconnect_operation, _ = self.make_operation()
+        self.assertEqual(connection.start_connect(bindings, reconnect_operation), ("connected", None))
+        reconnect_operation.close()
+        connection.unregister_operation(reconnect_operation)
         second, _ = self.make_operation()
         self.assertIsNot(first.overlapped, second.overlapped)
         self.assertIsNot(first.event_handle, second.event_handle)

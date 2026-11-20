@@ -315,7 +315,7 @@ class NamedPipeConnection:
         A pending connect must be finalized with complete_connect after its
         operation reaches COMPLETED.
         """
-        with self._lock:
+        with self._lock, operation._lock:
             if self._state != self.DISCONNECTED:
                 raise OverlappedLifecycleError(
                     f"cannot start pipe connect in state {self._state}"
@@ -374,17 +374,10 @@ class NamedPipeConnection:
             self._state = self.CONNECTED if connected else self.DISCONNECTED
 
     def mark_connected(self) -> None:
-        """Record a successful ConnectNamedPipe completion before reuse."""
-        with self._lock:
-            if self._state != self.DISCONNECTED:
-                raise OverlappedLifecycleError(
-                    f"cannot reconnect pipe in state {self._state}"
-                )
-            if self._operations:
-                raise OverlappedLifecycleError(
-                    "cannot reconnect while previous I/O operations remain registered"
-                )
-            self._state = self.CONNECTED
+        """Reject state-only reconnects; use start_connect/complete_connect."""
+        raise OverlappedLifecycleError(
+            "connection state must be established by the ConnectNamedPipe lifecycle"
+        )
 
 
 def disconnect_named_pipe(
