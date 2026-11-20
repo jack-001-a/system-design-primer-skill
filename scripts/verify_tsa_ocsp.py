@@ -73,7 +73,12 @@ def _read_stable_ocsp_input(
     max_bytes: int = MAX_OCSP_INPUT_BYTES,
 ) -> bytes:
     """Read one bounded regular input and reject files that change during the read."""
-    with source.open("rb") as stream:
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0)
+    # A FIFO/device must not block the verifier while it waits for a writer.
+    # O_NONBLOCK is ignored for ordinary regular files on supported platforms.
+    flags |= getattr(os, "O_NONBLOCK", 0)
+    descriptor = os.open(source, flags)
+    with os.fdopen(descriptor, "rb") as stream:
         before = os.fstat(stream.fileno())
         if not stat.S_ISREG(before.st_mode):
             raise ValueError(description + " must be a regular file")
