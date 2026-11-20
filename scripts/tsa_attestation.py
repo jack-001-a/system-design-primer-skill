@@ -109,7 +109,7 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         require_sha256(historical.get(field), "historical_revocation_assessment." + field)
     if historical.get("issuer_intermediates_sha256") is not None:
         require_sha256(historical.get("issuer_intermediates_sha256"), "historical_revocation_assessment.issuer_intermediates_sha256")
-    if historical.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted":
+    if historical.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued trust-anchor certificates; CRL issuer CA/keyCertSign/cRLSign are checked independently; intermediates are supplied separately via -untrusted":
         raise ValueError("historical CRL trust-anchor/intermediate separation policy is missing or unsupported")
     if not isinstance(historical.get("crl_signature_algorithm_oid"), str) or not historical["crl_signature_algorithm_oid"].strip():
         raise ValueError("historical_revocation_assessment.crl_signature_algorithm_oid must be non-empty")
@@ -184,7 +184,7 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
             require_sha256(responder.get(field), "historical_ocsp_responder_revocation_assessment." + field)
         if responder.get("issuer_intermediates_sha256") is not None:
             require_sha256(responder.get("issuer_intermediates_sha256"), "historical_ocsp_responder_revocation_assessment.issuer_intermediates_sha256")
-        if responder.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted":
+        if responder.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued trust-anchor certificates; CRL issuer CA/keyCertSign/cRLSign are checked independently; intermediates are supplied separately via -untrusted":
             raise ValueError("historical OCSP responder CRL trust-anchor/intermediate separation policy is missing or unsupported")
         if not isinstance(responder.get("crl_signature_algorithm_oid"), str) or not responder["crl_signature_algorithm_oid"].strip():
             raise ValueError("historical OCSP responder CRL signature algorithm identity is missing")

@@ -66,6 +66,7 @@ class TsaRevocationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)
         self.cert, self.roots, self.crl = self.root/"tsa.pem", self.root/"roots.pem", self.root/"issuer.crl"
+        self.intermediates = self.root/"intermediates.pem"
         self.issuer, self.leaf, self.listing = make_material()
         self.write_material()
 
@@ -188,11 +189,10 @@ class TsaRevocationTests(unittest.TestCase):
             .sign(cross_key, hashes.SHA256())
         )
         self.write_material()
-        self.roots.write_bytes(self.issuer.public_bytes(serialization.Encoding.PEM)
-                               + cross_signed.public_bytes(serialization.Encoding.PEM))
+        self.intermediates.write_bytes(cross_signed.public_bytes(serialization.Encoding.PEM))
         with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
-            result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+            result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(), intermediates=self.intermediates)
         self.assertEqual(result["crl_issuer_certificate_sha256"],
                          hashlib.sha256(self.issuer.public_bytes(serialization.Encoding.DER)).hexdigest())
 
@@ -212,8 +212,7 @@ class TsaRevocationTests(unittest.TestCase):
             .sign(cross_key, hashes.SHA256())
         )
         self.write_material()
-        self.roots.write_bytes(self.issuer.public_bytes(serialization.Encoding.PEM)
-                               + cross_signed.public_bytes(serialization.Encoding.PEM))
+        self.intermediates.write_bytes(cross_signed.public_bytes(serialization.Encoding.PEM))
         aki_only = x509.AuthorityKeyIdentifier(
             key_identifier=x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()).digest,
             authority_cert_issuer=None, authority_cert_serial_number=None)
@@ -223,7 +222,7 @@ class TsaRevocationTests(unittest.TestCase):
                 rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256()))
         self.crl.write_bytes(self.listing.public_bytes(serialization.Encoding.PEM))
         with self.assertRaisesRegex(ValueError, "exactly one supplied certificate after AKI matching"):
-            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(), intermediates=self.intermediates)
 
     def test_rejects_mismatched_crl_issuer(self):
         other = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "other issuer")])

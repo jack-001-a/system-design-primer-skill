@@ -58,13 +58,6 @@ def validate_trust_anchor_bundle(certificates: list[x509.Certificate]) -> None:
         seen.add(fingerprint)
         if certificate.subject != certificate.issuer:
             raise ValueError("trust-anchor bundle may contain only self-issued certificates; place intermediates in --intermediates")
-        try:
-            constraints = certificate.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS)
-            usage = certificate.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
-        except x509.ExtensionNotFound as exc:
-            raise ValueError("trust anchors require basicConstraints and keyUsage extensions") from exc
-        if not constraints.critical or not constraints.value.ca or not usage.key_cert_sign:
-            raise ValueError("trust anchors must be critical CA certificates authorized for keyCertSign")
 
 def load_crl(path: Path) -> x509.CertificateRevocationList:
     raw = path.read_bytes()
