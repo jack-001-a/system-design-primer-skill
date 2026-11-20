@@ -67,3 +67,38 @@ A follow-up implementation should add Windows integration tests that:
 ## Decision
 
 Do not replace the current launcher in a small patch. Keep the existing implementation and its explicit limitation until the adapter contract and Windows integration tests are ready. Implement the native path as a separately reviewable change, with a clearly declared minimum Windows version and no silent weakening fallback.
+## Additional implementation hazards
+
+### Handle inheritance is a process-wide concern
+
+Using `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` is the correct way to constrain which inheritable handles the new child receives. It does not make temporary inheritability harmless to unrelated concurrent process creation: another component that concurrently calls a process-creation API with unrestricted handle inheritance can still receive a handle while its inherit flag is set.
+
+The native adapter must therefore:
+
+- create or duplicate dedicated stdout/stderr handles rather than changing inheritance on shared file handles;
+- set inheritance only for the shortest possible interval around `CreateProcessW`;
+- pass an explicit handle list and `bInheritHandles=TRUE`;
+- restore/close every temporary handle on all success and failure paths;
+- document the residual interaction with unrelated process creation in a multithreaded host.
+
+A Python-level lock local to this adapter cannot serialize process creation performed by unrelated libraries. Do not claim that the handle list alone eliminates this cross-component inheritance race. If the host requires a strict no-leak guarantee against concurrent process creation, the launch mechanism needs a host-wide process-creation coordination policy or a different output transport design.
+
+### Parent Job Object membership
+
+The verifier itself may already run inside a CI runner or other host Job Object. Windows 8 and later support nested jobs, but successful association still depends on the existing job hierarchy, session, and applicable limits. The launcher must not assume that creating its own Job Object guarantees assignment will succeed.
+
+The launch path must fail closed if the requested Job association cannot be established. It must not silently retry without `PROC_THREAD_ATTRIBUTE_JOB_LIST`. Integration tests should cover both an uncontained parent and a parent already assigned to an outer Job, and record the exact supported host configurations.
+
+### API contract boundaries
+
+The documented contract establishes that the listed jobs are assigned during process creation and that the attribute storage must remain alive until the attribute list is deleted. Do not infer undocumented rollback or cancellation guarantees if the creating thread/process is interrupted while `CreateProcessW` is executing. Keep the Job handle alive until the call has returned and the returned process/thread handles have been reconciled; any stronger crash-consistency claim requires separate evidence.
+
+## Additional validation gates
+
+Before enabling the native path by default:
+
+- add a Windows test in which the child process immediately attempts to create a grandchild, with no application-level startup delay; assert the grandchild is terminated when the owning Job closes;
+- run a concurrent process-creation stress test while stdout/stderr inheritance is enabled, and verify unrelated children do not receive the verifier's file handles;
+- test launch from inside an outer Job with nested jobs allowed and with a deliberately incompatible outer-job configuration;
+- test each failure point after Job creation, attribute-list allocation, each attribute update, and process creation, asserting all acquired resources are closed;
+- test that a failed Job-list process creation never falls back to an uncontained launch.
