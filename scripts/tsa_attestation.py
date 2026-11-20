@@ -364,7 +364,8 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
         trusted_timestamp = verify_timestamp(
             attestation_path, timestamp_request_path, timestamp_response_path,
             tsa_ca_path, expected_tsa_ca_sha256, tsa_chain_path)
-        if not trusted_timestamp.get("verified") or not trusted_timestamp.get("tsa_signer_valid_at_gen_time"):
+        if (trusted_timestamp.get("verified") is not True
+                or trusted_timestamp.get("tsa_signer_valid_at_gen_time") is not True):
             raise ValueError("RFC 3161 timestamp did not establish a verified, valid TSA signer")
         validate_timestamp_verification_scope(trusted_timestamp)
         timestamp_gen_time = parse_utc(trusted_timestamp.get("gen_time"), "timestamp gen_time")
@@ -442,7 +443,26 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
             # the original RFC 3161 response file.
             "attested_timestamp_result_sha256": report["timestamp_result_sha256"],
             "timestamp_result_digest_attested": True,
-            "execution_provenance_established": False}
+            "execution_provenance_established": False,
+            "evidence_provenance": {
+                "trust_store_digest_pin": {
+                    "source": "caller_supplied_command_line_argument",
+                    "authenticated_by_this_verifier": False,
+                },
+                "verifier_bundle_digest": {
+                    "source": "attester_asserted_in_signed_envelope",
+                    "bundle_bytes_verified": False,
+                    "execution_provenance_established": False,
+                },
+                "tsa_ca_digest_pin": ({
+                    "source": "caller_supplied_command_line_argument",
+                    "authenticated_by_this_verifier": False,
+                } if trusted_timestamp is not None else None),
+                "timestamp_token": {
+                    "verified_by_this_verifier": trusted_timestamp is not None,
+                    "signature_binding": "exact_attestation_signature" if trusted_timestamp is not None else "not_verified",
+                },
+            }}
 
 
 def main() -> int:

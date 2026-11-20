@@ -105,6 +105,17 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertEqual(result["historical_validity_basis"],
                          "attester_asserted_attested_at_is_not_trusted_time")
         self.assertEqual(result["verifier_bundle_sha256"], hashlib.sha256(b"verifier package").hexdigest())
+        self.assertEqual(result["evidence_provenance"]["trust_store_digest_pin"], {
+            "source": "caller_supplied_command_line_argument",
+            "authenticated_by_this_verifier": False,
+        })
+        self.assertEqual(result["evidence_provenance"]["verifier_bundle_digest"], {
+            "source": "attester_asserted_in_signed_envelope",
+            "bundle_bytes_verified": False,
+            "execution_provenance_established": False,
+        })
+        self.assertIsNone(result["evidence_provenance"]["tsa_ca_digest_pin"])
+
 
     def test_verified_attestation_exposes_signed_timestamp_result_digest(self):
         result = self.verify()
@@ -337,6 +348,13 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertTrue(result["signature_existed_before_revocation"])
         self.assertEqual(result["historical_assessment"], "signature_preexisted_revocation")
         self.assertTrue(result["historical_time_cryptographically_proven"])
+        self.assertEqual(result["evidence_provenance"]["tsa_ca_digest_pin"], {
+            "source": "caller_supplied_command_line_argument",
+            "authenticated_by_this_verifier": False,
+        })
+        self.assertTrue(result["evidence_provenance"]["timestamp_token"]["verified_by_this_verifier"])
+        self.assertEqual(result["evidence_provenance"]["timestamp_token"]["signature_binding"],
+                         "exact_attestation_signature")
         self.assertFalse(result["historically_valid"])
         timestamp.assert_called_once()
 
