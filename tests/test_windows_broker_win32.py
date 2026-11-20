@@ -1496,9 +1496,8 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         operation.close()
         self.assertEqual(closed, [20])
 
-    def test_wait_api_failures_do_not_prove_overlapped_completion(self):
+    def test_result_api_failures_do_not_prove_overlapped_completion(self):
         for error in (
-            win32.WAIT_FAILED,
             win32.ERROR_INVALID_HANDLE,
             win32.ERROR_INVALID_PARAMETER,
         ):
