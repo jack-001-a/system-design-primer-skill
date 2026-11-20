@@ -17,6 +17,15 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509 import ocsp
 
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
+def verification_time_bounds(value: datetime) -> tuple[int, ...]:
+    """Return exact floor/ceiling Unix seconds for a timezone-aware instant."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("validation time must be timezone-aware")
+    delta = value.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    floor_second = delta.days * 86400 + delta.seconds
+    return (floor_second, floor_second + 1) if delta.microseconds else (floor_second,)
+
+
 def load_certificate(path: Path, description: str) -> x509.Certificate:
     raw = path.read_bytes()
     try:
@@ -205,14 +214,29 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
             command.extend(["-no_intern", "-verify_other", str(signer_bundle)])
         elif intermediates is not None:
             command.extend(["-verify_other", str(intermediates)])
-        if at_time is not None:
-            if at_time.tzinfo is None or at_time.utcoffset() is None:
-                raise ValueError("historical target time must be timezone-aware")
-            command.extend(["-attime", str(int(at_time.timestamp()))])
-        result = subprocess.run(command, capture_output=True, text=True, check=False)
-        output = (result.stdout or "") + "\\n" + (result.stderr or "")
-        if result.returncode:
-            raise ValueError("OpenSSL OCSP verification failed: " + output.strip()[-2000:])
+        responder_chain_validation_times = (
+            list(verification_time_bounds(at_time)) if at_time is not None else []
+        )
+        commands = (
+            [[*command, "-attime", str(instant)] for instant in responder_chain_validation_times]
+            if responder_chain_validation_times else [command]
+        )
+        outputs = []
+        for verification_command in commands:
+            result = subprocess.run(
+                verification_command, capture_output=True, text=True, check=False
+            )
+            output = (result.stdout or "") + "\\n" + (result.stderr or "")
+            if result.returncode:
+                raise ValueError(
+                    "OpenSSL OCSP verification failed: " + output.strip()[-2000:]
+                )
+            if not re.search(r"Response verify OK", output, re.I):
+                raise ValueError(
+                    "OpenSSL did not confirm OCSP response signature and responder-chain verification"
+                )
+            outputs.append(output)
+        output = "\\n".join(outputs)
     if not re.search(r"Response verify OK", output, re.I):
         raise ValueError("OpenSSL did not confirm OCSP response signature and responder-chain verification")
     try:
@@ -273,6 +297,15 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
         "validation_time": instant.isoformat().replace("+00:00", "Z"),
         "certificate_sha256": hashlib.sha256(certificate.read_bytes()).hexdigest(),
         "responder_certificate_sha256": responder_digest,
+        "responder_chain_validation_scope": (
+            "OpenSSL responder PKIX path validation at both floor and ceiling Unix-second bounds of historical validation_time"
+            if at_time is not None else
+            "OpenSSL responder PKIX path validation at the host wall-clock time"
+        ),
+        "responder_chain_validation_times": responder_chain_validation_times,
+        "responder_chain_validation_policy": (
+            "OpenSSL ocsp uses the SHA-256-pinned -CAfile, empty -CApath/-CAstore, -x509_strict, and -auth_level 2"
+        ),
         "produced_at": produced.isoformat().replace("+00:00", "Z"),
         "this_update": this_update.isoformat().replace("+00:00", "Z"),
         "next_update": next_update.isoformat().replace("+00:00", "Z"),
@@ -287,7 +320,8 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
         ),
         "verification": (
             "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, "
-            "-x509_strict, and -auth_level 2; Python verifies exact target CertID, status, and freshness"
+            "empty -CApath/-CAstore, -x509_strict, and -auth_level 2; historical validation repeats "
+            "path verification at floor/ceiling Unix-second bounds; Python verifies exact target CertID, status, and freshness"
         ),
         "response_sha256": hashlib.sha256(response.read_bytes()).hexdigest(),
         "nonce_checked": False,
