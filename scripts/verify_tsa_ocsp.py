@@ -312,7 +312,7 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
         if this_update > instant:
             raise ValueError("historical OCSP thisUpdate is later than target time")
         if next_update < instant:
-            raise ValueError("historical OCSP response is stale: nextUpdate is earlier than target time")
+            raise ValueError("historical OCSP nextUpdate is stale: target time is later than nextUpdate")
     else:
         if produced > instant + skew:
             raise ValueError("OCSP producedAt is in the future beyond allowed clock skew")
