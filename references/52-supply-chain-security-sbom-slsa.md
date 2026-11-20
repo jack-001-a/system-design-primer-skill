@@ -47,7 +47,7 @@ gh attestation download dist/system-design-primer-v2.3.0.zip \
   --predicate-type https://slsa.dev/provenance/v1
 ```
 
-The CLI writes a digest-named JSONL bundle. Preserve it alongside the artifact. The verifier accepts it with `--bundle`; for fully offline verification, also provide a Sigstore trusted-root JSONL obtained through `gh attestation trusted-root` and authenticated through an independent trusted channel:
+The CLI writes a digest-named JSONL bundle. Preserve it alongside the artifact. The verifier's offline mode requires all three of `--bundle`, `--trusted-root`, and `--repository-id`; it fails closed if any is missing. Obtain a Sigstore trusted-root JSONL through `gh attestation trusted-root` and authenticate it through an independent trusted channel:
 
 ```sh
 python scripts/verify_build_provenance.py dist/system-design-primer-v2.3.0.zip \
@@ -60,7 +60,7 @@ python scripts/verify_build_provenance.py dist/system-design-primer-v2.3.0.zip \
   --repository-id 1462786926
 ```
 
-Obtain the expected numeric repository ID online from the canonical repository using `gh api repos/jack-001-a/system-design-primer-skill --jq .id`, and pass it with `--repository-id`. The verifier compares it with `verificationResult.signature.certificate.sourceRepositoryIdentifier` for every verified statement. Never trust a bundle or trusted-root file merely because it is adjacent to the artifact. A bundle is evidence to verify, not a trust anchor; the trusted root must be authenticated independently. GitHub CLI's name check alone cannot detect subsequent repository renames or name reuse; the additional repository-ID check above protects this offline path. If the repository has been renamed, pass the owner/repository name recorded in the signing certificate to `--repo`, while keeping the stable numeric ID from the canonical repository. Use online API-backed verification when current repository-name ownership matters. The bundle download command is currently public preview.
+Obtain the expected numeric repository ID online from the canonical repository using `gh api repos/jack-001-a/system-design-primer-skill --jq .id`, and pass it with `--repository-id`. The verifier compares it with `verificationResult.signature.certificate.sourceRepositoryIdentifier` for every verified statement. Never trust a bundle or trusted-root file merely because it is adjacent to the artifact. A bundle is evidence to verify, not a trust anchor; the trusted root must be authenticated independently. Offline verification cannot learn about signing-key or certificate revocations published after the trusted-root snapshot was obtained. Refresh and independently authenticate the trusted root whenever importing new signed material, and understand that a stale root may continue to accept signatures made with subsequently revoked key material. GitHub CLI's name check alone cannot detect subsequent repository renames or name reuse; the additional repository-ID check above protects this offline path. If the repository has been renamed, pass the owner/repository name recorded in the signing certificate to `--repo`, while keeping the stable numeric ID from the canonical repository. Use online API-backed verification when current repository-name ownership matters. The bundle download command is currently public preview.
 
 ### Attestation trust boundary and stronger isolation
 

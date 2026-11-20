@@ -102,8 +102,11 @@ def verify_build_provenance(
         raise ValueError("source_digest must be a full lowercase 40-character Git commit SHA")
     if bundle is not None and not bundle.is_file():
         raise ValueError("bundle must identify an existing regular file")
-    if bundle is not None and (repository_id is None or repository_id <= 0):
-        raise ValueError("offline bundle verification requires a positive --repository-id")
+    if bundle is not None:
+        if repository_id is None or repository_id <= 0:
+            raise ValueError("offline bundle verification requires a positive --repository-id")
+        if trusted_root is None:
+            raise ValueError("offline bundle verification requires --trusted-root")
     if repository_id is not None and repository_id <= 0:
         raise ValueError("repository_id must be a positive integer")
     if trusted_root is not None:

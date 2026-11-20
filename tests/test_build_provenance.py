@@ -141,6 +141,15 @@ class BuildProvenanceTests(unittest.TestCase):
         self.assertEqual(command[command.index("--bundle") + 1], str(bundle))
         self.assertEqual(command[command.index("--custom-trusted-root") + 1], str(root))
 
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_offline_bundle_requires_trusted_root(self, which):
+        bundle = Path(self.temp.name) / "attestations.jsonl"
+        bundle.write_text("{}\\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "requires --trusted-root"):
+            verify_build_provenance(
+                self.artifact, **self.policy, bundle=bundle, repository_id=1462786926
+            )
+
     @patch("scripts.verify_build_provenance.subprocess.run")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_offline_bundle_rejects_repository_id_mismatch(self, which, run):
