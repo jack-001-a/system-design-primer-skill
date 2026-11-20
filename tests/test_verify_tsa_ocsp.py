@@ -79,7 +79,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
         self.assertFalse(result["nonce_checked"])
         self.assertIn("-respin", command)
         self.assertIn("-issuer", command)
-        self.assertIn(str(self.issuer), command)
+        self.assertEqual(Path(command[command.index("-issuer") + 1]).name, "issuer-certificate")
         self.assertIn("-issuer", request_command)
         self.assertIn("-cert", request_command)
         self.assertIn("-CAfile", command)
@@ -366,7 +366,9 @@ Next Update: Nov 19 12:05:00 2026 GMT
 
     def test_pinned_responder_certificate_is_forced_as_the_only_signer_candidate(self):
         digest = self.make_responder_response(ocsp.OCSPResponderEncoding.NAME)
-        with patch("scripts.verify_tsa_ocsp.bind_responder_certificate", return_value=(Mock(), digest)), \
+        pinned_certificate = x509.load_pem_x509_certificate(self.responder.read_bytes())
+        with patch("scripts.verify_tsa_ocsp.bind_responder_certificate",
+                   return_value=(pinned_certificate, digest)), \
              patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), \
              patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
             run.side_effect = [Mock(returncode=0, stdout="", stderr=""),
