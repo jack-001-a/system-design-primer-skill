@@ -106,6 +106,30 @@ class BuildProvenanceTests(unittest.TestCase):
 
     @patch("scripts.verify_build_provenance.subprocess.run")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_cli_version_timeout_is_reported_as_runtime_error(self, which, run):
+        import subprocess
+
+        run.side_effect = subprocess.TimeoutExpired(["gh", "version"], 30)
+        with self.assertRaisesRegex(RuntimeError, "timed out while determining"):
+            verify_build_provenance(self.artifact, **self.policy)
+        self.assertEqual(run.call_args.kwargs["timeout"], 30)
+
+    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_cli_verification_timeout_is_reported_and_bounded(self, which, run):
+        import subprocess
+
+        run.side_effect = [
+            type("Completed", (), {"returncode": 0, "stdout": "gh version 2.102.0", "stderr": ""})(),
+            subprocess.TimeoutExpired(["gh", "attestation", "verify"], 300),
+        ]
+        with self.assertRaisesRegex(RuntimeError, "timed out after 300 seconds"):
+            verify_build_provenance(self.artifact, **self.policy)
+        self.assertEqual(run.call_args_list[0].kwargs["timeout"], 30)
+        self.assertEqual(run.call_args_list[1].kwargs["timeout"], 300)
+
+    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_cli_verification_failure_is_not_overridden(self, which, run):
         run.side_effect = [
             type("Completed", (), {"returncode": 0, "stdout": "gh version 2.102.0", "stderr": ""})(),

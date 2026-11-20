@@ -24,6 +24,8 @@ SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 GH_VERSION_RE = re.compile(r"^gh version (\d+)\.(\d+)\.(\d+)(?: \([^()\r\n]+\))?$")
 MIN_GH_VERSION = (2, 102, 0)
+GH_VERSION_TIMEOUT_SECONDS = 30
+GH_VERIFY_TIMEOUT_SECONDS = 300
 PREDICATE_TYPE = "https://slsa.dev/provenance/v1"
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 
@@ -206,9 +208,13 @@ def verify_build_provenance(
     if executable is None:
         raise RuntimeError("GitHub CLI (gh) is required for cryptographic attestation verification")
 
-    version = subprocess.run(
-        [executable, "version"], capture_output=True, text=True, check=False
-    )
+    try:
+        version = subprocess.run(
+            [executable, "version"], capture_output=True, text=True, check=False,
+            timeout=GH_VERSION_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("timed out while determining GitHub CLI version") from exc
     if version.returncode != 0:
         raise RuntimeError("could not determine GitHub CLI version")
     gh_version = _version_tuple(version.stdout)
@@ -251,7 +257,15 @@ def verify_build_provenance(
             command.extend(["--bundle", str(bundle_snapshot)])
         if trusted_root is not None:
             command.extend(["--custom-trusted-root", str(trusted_root_snapshot)])
-        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        try:
+            completed = subprocess.run(
+                command, capture_output=True, text=True, check=False,
+                timeout=GH_VERIFY_TIMEOUT_SECONDS,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"gh attestation verify timed out after {GH_VERIFY_TIMEOUT_SECONDS} seconds"
+            ) from exc
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "no diagnostic output").strip()
             raise RuntimeError("gh attestation verify rejected the artifact: " + detail[-4000:])
