@@ -578,7 +578,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(operation.state, operation.CLOSED)
         self.assertIn(operation, connection._operations)
 
-    def test_disconnect_waits_for_operation_close_and_rejects_closed_operation(self):
+    def test_disconnect_accepts_registered_operation_after_successful_close(self):
         entered_close = threading.Event()
         release_close = threading.Event()
         disconnect_started = threading.Event()
@@ -626,9 +626,9 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         disconnector.join(2)
         self.assertFalse(closer.is_alive())
         self.assertFalse(disconnector.is_alive())
-        self.assertTrue(disconnect_errors)
-        self.assertEqual(disconnect_calls, [])
-        self.assertEqual(connection.state, connection.CONNECTED)
+        self.assertEqual(disconnect_errors, [])
+        self.assertEqual(disconnect_calls, [10])
+        self.assertEqual(connection.state, connection.DISCONNECTED)
         self.assertEqual(operation.state, operation.CLOSED)
         self.assertIn(operation, connection._operations)
 
