@@ -29,7 +29,7 @@ def parse_utc_epoch(value: str) -> int:
     except ValueError as exc:
         raise ValueError("at-time is not a valid UTC timestamp") from exc
     whole_second = int(parsed.replace(microsecond=0).timestamp())
-    fraction = re.search(r"\\.(\\d+)Z$", value)
+    fraction = re.search(r"\.(\d+)Z$", value)
     has_fractional_time = fraction is not None and any(digit != "0" for digit in fraction.group(1))
     return whole_second + (1 if has_fractional_time else 0)
 
