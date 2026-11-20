@@ -192,7 +192,7 @@ def verify_timestamp(
     if not imprint or imprint.group(1).lower() != expected_imprint:
         raise ValueError("timestamp request does not bind the supplied Ed25519 signature")
     details = run_openssl(["ts", "-reply", "-in", str(response_path), "-text"])
-    gen_time = re.search(r"^Time(?: stamp)?\\s*:\\s*(.+)$", details, re.I | re.M)
+    gen_time = re.search(r"^Time(?: stamp)?\s*:\s*(.+)$", details, re.I | re.M)
     if not gen_time:
         raise ValueError("timestamp token did not expose a generation time for historical chain verification")
     canonical_gen_time = parse_openssl_gen_time(gen_time.group(1))
