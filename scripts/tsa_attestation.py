@@ -294,7 +294,8 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
                        timestamp_response_path: Path | None = None,
                        tsa_ca_path: Path | None = None,
                        expected_tsa_ca_sha256: str | None = None,
-                       tsa_chain_path: Path | None = None) -> dict[str, Any]:
+                       tsa_chain_path: Path | None = None,
+                       verifier_bundle_path: Path | None = None) -> dict[str, Any]:
     raw_report = report_path.read_bytes()
     report = json.loads(raw_report.decode("utf-8"))
     if not isinstance(report, dict):
