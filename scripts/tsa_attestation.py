@@ -433,9 +433,13 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     return {"verified": True, "signature_valid": True, "historically_valid": False,
             "historical_assessment": historical_assessment,
             "historical_validity_basis": (
-                "signature_creation_time_not_proven; RFC 3161 token establishes existence by the "
-                "trusted timestamp upper bound (genTime plus explicit Accuracy when supplied); "
-                "this is not proof that the signature was created during the key-validity interval"
+                (
+                    "signature_creation_time_not_proven; RFC 3161 token establishes existence by "
+                    "the conservative trusted timestamp upper bound (genTime plus explicit Accuracy); "
+                    "this is not proof that the signature was created during the key-validity interval"
+                ) if timestamp_accuracy_assessed else
+                "signature_creation_time_not_proven; RFC 3161 token has no explicit Accuracy and "
+                "no conservative timestamp bound is derived for key-validity or revocation ordering"
             ) if trusted_timestamp else "attester_asserted_attested_at_is_not_trusted_time",
             "historical_time_cryptographically_proven": trusted_timestamp is not None,
             "signature_existence_proven_by_trusted_timestamp": trusted_timestamp is not None,
