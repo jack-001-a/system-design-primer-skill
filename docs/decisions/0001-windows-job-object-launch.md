@@ -195,3 +195,72 @@ This is a prototype preference, not an adoption decision. Keep the existing veri
 7. Launches from inside supported outer Job configurations behave as documented; incompatible configurations fail closed without an uncontained retry.
 
 The broker protocol and implementation must not claim crash safety until tests exercise process termination at each ownership transition. In particular, a remote duplicate may remain open if the host dies before sending the broker its cleanup instruction; the broker therefore needs a bounded request lifecycle and an independent way to detect a dead or disconnected host.
+
+
+## Broker-to-host process supervision contract
+
+Mode B is only viable if it preserves the supervision behavior currently consumed from `subprocess.Popen` by `_run_cli_bounded`. The broker must not return only a PID: a PID is an identifier, not a stable wait/termination capability, and reopening by PID introduces an avoidable reuse race.
+
+### Handle and object ownership
+
+For the first per-launch prototype, use this ownership sequence:
+
+1. The host opens the existing bounded stdout/stderr files and captures the exact standard-input handle behavior currently used by `Popen`. Do not silently change stdin to a null device; if the current behavior depends on an inherited standard input handle, include that handle explicitly after validating it.
+2. The host starts the broker with non-inheriting creation and establishes a private, authenticated-by-process-lifetime IPC channel. The broker records/opens a synchronization handle for the host so it can detect host death independently of receiving another request.
+3. The host obtains a broker process handle with `PROCESS_DUP_HANDLE`. It duplicates only the selected standard handles into the broker, with the broker-side duplicates marked inheritable. The remote handle values are sent over the private IPC channel; those numeric values are meaningful only in the broker's handle table.
+4. The broker creates and configures the kill-on-close Job, builds `STARTUPINFOEX` with a `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` containing exactly the broker-owned standard handles, and adds `PROC_THREAD_ATTRIBUTE_JOB_LIST` for the target. It calls `CreateProcessW` itself with `bInheritHandles=TRUE` and `EXTENDED_STARTUPINFO_PRESENT`.
+5. After successful creation, the broker closes its temporary inheritable standard-handle duplicates and the primary thread handle. It retains the target process and Job handles until it has duplicated the required supervision handles back to the host.
+6. The broker duplicates a restricted target process handle into the host with only the rights needed for `SYNCHRONIZE`, `PROCESS_QUERY_LIMITED_INFORMATION`, and `PROCESS_TERMINATE` (or a narrower set if the final adapter does not need direct termination). It duplicates a Job handle with the rights needed for `TerminateJobObject`. The host receives those remote handle values over IPC and owns the resulting handles after successful transfer.
+7. Once transfer is acknowledged, the broker closes its local target-process and Job handles. The host's Job handle then controls the lifetime of the Job; closing the final Job handle must retain the configured kill-on-close semantics. If the host dies before transfer/acknowledgement, the broker's host-process wait detects that condition and terminates/closes the still broker-owned Job.
+
+The exact access masks and transfer acknowledgement sequence must be validated on Windows. Do not use `DUPLICATE_SAME_ACCESS` by default for handles returned to the host if a smaller explicit access mask is sufficient. `DuplicateHandle` requires `PROCESS_DUP_HANDLE` on the process whose handle table is being modified, and the returned numeric value is valid in the target process context only. The protocol must transmit the value and associate it with the correct request. See Microsoft's [DuplicateHandle contract](https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-duplicatehandle) and [process access rights](https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights).
+
+### Popen-compatible adapter surface
+
+The host-side adapter should expose the subset actually used by `_run_cli_bounded`, not imitate the entire `Popen` API:
+
+- `pid`: the target PID returned by `CreateProcessW`;
+- `poll()`: nonblocking process-handle wait and exit-code query, returning `None` while active;
+- `wait(timeout)`: bounded wait with `subprocess.TimeoutExpired`-compatible behavior and the exact target exit code;
+- `kill()`: terminate the target Job, not merely the direct CLI process;
+- explicit idempotent close of the host-side process and Job handles, with cleanup errors surfaced without masking a primary operation failure.
+
+The existing caller also closes the Job after a normal leader exit so that descendants retaining stdout/stderr cannot keep the temporary files alive. Preserve this behavior on success, timeout, output-limit failure, exceptions, and setup failure. A process wrapper must make ownership transfer explicit so the caller cannot accidentally close a handle twice or leak it on an exception.
+
+### IPC framing and lifecycle
+
+The first prototype should be single-request and per-launch. Define a versioned, length-prefixed message format with bounded message sizes and explicit request IDs even if only one request is initially allowed. The launch request must carry an argv array (not a shell command string), executable path, working directory, environment policy/data, and the broker-side standard-handle values. The response must distinguish launch failure from successful launch and include the PID plus duplicated host-side process and Job handle values.
+
+The protocol must define these terminal transitions explicitly:
+
+- launch rejected before any remote duplication;
+- partial standard-handle duplication failure;
+- Job creation/configuration failure;
+- attribute-list allocation or update failure;
+- `CreateProcessW` failure;
+- process and Job handle transfer failure;
+- host disconnect before and after successful transfer;
+- target normal exit, timeout, output-limit termination, and explicit cancellation;
+- broker crash at every point after it owns a remote handle.
+
+Every remote handle created for a request must have exactly one owner and a documented close/transfer event. On partial duplication failure, the host closes every remote duplicate already created, using `DuplicateHandle(..., DUPLICATE_CLOSE_SOURCE)` or a broker acknowledgement; it must not guess which remote values exist. The broker must close its temporary handles in a finally-style cleanup path. A disconnected host must cause the broker to stop accepting launches and terminate any Job for which ownership has not been transferred. After transfer, the host's Job handle is the authoritative kill-on-close lifetime anchor.
+
+### Output and environment compatibility details
+
+The current `Popen` call specifies stdout and stderr files, leaves stdin at its existing default, passes a command argument list, uses the current working directory and inherited environment, and waits for byte output in temporary files. The broker adapter must preserve these semantics exactly or document and separately approve any intentional change. In particular:
+
+- quote the argument vector using the Windows command-line serialization rules expected by the target runtime; do not join argv with spaces;
+- pass an explicit application name to `CreateProcessW` to avoid ambiguous executable-path parsing;
+- use a writable Unicode command-line buffer;
+- preserve inherited environment semantics, including Unicode and drive-current-directory entries, or pass a correctly sorted, double-NUL-terminated Unicode environment block;
+- preserve the requested working directory and standard-handle behavior;
+- use `STARTF_USESTDHANDLES` and verify each standard handle before process creation;
+- keep the IPC control channel out of the target's handle list.
+
+### Security boundary and residual risk
+
+The broker is a narrow process-creation boundary, not a general-purpose remote execution service. It must accept only a structured launch request from its owning host, must not parse shell syntax, and must not expose arbitrary handle duplication or arbitrary process-control operations to untrusted clients. The host/broker IPC endpoint must be private to the same user/session and protected against other local processes attaching to it. The broker must not inherit host handles at startup.
+
+Microsoft documents that `CreateProcessW` with `bInheritHandles=TRUE` ordinarily inherits all inheritable handles in the caller, while `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` narrows the intended child set; it also requires valid standard handles and a writable command-line buffer. The broker must therefore remain minimal and ensure every process-creation call it makes uses the explicit handle list. Do not load code into the broker that can create unrestricted child processes concurrently during the temporary-inheritability window.
+
+The broker remains a proposed prototype architecture. No production path should switch to it until the ownership protocol, Windows integration tests, and existing verifier behavior have been demonstrated end-to-end.
