@@ -426,6 +426,30 @@ class TsaValidationReportTests(unittest.TestCase):
                 timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash,
             )
 
+    def test_historical_ocsp_rejects_gen_time_beyond_microsecond_precision(self):
+        gen_time = "2026-11-19T12:00:00.0000001Z"
+        crl = dict(
+            self.crl,
+            at_time=gen_time,
+            effective_at_time="2026-11-19T12:00:01Z",
+        )
+        timestamp = dict(
+            self.timestamp,
+            gen_time=gen_time,
+            tsa_chain_validation_time=gen_time,
+        )
+        historical = self.historical_ocsp_result(
+            historical_at_time="2026-11-19T12:00:00.000000Z",
+            validation_time="2026-11-19T12:00:00.000000Z",
+            responder_chain_validation_times=[1795089600, 1795089601],
+        )
+        with self.assertRaisesRegex(ValueError, "more than six fractional digits"):
+            build_report(
+                gen_time, crl, self.crl_file_hash,
+                ocsp_result=historical, ocsp_result_sha256=self.ocsp_file_hash,
+                timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash,
+            )
+
     def test_rejects_ocsp_result_missing_chain_provenance(self):
         for field in ("trust_anchor_policy", "verification"):
             with self.subTest(field=field):
