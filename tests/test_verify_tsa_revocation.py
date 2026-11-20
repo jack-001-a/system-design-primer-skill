@@ -15,7 +15,8 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from scripts.verify_tsa_revocation import (parse_utc_epoch, verify_crl_status, validate_crl_signature_policy,
     validate_crl_number_value, validate_crl_der_profile, validate_direct_crl_scope, validate_trust_anchor_bundle,
-    _read_der_tlv, _validate_crl_time_der, load_crl, load_certificates)
+    _read_der_tlv, _validate_crl_time_der, load_crl, load_certificates,
+    _require_supported_openssl)
 
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
@@ -268,7 +269,9 @@ class TsaRevocationTests(unittest.TestCase):
             load_crl(self.crl)
 
     def test_accepts_scoped_direct_crl_then_invokes_openssl(self):
-        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
             result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(),
                                        expected_crl_sha256=self.crl_pin())
@@ -311,7 +314,9 @@ class TsaRevocationTests(unittest.TestCase):
         for kwargs in ({"issuer_not_before": crl_time}, {"issuer_not_after": crl_time}):
             self.issuer, self.leaf, self.listing = make_material(**kwargs)
             self.write_material()
-            with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
                 run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
                 result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
             self.assertTrue(result["crl_issuer_certificate_validity"]["valid_at_this_update"])
@@ -414,7 +419,9 @@ class TsaRevocationTests(unittest.TestCase):
         )
         self.write_material()
         self.intermediates.write_bytes(cross_signed.public_bytes(serialization.Encoding.PEM))
-        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
             result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(), intermediates=self.intermediates)
         self.assertEqual(result["crl_issuer_certificate_sha256"],
@@ -445,7 +452,9 @@ class TsaRevocationTests(unittest.TestCase):
             .add_extension(aki_only, False).add_extension(x509.CRLNumber(2), False).sign(
                 rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256()))
         self.crl.write_bytes(self.listing.public_bytes(serialization.Encoding.PEM))
-        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
             result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(), intermediates=self.intermediates)
         self.assertEqual(result["crl_issuer_certificate_sha256"],
@@ -603,8 +612,33 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "at least 2048 bits"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
+    def test_requires_openssl_3_or_newer(self):
+        with patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.return_value = SimpleNamespace(
+                returncode=0, stdout="OpenSSL 1.1.1w  11 Sep 2023", stderr=""
+            )
+            with self.assertRaisesRegex(ValueError, "OpenSSL 3.0.0 or newer"):
+                _require_supported_openssl("openssl")
+
+    def test_reports_supported_openssl_version(self):
+        with patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.return_value = SimpleNamespace(
+                returncode=0, stdout="OpenSSL 3.2.1 30 Jan 2024", stderr=""
+            )
+            self.assertEqual(_require_supported_openssl("openssl"), "3.2.1")
+
+    def test_rejects_unrecognized_openssl_version_output(self):
+        with patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.return_value = SimpleNamespace(
+                returncode=0, stdout="LibreSSL 3.9.2", stderr=""
+            )
+            with self.assertRaisesRegex(ValueError, "unrecognized version output"):
+                _require_supported_openssl("openssl")
+
     def test_reports_target_serial_absent_from_crl(self):
-        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
             result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
         self.assertEqual(result["revocation_entry"]["status_at_time"], "not_listed")
@@ -639,7 +673,9 @@ class TsaRevocationTests(unittest.TestCase):
                                 reason=x509.ReasonFlags.unspecified)
         self.issuer, self.leaf, self.listing = make_material(entry=entry)
         self.write_material()
-        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
             result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
         self.assertEqual(result["revocation_entry"]["reason"], "unspecified")
@@ -683,8 +719,8 @@ class TsaRevocationTests(unittest.TestCase):
             raise RuntimeError("simulated process-spawn failure")
 
         with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
-            "scripts.verify_tsa_revocation.subprocess.run", side_effect=fail_to_spawn
-        ):
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run", side_effect=fail_to_spawn):
             with self.assertRaisesRegex(RuntimeError, "simulated process-spawn failure"):
                 verify_crl_status(
                     self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(),
@@ -703,13 +739,17 @@ class TsaRevocationTests(unittest.TestCase):
         self.assertFalse(snapshot_directory.exists(), "private snapshot directory must be removed after spawn failure")
 
     def test_rejects_openssl_failure(self):
-        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 2, "", "certificate revoked"
             with self.assertRaisesRegex(ValueError, "validation failed"):
                 verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_ambiguous_openssl_success(self):
-        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, "", ""
             with self.assertRaisesRegex(ValueError, "explicit successful"):
                 verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
