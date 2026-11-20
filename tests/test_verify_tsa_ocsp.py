@@ -65,14 +65,14 @@ Next Update: Nov 19 12:05:00 2026 GMT
     def tearDown(self): self.temp.cleanup()
     def pin(self): return hashlib.sha256(self.roots.read_bytes()).hexdigest()
     def run_valid(self, output=None):
-        with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
-            request_result = Mock(returncode=0, stdout="", stderr="")
-            response_result = Mock(returncode=0, stdout=self.output if output is None else output, stderr="")
-            run.side_effect = [request_result, response_result]
-            result = verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,self.pin(),now=self.now)
-            return result, run.call_args_list[0].args[0], run.call_args_list[1].args[0]
-    def test_accepts_fresh_signed_good_response(self):
-        result, request_command, command = self.run_valid()
+        with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"):
+            with patch("scripts.verify_tsa_ocsp.subprocess.run", side_effect=fake_run):
+                response_result = Mock(returncode=0, stdout=self.output if output is None else output, stderr="")
+                run.side_effect = [request_result, response_result]
+                result = verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,self.pin(),now=self.now)
+                return result, run.call_args_list[0].args[0], run.call_args_list[1].args[0]
+        def test_accepts_fresh_signed_good_response(self):
+            result, request_command, command = self.run_valid()
         self.assertTrue(result["verified"])
         self.assertEqual(result["status"], "good")
         self.assertFalse(result["nonce_checked"])
