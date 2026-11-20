@@ -13,7 +13,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from scripts.verify_tsa_revocation import (parse_utc_epoch, verify_crl_status, validate_crl_signature_policy,
+from scripts.verify_tsa_revocation import (parse_utc_epoch, parse_utc_epoch_bounds, verify_crl_status, validate_crl_signature_policy,
     validate_crl_number_value, validate_crl_der_profile, validate_direct_crl_scope, validate_trust_anchor_bundle,
     _read_der_tlv, _validate_crl_time_der, load_crl, load_certificates,
     _require_supported_openssl)
@@ -106,6 +106,18 @@ class TsaRevocationTests(unittest.TestCase):
                          parse_utc_epoch("2026-11-19T12:00:01Z"))
         self.assertEqual(parse_utc_epoch("2026-11-19T12:00:00Z"),
                          parse_utc_epoch("2026-11-19T12:00:00.000000Z"))
+        self.assertEqual(
+            parse_utc_epoch_bounds("2026-11-19T12:00:00.000000000000000000000001Z"),
+            (1795089600, 1795089601),
+        )
+        self.assertEqual(
+            parse_utc_epoch_bounds("2026-11-19T12:00:00.000000000Z"),
+            (1795089600,),
+        )
+        self.assertEqual(
+            parse_utc_epoch_bounds("2026-11-19T12:00:00Z"),
+            (1795089600,),
+        )
 
     def test_requires_strict_utc_and_valid_calendar_time(self):
         with self.assertRaisesRegex(ValueError, "ending in Z"):
@@ -280,6 +292,8 @@ class TsaRevocationTests(unittest.TestCase):
         self.assertEqual(result["trust_anchor_policy"], "issuer-roots bundle contains only self-issued trust-anchor certificates; CRL issuer CA/keyCertSign/cRLSign are checked independently; intermediates are supplied separately via -untrusted")
         self.assertEqual(result["effective_at_time"], AT_TIME)
         self.assertEqual(result["time_rounding"], "ceil_to_next_whole_second_for_conservative_historical_evaluation")
+        self.assertEqual(result["path_validation_times"], [1795089600])
+        self.assertIn("floor/ceiling Unix-second bound", result["path_validation_scope"])
         self.assertTrue(result["crl_issuer_certificate_validity"]["valid_at_this_update"])
         self.assertIn("-attime", run.call_args.args[0])
         self.assertIn("-crl_check", run.call_args.args[0])
@@ -298,6 +312,41 @@ class TsaRevocationTests(unittest.TestCase):
         self.assertIn("-auth_level", run.call_args.args[0])
         self.assertEqual(run.call_args.args[0][run.call_args.args[0].index("-auth_level") + 1], "2")
         self.assertIn("-x509_strict", run.call_args.args[0])
+
+    def test_fractional_gen_time_validates_path_at_floor_and_ceiling(self):
+        fractional_time = "2026-11-19T12:00:00.000001Z"
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.side_effect = [
+                Mock(returncode=0, stdout=str(self.cert) + ": OK", stderr=""),
+                Mock(returncode=0, stdout=str(self.cert) + ": OK", stderr=""),
+            ]
+            result = verify_crl_status(
+                self.cert, self.roots, self.crl, fractional_time, self.roots_pin()
+            )
+        commands = [call.args[0] for call in run.call_args_list]
+        actual_bounds = [
+            int(command[command.index("-attime") + 1]) for command in commands
+        ]
+        self.assertEqual(actual_bounds, [1795089600, 1795089601])
+        self.assertEqual(result["path_validation_times"], actual_bounds)
+        self.assertEqual(result["effective_at_time"], "2026-11-19T12:00:01Z")
+
+    def test_fractional_gen_time_requires_both_path_bounds_to_pass(self):
+        fractional_time = "2026-11-19T12:00:00.000001Z"
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation._require_supported_openssl", return_value="3.0.0"
+        ), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.side_effect = [
+                Mock(returncode=0, stdout=str(self.cert) + ": OK", stderr=""),
+                Mock(returncode=2, stdout="", stderr="certificate has expired"),
+            ]
+            with self.assertRaisesRegex(ValueError, "1795089601"):
+                verify_crl_status(
+                    self.cert, self.roots, self.crl, fractional_time, self.roots_pin()
+                )
+        self.assertEqual(len(run.call_args_list), 2)
 
     def test_rejects_crl_issuer_not_yet_valid_at_this_update(self):
         self.issuer, self.leaf, self.listing = make_material(issuer_not_before=NOW-timedelta(hours=12))
