@@ -67,6 +67,8 @@ def verify_build_provenance(
     signer_workflow: str,
     source_ref: str,
     source_digest: str,
+    bundle: Path | None = None,
+    trusted_root: Path | None = None,
     gh_bin: str = "gh",
 ) -> dict[str, Any]:
     if not artifact.is_file():
@@ -85,6 +87,13 @@ def verify_build_provenance(
         raise ValueError("source_ref must be a fully qualified branch or tag ref")
     if "\n" in source_ref or not SHA1_RE.fullmatch(source_digest):
         raise ValueError("source_digest must be a full lowercase 40-character Git commit SHA")
+    if bundle is not None and not bundle.is_file():
+        raise ValueError("bundle must identify an existing regular file")
+    if trusted_root is not None:
+        if bundle is None:
+            raise ValueError("trusted_root can only be used with an offline bundle")
+        if not trusted_root.is_file():
+            raise ValueError("trusted_root must identify an existing regular file")
 
     executable = shutil.which(gh_bin)
     if executable is None:
@@ -119,6 +128,10 @@ def verify_build_provenance(
             "--deny-self-hosted-runners",
             "--format", "json",
         ]
+        if bundle is not None:
+            command.extend(["--bundle", str(bundle)])
+        if trusted_root is not None:
+            command.extend(["--custom-trusted-root", str(trusted_root)])
         completed = subprocess.run(command, capture_output=True, text=True, check=False)
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "no diagnostic output").strip()
@@ -152,7 +165,9 @@ def main() -> int:
     parser.add_argument("--signer-workflow", required=True)
     parser.add_argument("--source-ref", required=True)
     parser.add_argument("--source-digest", required=True)
-    parser.add_argument("--gh-bin", default="gh", help="GitHub CLI executable (default: gh)")
+    parser.add_argument("--bundle", type=Path, help="Previously downloaded attestation bundle (JSON or JSONL)")
+    parser.add_argument("--trusted-root", type=Path, help="Explicit Sigstore trusted-root JSONL for offline verification; requires --bundle")
+    parser.add_argument("--gh-bin", default="gh", help="GitHub CLI executable (default: gh")
     args = parser.parse_args()
     try:
         result = verify_build_provenance(
@@ -161,6 +176,8 @@ def main() -> int:
             signer_workflow=args.signer_workflow,
             source_ref=args.source_ref,
             source_digest=args.source_digest,
+            bundle=args.bundle,
+            trusted_root=args.trusted_root,
             gh_bin=args.gh_bin,
         )
     except (OSError, ValueError, RuntimeError) as exc:

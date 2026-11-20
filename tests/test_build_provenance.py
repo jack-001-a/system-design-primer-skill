@@ -125,6 +125,26 @@ class BuildProvenanceTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     verify_build_provenance(self.artifact, **self.policy)
 
+    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_uses_explicit_bundle_and_trusted_root(self, which, run):
+        bundle = Path(self.temp.name) / "attestations.jsonl"
+        root = Path(self.temp.name) / "trusted-root.jsonl"
+        bundle.write_text("{}\\n", encoding="utf-8")
+        root.write_text("{}\\n", encoding="utf-8")
+        self._mock_cli(run)
+        verify_build_provenance(self.artifact, **self.policy, bundle=bundle, trusted_root=root)
+        command = run.call_args_list[1].args[0]
+        self.assertEqual(command[command.index("--bundle") + 1], str(bundle))
+        self.assertEqual(command[command.index("--custom-trusted-root") + 1], str(root))
+
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_trusted_root_without_bundle_is_rejected_before_cli(self, which):
+        root = Path(self.temp.name) / "trusted-root.jsonl"
+        root.write_text("{}\\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "only be used with an offline bundle"):
+            verify_build_provenance(self.artifact, **self.policy, trusted_root=root)
+
     def test_rejects_unqualified_or_mismatched_identity_inputs(self):
         for overrides in (
             {"source_digest": "deadbeef"},

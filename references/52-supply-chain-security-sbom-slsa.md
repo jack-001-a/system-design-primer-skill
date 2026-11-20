@@ -35,3 +35,28 @@ The verifier delegates cryptographic signature, certificate, transparency-log, a
 ### Verifier version and subject policy
 
 The repository verifier requires GitHub CLI **2.102.0 or newer**. Versions through 2.101.0 had security advisories affecting case-sensitive source-ref matching and exact signer-workflow identity matching; do not use those versions for provenance authorization. The wrapper also checks the verified in-toto statement's predicate type and SHA-256 subject against a private snapshot of the exact artifact bytes passed to the CLI. This supplements, but does not replace, the CLI's cryptographic verification.
+
+
+## Reproducible and offline verification
+
+Download the artifact's attestation bundle while online:
+
+```sh
+gh attestation download dist/system-design-primer-v2.3.0.zip \
+  --repo jack-001-a/system-design-primer-skill \
+  --predicate-type https://slsa.dev/provenance/v1
+```
+
+The CLI writes a digest-named JSONL bundle. Preserve it alongside the artifact. The verifier accepts it with `--bundle`; for fully offline verification, also provide a Sigstore trusted-root JSONL obtained through `gh attestation trusted-root` and authenticated through an independent trusted channel:
+
+```sh
+python scripts/verify_build_provenance.py dist/system-design-primer-v2.3.0.zip \
+  --repo jack-001-a/system-design-primer-skill \
+  --signer-workflow jack-001-a/system-design-primer-skill/.github/workflows/ci.yml \
+  --source-ref refs/heads/main \
+  --source-digest <full-40-character-source-commit-sha> \
+  --bundle sha256-<artifact-digest>.jsonl \
+  --trusted-root trusted-root.jsonl
+```
+
+Never trust a bundle or trusted-root file merely because it is adjacent to the artifact. A bundle is evidence to verify, not a trust anchor; the trusted root must be authenticated independently. With a local bundle, GitHub CLI checks repository identity against the certificate recorded at signing time and cannot detect subsequent repository renames or name reuse. Use online API-backed verification when current repository-name ownership matters. The bundle download command is currently public preview.
