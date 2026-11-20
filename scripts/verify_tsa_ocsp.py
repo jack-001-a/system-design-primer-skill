@@ -409,24 +409,26 @@ def _validate_x509_certificate_names(certificate_value):
         tbs_fields[subject_index][1], "embedded TBSCertificate subject"
     )
 
-    optional_tags = [tag for tag, _ in tbs_fields[index + len(mandatory_tags):]]
+    optional_fields = tbs_fields[index + len(mandatory_tags):]
     allowed_order = {0x81: 1, 0x82: 2, 0xA3: 3}
     last_optional = 0
-    for tag in optional_tags:
+    for tag, value in optional_fields:
         order = allowed_order.get(tag)
         if order is None or order <= last_optional:
             raise ValueError("embedded TBSCertificate has duplicate or misplaced optional fields")
         last_optional = order
-        if tag == 0xA3:
+        minimum_version = 2 if tag == 0xA3 else 1
+        if version_number < minimum_version:
+            raise ValueError("embedded TBSCertificate optional field requires a later version")
+        if tag in (0x81, 0x82):
+            # issuerUniqueID and subjectUniqueID are IMPLICIT BIT STRING values.
+            _validate_der_primitive(0x03, value)
+        else:
             extensions = _require_single_der_value(
-                next(value for candidate, value in tbs_fields if candidate == tag),
-                0x30,
-                "embedded TBSCertificate extensions",
+                value, 0x30, "embedded TBSCertificate extensions"
             )
             if not list(_der_children(extensions)):
                 raise ValueError("embedded TBSCertificate extensions must not be empty")
-    if optional_tags and version_number != 2:
-        raise ValueError("embedded TBSCertificate optional fields require v3")
 
 
 def _validate_ocsp_explicit_value(tag, value, expected_tag, field):
