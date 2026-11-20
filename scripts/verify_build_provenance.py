@@ -26,6 +26,19 @@ PREDICATE_TYPE = "https://slsa.dev/provenance/v1"
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 
 
+def _is_valid_git_ref(ref: str) -> bool:
+    """Apply git-check-ref-format rules relevant to an untrusted CLI argument."""
+    if not isinstance(ref, str) or not ref.startswith(("refs/heads/", "refs/tags/")):
+        return False
+    forbidden = (" ", "~", "^", ":", "?", "*", "[", chr(92))
+    if any(ord(char) < 32 or ord(char) == 127 or char in forbidden for char in ref):
+        return False
+    if ref.endswith(("/", ".")) or "//" in ref or ".." in ref or "@{" in ref:
+        return False
+    components = ref.split("/")
+    return all(component and not component.startswith(".") and not component.endswith(".lock") for component in components)
+
+
 def _version_tuple(output: str) -> tuple[int, int, int]:
     match = GH_VERSION_RE.search(output.strip())
     if not match:
@@ -96,9 +109,9 @@ def verify_build_provenance(
         or ".." in signer_workflow
     ):
         raise ValueError("signer_workflow must be a workflow file in the expected repository")
-    if not (source_ref.startswith("refs/heads/") or source_ref.startswith("refs/tags/")):
-        raise ValueError("source_ref must be a fully qualified branch or tag ref")
-    if "\n" in source_ref or not SHA1_RE.fullmatch(source_digest):
+    if not _is_valid_git_ref(source_ref):
+        raise ValueError("source_ref must be a valid fully qualified Git branch or tag ref")
+    if not SHA1_RE.fullmatch(source_digest):
         raise ValueError("source_digest must be a full lowercase 40-character Git commit SHA")
     if bundle is not None and not bundle.is_file():
         raise ValueError("bundle must identify an existing regular file")

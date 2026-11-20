@@ -213,6 +213,12 @@ class BuildProvenanceTests(unittest.TestCase):
         for overrides in (
             {"source_digest": "deadbeef"},
             {"source_ref": "main"},
+            {"source_ref": "refs/heads/"},
+            {"source_ref": "refs/heads/feature" + chr(10) + "--repo=attacker/repo"},
+            {"source_ref": "refs/heads/feature..attacker"},
+            {"source_ref": "refs/heads/feature//nested"},
+            {"source_ref": "refs/tags/release.lock"},
+            {"source_ref": "refs/heads/.hidden"},
             {"signer_workflow": "attacker/repo/.github/workflows/ci.yml"},
             {"signer_workflow": self.policy["repository"] + "/.github/workflows/../evil.yml"},
             {"repository": "not-a-repository"},
