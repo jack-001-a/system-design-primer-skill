@@ -86,6 +86,18 @@ Next Update: Nov 19 12:05:00 2026 GMT
         self.assertIn("-no-CApath", command)
         self.assertIn("-no-CAstore", command)
         self.assertIn("-x509_strict", command)
+        self.assertIn("-auth_level", command)
+        self.assertEqual(command[command.index("-auth_level") + 1], "2")
+
+    def test_openssl_ocsp_cli_exposes_auth_level_option(self):
+        import subprocess
+        result = subprocess.run(
+            ["openssl", "ocsp", "-help"],
+            capture_output=True, text=True, check=False,
+        )
+        help_text = result.stdout + "\n" + result.stderr
+        self.assertEqual(result.returncode, 0, help_text)
+        self.assertRegex(help_text, r"(?m)^\s+-auth_level(?:\s|$)")
     def test_reports_revoked_status_without_calling_it_good(self):
         revoked_response = (ocsp.OCSPResponseBuilder()
             .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
