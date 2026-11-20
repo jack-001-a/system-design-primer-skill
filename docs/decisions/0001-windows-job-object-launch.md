@@ -136,3 +136,62 @@ Do not treat a local lock plus `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` as a strict p
 - **Dedicated helper-process launch:** only the helper owns inheritable duplicates; the host's ordinary handles remain non-inheritable.
 
 Select the simpler candidate only after a concurrent process-creation test demonstrates that unrelated children cannot acquire the verifier's stdout/stderr handles. Keep the native launch disabled until that test and the Job-list lifecycle tests pass on Windows CI.
+
+
+## Helper architecture comparison: parent surrogate vs. launch broker
+
+The helper-process candidate has two materially different forms. They must not be treated as interchangeable because they place the target's process-creation call and handle-list interpretation in different processes.
+
+### Mode A: helper as a handle holder and designated parent
+
+The host duplicates selected stdout/stderr handles into a helper process, then the host itself calls `CreateProcessW` with `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` naming that helper. The target's parent-related inherited attributes come from the helper, while the host remains the API caller.
+
+Advantages:
+
+- The host retains direct ownership of target creation and can keep its existing wait/termination control flow.
+- A helper can isolate inheritable duplicates from unrelated process creation in the host.
+
+Costs and proof obligations:
+
+- The caller, designated parent, and target are three distinct process contexts. The exact interpretation and access requirements of `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` must be proven against real handles on every supported Windows version.
+- The helper must remain alive and retain its duplicate handles until the target creation call has completed; the host must coordinate that lifetime over IPC.
+- The target inherits parent-related attributes from the helper, including Job Object association. The interaction between helper Job membership and an explicit `PROC_THREAD_ATTRIBUTE_JOB_LIST` must be integration-tested, especially when the host itself is already in an outer Job.
+- The helper's crash, host crash, and interrupted creation call require an explicit ownership/reconciliation protocol so remote duplicates and targets are not stranded.
+
+Do not select this mode solely because it preserves the host as the direct `CreateProcessW` caller. Its cross-process parent/handle semantics are a separate correctness surface.
+
+### Mode B: helper as a dedicated launch broker
+
+The host starts a small helper with non-inheriting process creation and sends launch requests over a private IPC channel. For each request, the host duplicates only the required file handles into the helper with inheritable duplicates. The helper, as the process that owns those handles, builds its own `STARTUPINFOEX` handle list and calls `CreateProcessW` itself. It also applies the target Job list during that same creation call. The host receives the target PID and a duplicated process handle (or a broker-owned opaque launch identifier plus supervised operations) through the protocol.
+
+Advantages:
+
+- The `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` contains handles in the calling process's own handle table; no designated-parent indirection is needed.
+- The host's original stdout/stderr handles remain non-inheritable, so unrelated host threads cannot leak them through ordinary process creation.
+- Job assignment remains part of the target's creation call rather than a post-spawn operation.
+- The helper can be intentionally small and can own all process-creation operations, making its concurrency policy auditable.
+
+Costs and proof obligations:
+
+- The IPC protocol must define request identity, argument/environment transport, response framing, cancellation, timeout, and error propagation.
+- The protocol must define who owns the target process handle and Job handle, how the host requests termination, and how a broker crash or host crash affects the target. A broker-owned Job configured with kill-on-close can provide fail-closed cleanup, but the exact ownership transfer and host-death behavior must be tested rather than assumed.
+- If one persistent broker serves concurrent requests, serialize the interval from creating inheritable duplicates through `CreateProcessW` and closing those duplicates. No other broker thread or component may create a process during that interval. A dedicated broker must not load unrelated libraries that can independently create processes.
+- A per-launch broker avoids shared-request synchronization and makes crash ownership easier to reason about, but adds process startup cost. Measure that cost before preferring a persistent broker.
+- Duplicating handles into the broker requires the appropriate process-handle rights and careful validation of the returned remote handle values. Only explicitly requested handles may be duplicated.
+- The broker's own startup must use non-inheriting creation and must not receive host application handles.
+
+### Initial prototype preference
+
+Prototype Mode B first. It has the simpler handle-table model: the process that calls `CreateProcessW` also owns the handles named by its handle list. Prefer a per-launch broker for the first correctness prototype; only consider a persistent broker after the basic protocol and cleanup behavior pass Windows integration tests and its startup overhead is measured.
+
+This is a prototype preference, not an adoption decision. Keep the existing verifier launcher unchanged until the broker proves all of the following on Windows CI:
+
+1. The host's original output handles remain non-inheritable, including while launches overlap with unrelated host process creation.
+2. The broker's child receives exactly the intended standard handles and no unrelated inheritable handles.
+3. The target is in the intended Job before its first user-mode instruction can create a descendant.
+4. Timeout, output-limit, normal exit, cancellation, broker crash, and host termination have deterministic target/descendant cleanup and direct-child reaping behavior.
+5. Every failure after remote duplication, Job creation, attribute-list initialization/update, and `CreateProcessW` closes or reconciles every local and remote handle.
+6. Command-line quoting, empty arguments, Unicode, executable resolution, working directory, environment semantics, bounded output, and exit-code reporting match the existing `subprocess.Popen` contract used by the verifier.
+7. Launches from inside supported outer Job configurations behave as documented; incompatible configurations fail closed without an uncontained retry.
+
+The broker protocol and implementation must not claim crash safety until tests exercise process termination at each ownership transition. In particular, a remote duplicate may remain open if the host dies before sending the broker its cleanup instruction; the broker therefore needs a bounded request lifecycle and an independent way to detect a dead or disconnected host.
