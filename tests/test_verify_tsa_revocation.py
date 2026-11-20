@@ -139,6 +139,13 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "AlgorithmIdentifiers must match exactly"):
             validate_crl_der_profile(bytes(malformed), self.listing)
 
+    def test_load_crl_accepts_valid_pem_and_der_inputs(self):
+        expected = self.listing.fingerprint(hashes.SHA256())
+        self.crl.write_bytes(self.listing.public_bytes(serialization.Encoding.PEM))
+        self.assertEqual(load_crl(self.crl).fingerprint(hashes.SHA256()), expected)
+        self.crl.write_bytes(self.listing.public_bytes(serialization.Encoding.DER))
+        self.assertEqual(load_crl(self.crl).fingerprint(hashes.SHA256()), expected)
+
     def test_load_crl_checks_original_der_signature_algorithm_encoding(self):
         der = self.listing.public_bytes(serialization.Encoding.DER)
         _, outer_start, _, _ = _read_der_tlv(der, 0)
