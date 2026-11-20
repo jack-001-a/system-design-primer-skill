@@ -134,8 +134,8 @@ class BuildProvenanceTests(unittest.TestCase):
 
         bundle = Path(self.temp.name) / "multiple-attestations.jsonl"
         root = Path(self.temp.name) / "trusted-root.jsonl"
-        bundle.write_text("{}\\n", encoding="utf-8")
-        root.write_text("{}\\n", encoding="utf-8")
+        bundle.write_text("{}\n", encoding="utf-8")
+        root.write_text("{}\n", encoding="utf-8")
         mismatched_repository = copy.deepcopy(matching)
         mismatched_repository[1]["verificationResult"]["signature"]["certificate"]["sourceRepositoryIdentifier"] = 999
         self._mock_cli(run, output=mismatched_repository)
