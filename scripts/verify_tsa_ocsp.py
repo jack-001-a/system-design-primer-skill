@@ -17,6 +17,26 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509 import ocsp
 
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
+def parse_historical_at_time(value: str) -> datetime:
+    """Parse UTC historical targets without silently truncating sub-microsecond precision."""
+    match = re.fullmatch(
+        r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z",
+        value,
+    )
+    if not match:
+        raise ValueError("historical OCSP --at-time must be an RFC 3339 UTC timestamp ending in Z")
+    fraction = match.group(2)
+    if fraction is not None and len(fraction) > 6:
+        raise ValueError(
+            "historical OCSP --at-time supports at most six fractional digits; "
+            "refusing datetime precision truncation"
+        )
+    try:
+        return datetime.fromisoformat(value[:-1] + "+00:00")
+    except ValueError as exc:
+        raise ValueError("historical OCSP --at-time is not a valid UTC timestamp") from exc
+
+
 def verification_time_bounds(value: datetime) -> tuple[int, ...]:
     """Return exact floor/ceiling Unix seconds for a timezone-aware instant."""
     if value.tzinfo is None or value.utcoffset() is None:
@@ -354,14 +374,13 @@ def main() -> int:
     parser.add_argument("--responder-certificate-sha256",
                         help="independently recorded SHA-256 pin for --responder-certificate")
     parser.add_argument("--clock-skew-seconds", type=int, default=300)
-    parser.add_argument("--at-time", help="historical RFC 3339 UTC instant ending in Z")
+    parser.add_argument(
+        "--at-time",
+        help="historical RFC 3339 UTC instant ending in Z (up to six fractional digits)",
+    )
     args = parser.parse_args()
     try:
-        historical_time = None
-        if args.at_time is not None:
-            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z", args.at_time):
-                raise ValueError("--at-time must be an RFC 3339 UTC timestamp ending in Z")
-            historical_time = datetime.fromisoformat(args.at_time[:-1] + "+00:00")
+        historical_time = parse_historical_at_time(args.at_time) if args.at_time is not None else None
         result = verify_ocsp_response(args.certificate, args.issuer, args.issuer_roots,
                                       args.response, args.issuer_roots_sha256,
                                       args.intermediates, skew_seconds=args.clock_skew_seconds,
