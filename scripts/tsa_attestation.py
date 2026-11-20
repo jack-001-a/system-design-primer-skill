@@ -188,6 +188,30 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
     parse_rfc3161_gen_time_parts(report["gen_time"], "gen_time")
     require_sha256(report["tsa_certificate_sha256"], "tsa_certificate_sha256")
     require_sha256(report["timestamp_result_sha256"], "timestamp_result_sha256")
+    timestamp_chain = report.get("timestamp_chain_validation")
+    expected_chain_fields = {
+        "status", "validation_time", "scope", "policy", "intermediates_sha256"
+    }
+    if not isinstance(timestamp_chain, dict) or set(timestamp_chain) != expected_chain_fields:
+        raise ValueError("TSA report timestamp_chain_validation is missing or malformed")
+    if timestamp_chain.get("status") != "verified":
+        raise ValueError("TSA report timestamp_chain_validation status is not verified")
+    if timestamp_chain.get("validation_time") != report["gen_time"]:
+        raise ValueError("TSA report timestamp chain validation time must match gen_time")
+    if timestamp_chain.get("scope") != (
+        "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; "
+        "RFC 3161 Accuracy is reported separately and does not widen the -attime interval"
+    ):
+        raise ValueError("TSA report timestamp chain validation scope is missing or unsupported")
+    if timestamp_chain.get("policy") != (
+        "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, "
+        "-auth_level 2, -purpose timestampsign, and -x509_strict at the exact floor/ceiling "
+        "Unix-second bound(s) of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL"
+    ):
+        raise ValueError("TSA report timestamp chain validation policy is missing or unsupported")
+    intermediate_digest = timestamp_chain.get("intermediates_sha256")
+    if intermediate_digest is not None:
+        require_sha256(intermediate_digest, "timestamp_chain_validation.intermediates_sha256")
     if report["result_digest_policy"] != "caller_supplied_sha256_pins_checked_for_byte_equality_only":
         raise ValueError("TSA report does not accurately describe caller-supplied digest-pin checking")
     if report.get("gen_time_source") != "caller_asserted_from_external_timestamp_verification":
