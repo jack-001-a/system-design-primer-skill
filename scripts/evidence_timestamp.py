@@ -395,6 +395,10 @@ def _verify_timestamp_snapshot(
         "request_sha256": hashlib.sha256(request_path.read_bytes()).hexdigest(),
         "response_sha256": hashlib.sha256(response_path.read_bytes()).hexdigest(),
         "tsa_ca_sha256": actual_ca_sha256,
+        "tsa_chain_sha256": (
+            hashlib.sha256(chain_path.read_bytes()).hexdigest()
+            if chain_path is not None else None
+        ),
         "tsa_chain_valid_at_gen_time": True,
         "tsa_chain_validation_time": canonical_gen_time,
         "tsa_chain_validation_scope": "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; RFC 3161 Accuracy is reported separately and does not widen the -attime interval",
