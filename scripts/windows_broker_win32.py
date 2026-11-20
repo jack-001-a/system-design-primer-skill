@@ -199,11 +199,29 @@ class NamedPipeConnection:
         self.file_handle = file_handle
         self._state = self.CONNECTED
         self._lock = threading.RLock()
+        self._operations: set[Any] = set()
 
     @property
     def state(self) -> str:
         with self._lock:
             return self._state
+
+    def register_operation(self, operation: "OverlappedOperation") -> None:
+        """Register every I/O operation issued against this pipe instance."""
+        with self._lock:
+            if self._state != self.CONNECTED:
+                raise OverlappedLifecycleError(
+                    "cannot register I/O on a disconnected pipe"
+                )
+            if operation.file_handle != self.file_handle:
+                raise OverlappedLifecycleError(
+                    "operation handle does not belong to this pipe connection"
+                )
+            if operation.state in (operation.CLOSED,):
+                raise OverlappedLifecycleError(
+                    "cannot register a closed I/O operation"
+                )
+            self._operations.add(operation)
 
     def mark_connected(self) -> None:
         """Record a successful ConnectNamedPipe completion before reuse."""
@@ -211,6 +229,10 @@ class NamedPipeConnection:
             if self._state != self.DISCONNECTED:
                 raise OverlappedLifecycleError(
                     f"cannot reconnect pipe in state {self._state}"
+                )
+            if self._operations:
+                raise OverlappedLifecycleError(
+                    "cannot reconnect while previous I/O operations remain registered"
                 )
             self._state = self.CONNECTED
 
@@ -224,9 +246,9 @@ def disconnect_named_pipe(
 ) -> tuple[bool, int | None]:
     """Disconnect once, only after the supplied pipe I/O has completed.
 
-    The caller must drain every outstanding operation on this pipe before
-    invoking this function; the operation argument is a lifecycle guard, not
-    a registry of all concurrent I/O issued against the handle.
+    Every operation issued against the pipe must first be registered with
+    its NamedPipeConnection. All registered operations must be terminal
+    (not pending) before disconnect; successful disconnect clears the registry.
     """
     with connection._lock:
         if connection._state != connection.CONNECTED:
@@ -245,10 +267,23 @@ def disconnect_named_pipe(
             raise OverlappedLifecycleError(
                 "operation handle does not belong to this pipe connection"
             )
+        if operation not in connection._operations:
+            raise OverlappedLifecycleError(
+                "operation must be registered with its pipe connection"
+            )
+        pending = [
+            item for item in connection._operations
+            if item.state == item.PENDING
+        ]
+        if pending:
+            raise OverlappedLifecycleError(
+                "cannot disconnect while registered pipe I/O is pending"
+            )
         succeeded = bool(bindings.DisconnectNamedPipe(connection.file_handle))
         if not succeeded:
             return False, int(get_last_error())
         connection._state = connection.DISCONNECTED
+        connection._operations.clear()
         return True, None
 
 
