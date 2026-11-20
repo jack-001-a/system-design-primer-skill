@@ -576,7 +576,7 @@ def _require_supported_openssl(executable: str) -> str:
     detail = (result.stdout or result.stderr).strip()
     if result.returncode:
         raise ValueError("unable to determine OpenSSL CLI version: " + detail[-1000:])
-    match = re.match(r"^OpenSSL\\s+(\\d+)\\.(\\d+)\\.(\\d+)\\b", detail)
+    match = re.match(r"^OpenSSL\s+(\d+)\.(\d+)\.(\d+)\b", detail)
     if match is None:
         raise ValueError("OpenSSL 3.0.0 or newer is required; unrecognized version output: " + detail[-1000:])
     version = tuple(int(part) for part in match.groups())
