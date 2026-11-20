@@ -132,9 +132,12 @@ class OverlappedIO:
                     return self._validate_count(
                         self._backend.complete(token), len(buffer), operation
                     )
-                # A false wait can mean either the deadline elapsed or the
-                # cancellation event won the native wait race. Re-check both
-                # conditions at the top of the loop before deciding.
+                if cancel_event is not None and cancel_event.is_set():
+                    continue
+                cancellation_attempted = True
+                self._cancel_and_drain(token)
+                safe_to_close = True
+                raise TransportTimeout(f"{operation} operation timed out")
         except (TransportCancelled, TransportTimeout):
             raise
         except BaseException:
