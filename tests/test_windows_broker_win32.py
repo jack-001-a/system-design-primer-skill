@@ -131,6 +131,57 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         with self.assertRaises(win32.OverlappedLifecycleError):
             win32.disconnect_named_pipe(bindings, connection, operation)
 
+    def test_disconnect_error_lookup_exception_preserves_connected_state(self):
+        fake = FakeKernel32()
+        calls = []
+        fake.DisconnectNamedPipe = lambda handle: calls.append(handle) or 0
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+        operation, _ = self.make_operation()
+        operation.mark_completed()
+        connection = win32.NamedPipeConnection(10)
+        connection.register_operation(operation)
+        with self.assertRaisesRegex(RuntimeError, "last-error"):
+            win32.disconnect_named_pipe(
+                bindings, connection, operation,
+                get_last_error=lambda: (_ for _ in ()).throw(RuntimeError("last-error"))
+            )
+        self.assertEqual(connection.state, connection.CONNECTED)
+        self.assertEqual(calls, [10])
+        self.assertEqual(win32.disconnect_named_pipe(
+            bindings, connection, operation, get_last_error=lambda: 109
+        ), (False, 109))
+        self.assertEqual(connection.state, connection.CONNECTED)
+
+    def test_pipe_close_error_lookup_exception_preserves_handle_for_retry(self):
+        fake = FakeKernel32()
+        calls = []
+        fake.CloseHandle = lambda handle: calls.append(handle) or 0
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+        connection = win32.NamedPipeConnection(10)
+        connection._state = connection.DISCONNECTED
+        with self.assertRaisesRegex(RuntimeError, "last-error"):
+            win32.close_named_pipe(
+                bindings, connection,
+                get_last_error=lambda: (_ for _ in ()).throw(RuntimeError("last-error"))
+            )
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertEqual(connection.file_handle, 10)
+        fake.CloseHandle = lambda handle: calls.append(handle) or 1
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+        self.assertEqual(win32.close_named_pipe(bindings, connection), (True, None))
+        self.assertEqual(calls, [10, 10])
+        self.assertEqual(connection.state, connection.CLOSED)
+        self.assertIsNone(connection.file_handle)
+
     def test_disconnect_captures_api_failure(self):
         fake = FakeKernel32()
         seen = []
