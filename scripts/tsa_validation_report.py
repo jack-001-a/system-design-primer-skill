@@ -255,6 +255,11 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
     # flag without the underlying evidence identifiers is insufficient.
     for field in ("signature_sha256", "request_sha256", "response_sha256", "tsa_ca_sha256"):
         require_digest(timestamp_result.get(field), "timestamp " + field)
+    if "tsa_chain_sha256" not in timestamp_result:
+        raise ValueError("timestamp TSA intermediate-chain digest must be explicitly present (null when no chain was supplied)")
+    timestamp_chain_digest = timestamp_result.get("tsa_chain_sha256")
+    if timestamp_chain_digest is not None:
+        require_digest(timestamp_chain_digest, "timestamp tsa_chain_sha256")
     for field in ("policy_oid", "serial_number", "tsa_signer_serial_number"):
         value = timestamp_result.get(field)
         if not isinstance(value, str) or not value.strip():
@@ -522,6 +527,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "validation_time": timestamp_result["tsa_chain_validation_time"],
             "scope": timestamp_result["tsa_chain_validation_scope"],
             "policy": timestamp_result["tsa_chain_validation_policy"],
+            "intermediates_sha256": timestamp_chain_digest,
         },
         "timestamp_not_established": timestamp_not_established,
         "result_digest_policy": "caller_supplied_sha256_pins_checked_for_byte_equality_only",
