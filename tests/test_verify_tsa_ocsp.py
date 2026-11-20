@@ -56,7 +56,7 @@ def synthetic_ocsp_response(produced_at: bytes, this_update: bytes, next_update:
         der_value(0x06, bytes.fromhex("2b0601050507300101"))
         + der_value(0x04, basic),
     )
-    return der_value(0x30, der_value(0x0A, b"\\x00") + der_value(0xA0, response_bytes))
+    return der_value(0x30, der_value(0x0A, b"\x00") + der_value(0xA0, response_bytes))
 
 class TsaOcspTests(unittest.TestCase):
     def setUp(self):
