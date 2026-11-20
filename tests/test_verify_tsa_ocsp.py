@@ -49,7 +49,7 @@ def synthetic_ocsp_response(produced_at: bytes, this_update: bytes, next_update:
         0x30,
         response_data
         + der_value(0x30, der_value(0x06, bytes.fromhex("2b0e03021a")))
-        + der_value(0x03, b"\\x00signature"),
+        + der_value(0x03, b"\x00signature"),
     )
     response_bytes = der_value(
         0x30,
