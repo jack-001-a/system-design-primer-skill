@@ -526,7 +526,7 @@ def main() -> int:
             output = verify_attestation(args.report, args.attestation, args.trust_store,
                                         args.trust_store_sha256, args.timestamp_request,
                                         args.timestamp_response, args.tsa_ca,
-                                        args.tsa_ca_sha256, args.tsa_chain)
+                                        args.tsa_ca_sha256, args.tsa_chain, args.verifier_bundle)
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
         print("ERROR: " + str(exc), file=sys.stderr)
         return 1
