@@ -325,12 +325,14 @@ class TsaRevocationTests(unittest.TestCase):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
 
-    def make_entry(self, date, *, invalidity=None, reason=None):
+    def make_entry(self, date, *, invalidity=None, reason=None, certificate_issuer=None):
         builder = x509.RevokedCertificateBuilder().serial_number(self.leaf.serial_number).revocation_date(date)
         if invalidity is not None:
             builder = builder.add_extension(x509.InvalidityDate(invalidity), critical=False)
         if reason is not None:
             builder = builder.add_extension(x509.CRLReason(reason), critical=False)
+        if certificate_issuer is not None:
+            builder = builder.add_extension(x509.CertificateIssuer([x509.DirectoryName(certificate_issuer)]), critical=True)
         return builder.build()
 
     def test_rejects_sha1_crl_signature(self):
@@ -353,6 +355,14 @@ class TsaRevocationTests(unittest.TestCase):
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
             result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
         self.assertEqual(result["revocation_entry"]["status_at_time"], "not_listed")
+
+    def test_rejects_certificate_issuer_entry_on_direct_crl(self):
+        other_issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Different certificate issuer")])
+        entry = self.make_entry(NOW-timedelta(minutes=1), certificate_issuer=other_issuer)
+        self.issuer, self.leaf, self.listing = make_material(entry=entry)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "certificateIssuer CRL entries require indirect-CRL processing"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_remove_from_crl_on_complete_crl(self):
         entry = self.make_entry(NOW-timedelta(minutes=1), reason=x509.ReasonFlags.remove_from_crl)
