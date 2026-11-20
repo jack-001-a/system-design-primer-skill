@@ -575,5 +575,52 @@ class BuildProvenanceTests(unittest.TestCase):
         kernel32.AssignProcessToJobObject.assert_called_once_with(101, 202)
         kernel32.CloseHandle.assert_called_once_with(202)
 
+
+    @unittest.skipUnless(os.name == "nt", "Win32 Job Object API is Windows-specific")
+    def test_windows_job_cleanup_failures_are_reported(self):
+        from unittest.mock import MagicMock
+        from scripts.verify_build_provenance import _create_windows_job
+
+        kernel32 = MagicMock()
+        kernel32.CreateJobObjectW.return_value = 101
+        kernel32.SetInformationJobObject.return_value = True
+        kernel32.OpenProcess.return_value = None
+        kernel32.TerminateJobObject.return_value = False
+        kernel32.CloseHandle.return_value = False
+        with patch("ctypes.WinDLL", return_value=kernel32), patch(
+            "ctypes.get_last_error", return_value=5
+        ):
+            process = type("Process", (), {"pid": 4242})()
+            with self.assertRaisesRegex(RuntimeError, "cleanup was incomplete") as caught:
+                _create_windows_job(process)
+
+        self.assertIsInstance(caught.exception.__cause__, OSError)
+        kernel32.TerminateJobObject.assert_called_once_with(101, 1)
+        self.assertEqual(kernel32.CloseHandle.call_count, 2)
+
+    @unittest.skipUnless(os.name == "nt", "Win32 Job Object API is Windows-specific")
+    def test_windows_job_process_handle_close_failure_disposes_job(self):
+        from unittest.mock import MagicMock
+        from scripts.verify_build_provenance import _create_windows_job
+
+        kernel32 = MagicMock()
+        kernel32.CreateJobObjectW.return_value = 101
+        kernel32.SetInformationJobObject.return_value = True
+        kernel32.OpenProcess.return_value = 202
+        kernel32.AssignProcessToJobObject.return_value = True
+        kernel32.CloseHandle.side_effect = [False, False, True]
+        with patch("ctypes.WinDLL", return_value=kernel32), patch(
+            "ctypes.get_last_error", return_value=5
+        ):
+            process = type("Process", (), {"pid": 4242})()
+            with self.assertRaisesRegex(RuntimeError, "could not release its process handle"):
+                _create_windows_job(process)
+
+        kernel32.TerminateJobObject.assert_called_once_with(101, 1)
+        self.assertEqual(
+            [call.args[0] for call in kernel32.CloseHandle.call_args_list],
+            [202, 202, 101],
+        )
+
 if __name__ == "__main__":
     unittest.main()

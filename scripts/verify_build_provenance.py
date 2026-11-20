@@ -178,10 +178,27 @@ def _create_windows_job(process: subprocess.Popen[bytes]):
     kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
     kernel32.TerminateJobObject.restype = wintypes.BOOL
 
+    def dispose_job(handle) -> list[str]:
+        """Best-effort termination and checked close, retrying one failed close."""
+        failures = []
+        if not kernel32.TerminateJobObject(handle, 1):
+            failures.append(f"TerminateJobObject failed (WinError {ctypes.get_last_error()})")
+        if not kernel32.CloseHandle(handle):
+            first_error = ctypes.get_last_error()
+            if not kernel32.CloseHandle(handle):
+                failures.append(
+                    "CloseHandle(Job) failed twice "
+                    f"(WinError {first_error}, {ctypes.get_last_error()})"
+                )
+        return failures
+
     job = kernel32.CreateJobObjectW(None, None)
     if not job:
         raise ctypes.WinError(ctypes.get_last_error())
     process_handle = None
+    primary_error = None
+    primary_traceback = None
+    cleanup_errors = []
     try:
         limits = ExtendedLimitInformation()
         limits.BasicLimitInformation.LimitFlags = 0x00002000  # KILL_ON_JOB_CLOSE
@@ -189,8 +206,7 @@ def _create_windows_job(process: subprocess.Popen[bytes]):
             job, 9, ctypes.byref(limits), ctypes.sizeof(limits)
         ):
             raise ctypes.WinError(ctypes.get_last_error())
-        # Obtain the documented Win32 access rights by PID instead of relying
-        # on CPython's private Popen._handle implementation detail.
+        # Obtain documented Win32 access rights by PID, not CPython's private Popen handle.
         process_handle = kernel32.OpenProcess(
             0x0100 | 0x0001,  # PROCESS_SET_QUOTA | PROCESS_TERMINATE
             False,
@@ -200,16 +216,43 @@ def _create_windows_job(process: subprocess.Popen[bytes]):
             raise ctypes.WinError(ctypes.get_last_error())
         if not kernel32.AssignProcessToJobObject(job, process_handle):
             raise ctypes.WinError(ctypes.get_last_error())
-        return job
-    except BaseException:
-        # If assignment/setup fails, explicitly terminate any members already
-        # attached before releasing the Job Object.
-        kernel32.TerminateJobObject(job, 1)
-        kernel32.CloseHandle(job)
-        raise
+    except BaseException as exc:
+        primary_error = exc
+        primary_traceback = exc.__traceback__
+        cleanup_errors.extend(dispose_job(job))
     finally:
-        if process_handle:
-            kernel32.CloseHandle(process_handle)
+        if process_handle and not kernel32.CloseHandle(process_handle):
+            first_error = ctypes.get_last_error()
+            if not kernel32.CloseHandle(process_handle):
+                cleanup_errors.append(
+                    "CloseHandle(process) failed twice "
+                    f"(WinError {first_error}, {ctypes.get_last_error()})"
+                )
+                # If assignment succeeded, dispose the Job so the CLI cannot
+                # outlive this failed setup path.
+                if primary_error is None:
+                    cleanup_errors.extend(dispose_job(job))
+            elif primary_error is None:
+                # The first close failed but the retry succeeded; surface the
+                # API failure rather than silently accepting an abnormal close.
+                cleanup_errors.append(
+                    f"CloseHandle(process) initially failed (WinError {first_error})"
+                )
+                cleanup_errors.extend(dispose_job(job))
+
+    if primary_error is not None:
+        if cleanup_errors:
+            raise RuntimeError(
+                "Windows Job Object setup failed and cleanup was incomplete: "
+                + "; ".join(cleanup_errors)
+            ) from primary_error
+        raise primary_error.with_traceback(primary_traceback)
+    if cleanup_errors:
+        raise RuntimeError(
+            "Windows Job Object setup could not release its process handle: "
+            + "; ".join(cleanup_errors)
+        )
+    return job
 
 
 def _close_windows_job(job) -> None:
