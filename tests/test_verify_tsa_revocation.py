@@ -238,6 +238,19 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "mandatory AuthorityKeyIdentifier"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
+    def test_rejects_crl_aki_without_key_identifier_method(self):
+        aki_without_key_id = x509.AuthorityKeyIdentifier(
+            key_identifier=None,
+            authority_cert_issuer=[x509.DirectoryName(self.issuer.issuer)],
+            authority_cert_serial_number=self.issuer.serial_number)
+        builder = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
+            .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
+            .add_extension(aki_without_key_id, False).add_extension(x509.CRLNumber(4), False))
+        self.listing = builder.sign(rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256())
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "must use the key identifier method"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
     def test_rejects_crl_without_crl_number(self):
         builder = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
             .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
