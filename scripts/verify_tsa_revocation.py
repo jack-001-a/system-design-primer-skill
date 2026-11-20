@@ -363,6 +363,44 @@ def validate_direct_crl_scope(
                 item for item in candidates
                 if item.issuer == directory_names[0] and item.serial_number == serial
             ]
+    # A direct CRL must be signed by the CA that issued the target certificate.
+    # Match the selected CRL signer against the target certificate's AKI as well;
+    # otherwise a same-subject/same-key cross-certificate can be reported as the
+    # signer even though it is not the issuer certificate selected for the target.
+    try:
+        certificate_aki = certificate.extensions.get_extension_for_oid(
+            ExtensionOID.AUTHORITY_KEY_IDENTIFIER
+        ).value
+    except x509.ExtensionNotFound:
+        certificate_aki = None
+    if certificate_aki is not None:
+        if certificate_aki.key_identifier is not None:
+            matched = []
+            for item in candidates:
+                try:
+                    ski = item.extensions.get_extension_for_oid(
+                        ExtensionOID.SUBJECT_KEY_IDENTIFIER
+                    ).value
+                except x509.ExtensionNotFound:
+                    continue
+                if certificate_aki.key_identifier == ski.digest:
+                    matched.append(item)
+            candidates = matched
+        issuer_names = certificate_aki.authority_cert_issuer
+        serial = certificate_aki.authority_cert_serial_number
+        if (issuer_names is None) != (serial is None):
+            raise ValueError("certificate AKI authorityCertIssuer and authorityCertSerialNumber must appear together")
+        if issuer_names is not None:
+            directory_names = [
+                name.value for name in issuer_names
+                if isinstance(name, x509.DirectoryName)
+            ]
+            candidates = [
+                item for item in candidates
+                if item.issuer in directory_names and item.serial_number == serial
+            ]
+        if not candidates:
+            raise ValueError("CRL issuer certificate does not match the target certificate AuthorityKeyIdentifier")
     if len(candidates) != 1:
         raise ValueError("CRL issuer certificate must resolve to exactly one supplied certificate after AKI matching")
     signer = candidates[0]
