@@ -204,7 +204,7 @@ class TsaValidationReportTests(unittest.TestCase):
                          timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
 
     def test_fractional_gen_time_requires_ceiling_evaluation_bound(self):
-        gen_time = "2026-11-19T12:00:00.000001Z"
+        gen_time = "2026-11-19T12:00:00.000000000000000000000001Z"
         crl = dict(self.crl, at_time=gen_time, effective_at_time="2026-11-19T12:00:01Z")
         timestamp = dict(self.timestamp, gen_time=gen_time, tsa_chain_validation_time=gen_time)
         report = build_report(gen_time, crl, self.crl_file_hash,
@@ -400,9 +400,11 @@ class TsaValidationReportTests(unittest.TestCase):
             gen_time=gen_time,
             tsa_chain_validation_time=gen_time,
         )
+        # The verifier normalizes Python datetime fractions to six digits;
+        # compare the represented instant, not the textual decimal width.
         historical = self.historical_ocsp_result(
-            historical_at_time=gen_time,
-            validation_time=gen_time,
+            historical_at_time="2026-11-19T12:00:00.500000Z",
+            validation_time="2026-11-19T12:00:00.500000Z",
             produced_at="2026-11-19T11:59:00Z",
             this_update="2026-11-19T11:58:00Z",
             responder_chain_validation_times=[1795089600, 1795089601],
