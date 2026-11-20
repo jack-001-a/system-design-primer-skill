@@ -19,6 +19,8 @@ class TsaValidationReportTests(unittest.TestCase):
             "certificate_sha256": self.cert,
             "crl_sha256": hashlib.sha256(b"crl").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"crl roots").hexdigest(),
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted",
             "crl_issuer_certificate_sha256": hashlib.sha256(b"crl issuer").hexdigest(),
             "crl_issuer_certificate_validity": {
                 "crl_this_update": "2026-11-19T11:00:00Z",
@@ -45,6 +47,8 @@ class TsaValidationReportTests(unittest.TestCase):
             "next_update": "2026-11-19T12:10:00Z",
             "response_sha256": hashlib.sha256(b"response").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"ocsp roots").hexdigest(),
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted",
         }
         self.timestamp = {
             "verified": True, "signature_sha256": hashlib.sha256(b"signature").hexdigest(),
@@ -194,6 +198,8 @@ class TsaValidationReportTests(unittest.TestCase):
             "certificate_sha256": hashlib.sha256(b"responder").hexdigest(),
             "crl_sha256": hashlib.sha256(b"responder crl").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"responder roots").hexdigest(),
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted",
             "crl_issuer_certificate_sha256": hashlib.sha256(b"responder issuer").hexdigest(),
             "crl_issuer_certificate_validity": {
                 "crl_this_update": "2026-11-19T11:00:00Z",

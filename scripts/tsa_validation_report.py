@@ -187,6 +187,11 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         raise ValueError("CRL certificate fingerprint differs from verified timestamp CMS signer")
     crl_digest = require_digest(crl_result.get("crl_sha256"), "CRL crl_sha256")
     crl_roots_digest = require_digest(crl_result.get("issuer_roots_sha256"), "CRL issuer_roots_sha256")
+    crl_intermediates_digest = crl_result.get("issuer_intermediates_sha256")
+    if crl_intermediates_digest is not None:
+        crl_intermediates_digest = require_digest(crl_intermediates_digest, "CRL issuer_intermediates_sha256")
+    if crl_result.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted":
+        raise ValueError("CRL trust-anchor/intermediate separation policy is missing or unsupported")
     crl_signer_digest = require_digest(crl_result.get("crl_issuer_certificate_sha256"), "CRL crl_issuer_certificate_sha256")
     if crl_result.get("crl_scope") != "direct_only; certificate CRLDistributionPoints unsupported":
         raise ValueError("CRL result does not declare the supported strict direct-CRL scope")
@@ -310,12 +315,16 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             raise ValueError("responder CRL result refers to a different certificate than the OCSP signer")
         if responder_revocation_result.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted":
             raise ValueError("responder CRL trust-anchor/intermediate separation policy is missing or unsupported")
+        if responder_revocation_result.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted":
+            raise ValueError("responder CRL trust-anchor/intermediate separation policy is missing or unsupported")
         responder_revocation_section = {
             "status": "not_revoked_at_gen_time",
             "validation_time": gen_time,
             "responder_certificate_sha256": responder_digest,
             "crl_sha256": require_digest(responder_revocation_result.get("crl_sha256"), "responder CRL crl_sha256"),
             "issuer_roots_sha256": require_digest(responder_revocation_result.get("issuer_roots_sha256"), "responder CRL issuer_roots_sha256"),
+            "issuer_intermediates_sha256": (require_digest(responder_revocation_result.get("issuer_intermediates_sha256"), "responder CRL issuer_intermediates_sha256") if responder_revocation_result.get("issuer_intermediates_sha256") is not None else None),
+            "trust_anchor_policy": responder_revocation_result.get("trust_anchor_policy"),
             "crl_issuer_certificate_sha256": responder_crl_issuer_digest,
             "crl_issuer_certificate_validity": responder_issuer_validity,
             "crl_signature_algorithm_oid": responder_crl_algorithm,
@@ -341,6 +350,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "evaluation_time_upper_bound": expected_effective_at_time,
             "crl_sha256": crl_digest,
             "issuer_roots_sha256": crl_roots_digest,
+            "issuer_intermediates_sha256": crl_intermediates_digest,
+            "trust_anchor_policy": crl_result["trust_anchor_policy"],
             "crl_issuer_certificate_sha256": crl_signer_digest,
             "crl_issuer_certificate_validity": crl_issuer_validity,
             "crl_signature_algorithm_oid": crl_result["crl_signature_algorithm_oid"],

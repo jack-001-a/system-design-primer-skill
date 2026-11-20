@@ -24,7 +24,9 @@ class TsaAttestationTests(unittest.TestCase):
             "historical_revocation_assessment": {
                 "source": "verified_crl", "status": "not_revoked_at_gen_time",
                 "validation_time": "2026-11-19T12:00:00Z", "evaluation_time_upper_bound": "2026-11-19T12:00:00Z", "crl_sha256": h(b"crl"),
-                "issuer_roots_sha256": h(b"roots"), "crl_issuer_certificate_sha256": h(b"issuer"),
+                "issuer_roots_sha256": h(b"roots"),
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted", "crl_issuer_certificate_sha256": h(b"issuer"),
                 "crl_issuer_certificate_validity": {
                     "crl_this_update": "2026-11-19T11:00:00Z",
                     "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
@@ -142,6 +144,8 @@ class TsaAttestationTests(unittest.TestCase):
             "produced_at": "2026-11-19T11:00:00Z", "this_update": "2026-11-19T10:00:00Z",
             "next_update": "2026-11-19T13:00:00Z", "historical_at_time": "2026-11-19T12:00:00Z",
             "response_sha256": "a" * 64, "issuer_roots_sha256": "b" * 64,
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted",
             "result_file_sha256": "c" * 64, "responder_certificate_sha256": "d" * 64
         }
 
@@ -161,7 +165,9 @@ class TsaAttestationTests(unittest.TestCase):
         report["historical_ocsp_responder_revocation_assessment"] = {
             "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
             "responder_certificate_sha256": "e" * 64, "crl_sha256": "f" * 64,
-            "issuer_roots_sha256": "1" * 64, "crl_issuer_certificate_sha256": "3" * 64,
+            "issuer_roots_sha256": "1" * 64,
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted", "crl_issuer_certificate_sha256": "3" * 64,
             "crl_issuer_certificate_validity": {
                 "crl_this_update": "2026-11-19T11:00:00Z",
                 "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
@@ -187,7 +193,9 @@ class TsaAttestationTests(unittest.TestCase):
         responder = {
             "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
             "responder_certificate_sha256": "d" * 64, "crl_sha256": "e" * 64,
-            "issuer_roots_sha256": "f" * 64, "crl_issuer_certificate_sha256": "2" * 64,
+            "issuer_roots_sha256": "f" * 64,
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted", "crl_issuer_certificate_sha256": "2" * 64,
             "crl_issuer_certificate_validity": {
                 "crl_this_update": "2026-11-19T11:00:00Z",
                 "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
@@ -213,7 +221,9 @@ class TsaAttestationTests(unittest.TestCase):
         report["historical_ocsp_responder_revocation_assessment"] = {
             "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
             "responder_certificate_sha256": "d" * 64, "crl_sha256": "e" * 64,
-            "issuer_roots_sha256": "f" * 64, "crl_issuer_certificate_sha256": "2" * 64,
+            "issuer_roots_sha256": "f" * 64,
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted", "crl_issuer_certificate_sha256": "2" * 64,
             "crl_issuer_certificate_validity": {
                 "crl_this_update": "2026-11-19T11:00:00Z",
                 "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
@@ -496,6 +506,8 @@ class TsaAttestationTests(unittest.TestCase):
             "scope": "historical OCSP status validation at the supplied target time",
             "nonce_checked": False, "response_sha256": hashlib.sha256(b"response").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"roots").hexdigest(),
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted",
             "result_file_sha256": hashlib.sha256(b"result").hexdigest(),
             "validation_time": "2026-11-19T12:00:00Z",
             "produced_at": "2026-11-19T11:59:00Z",
