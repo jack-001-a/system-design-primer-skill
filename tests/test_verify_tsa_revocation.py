@@ -634,6 +634,20 @@ class TsaRevocationTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(ValueError, "unrecognized version output"):
                 _require_supported_openssl("openssl")
+    def test_reads_openssl_version_from_stderr_when_needed(self):
+        with patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.return_value = SimpleNamespace(
+                returncode=0, stdout="", stderr="OpenSSL 3.2.1 30 Jan 2024"
+            )
+            self.assertEqual(_require_supported_openssl("openssl"), "3.2.1")
+
+    def test_rejects_failed_openssl_version_command(self):
+        with patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.return_value = SimpleNamespace(
+                returncode=1, stdout="", stderr="version command failed"
+            )
+            with self.assertRaisesRegex(ValueError, "unable to determine OpenSSL CLI version"):
+                _require_supported_openssl("openssl")
 
     def test_reports_target_serial_absent_from_crl(self):
         with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
@@ -642,6 +656,7 @@ class TsaRevocationTests(unittest.TestCase):
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
             result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
         self.assertEqual(result["revocation_entry"]["status_at_time"], "not_listed")
+        self.assertEqual(result["openssl_version"], "3.0.0")
 
     def test_rejects_certificate_issuer_entry_on_direct_crl(self):
         other_issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Different certificate issuer")])
