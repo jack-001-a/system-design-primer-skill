@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
-from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verification_time_bounds, verification_time_within_validity, parse_openssl_gen_time, verify_timestamp
+from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verification_time_bounds, verification_time_bounds_for_gen_time, verification_time_within_validity, parse_openssl_gen_time, verify_timestamp
 
 class EvidenceTimestampTests(unittest.TestCase):
     def setUp(self):
@@ -45,13 +45,26 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(parse_openssl_gen_time("Nov 19 12:00:00 2026 GMT"),
                          "2026-11-19T12:00:00Z")
         self.assertEqual(parse_openssl_gen_time("Nov 19 12:00:00.1 2026 GMT"),
-                         "2026-11-19T12:00:00.100000Z")
+                         "2026-11-19T12:00:00.1Z")
         self.assertEqual(parse_openssl_gen_time("Nov 19 12:00:00.123456 2026 GMT"),
                          "2026-11-19T12:00:00.123456Z")
+        precise = "123456789012345678901234567890123456789"
+        self.assertEqual(
+            parse_openssl_gen_time(f"Nov 19 12:00:00.{precise} 2026 GMT"),
+            f"2026-11-19T12:00:00.{precise}Z",
+        )
+        self.assertEqual(
+            verification_time_bounds_for_gen_time(f"2026-11-19T12:00:00.{precise}Z"),
+            (1795089600, 1795089601),
+        )
+        self.assertEqual(
+            verification_time_bounds_for_gen_time("2026-11-19T12:00:00.000000000Z"),
+            (1795089600,),
+        )
 
     def test_parse_openssl_gen_time_rejects_unsupported_precision_and_timezone(self):
         invalid = (
-            "Nov 19 12:00:00.1234567 2026 GMT",
+            "Nov 19 12:00:00. 2026 GMT",
             "Nov 19 12:00:00.123456 UTC",
             "Nov 19 12:00:00.123456 2026 +0000",
             "Nov 19 12:00:00 2026",
@@ -71,6 +84,10 @@ class EvidenceTimestampTests(unittest.TestCase):
             start - timedelta(microseconds=1), start, end))
         self.assertFalse(verification_time_within_validity(
             end + timedelta(microseconds=1), start, end))
+        self.assertTrue(verification_time_within_validity(
+            "2026-11-19T12:00:00.0000000000000000001Z", start, end))
+        self.assertFalse(verification_time_within_validity(
+            "2026-11-19T12:00:10.0000000000000000001Z", start, end))
         self.assertTrue(verification_time_within_validity(start, start, end))
         self.assertTrue(verification_time_within_validity(end, start, end))
 

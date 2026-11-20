@@ -73,24 +73,57 @@ def verification_time_bounds(value: datetime) -> tuple[int, ...]:
     return (floor_second, floor_second + 1) if delta.microseconds else (floor_second,)
 
 
-def verification_time_within_validity(value: datetime, not_before: datetime, not_after: datetime) -> bool:
+def _parse_canonical_gen_time(value: str) -> tuple[datetime, bool]:
+    """Parse an ISO UTC genTime while retaining whether any fractional value is nonzero."""
+    match = re.fullmatch(
+        r"(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))?Z",
+        value,
+    )
+    if not match:
+        raise ValueError("timestamp token genTime is not a supported UTC GeneralizedTime")
+    try:
+        whole_seconds = datetime.fromisoformat(match.group(1)).replace(tzinfo=timezone.utc)
+    except ValueError as exc:
+        raise ValueError("timestamp token genTime is not a supported UTC GeneralizedTime") from exc
+    fraction = match.group(2)
+    return whole_seconds, bool(fraction and any(digit != "0" for digit in fraction))
+
+
+def verification_time_bounds_for_gen_time(value: str) -> tuple[int, ...]:
+    """Return exact floor/ceiling seconds for arbitrary-precision RFC 3161 genTime."""
+    whole_seconds, has_fraction = _parse_canonical_gen_time(value)
+    floor_second = verification_time_bounds(whole_seconds)[0]
+    return (floor_second, floor_second + 1) if has_fraction else (floor_second,)
+
+
+def verification_time_within_validity(
+    value: datetime | str, not_before: datetime, not_after: datetime
+) -> bool:
     """Require both integer-second verification bounds to lie within certificate validity."""
-    bounds = verification_time_bounds(value)
+    bounds = (
+        verification_time_bounds_for_gen_time(value)
+        if isinstance(value, str) else verification_time_bounds(value)
+    )
     start = verification_time_bounds(not_before)[0]
     end = verification_time_bounds(not_after)[0]
     return all(start <= instant <= end for instant in bounds)
 
 
 def parse_openssl_gen_time(value: str) -> str:
-    value = value.strip()
-    for pattern in ("%b %d %H:%M:%S %Y GMT", "%b %d %H:%M:%S.%f %Y GMT"):
-        try:
-            parsed = datetime.strptime(value, pattern).replace(tzinfo=timezone.utc)
-            precision = "microseconds" if parsed.microsecond else "seconds"
-            return parsed.isoformat(timespec=precision).replace("+00:00", "Z")
-        except ValueError:
-            pass
-    raise ValueError("timestamp token genTime is not a supported UTC GeneralizedTime")
+    """Convert OpenSSL's display form without truncating arbitrary fractional precision."""
+    match = re.fullmatch(
+        r"([A-Za-z]{3} +\\d{1,2} \\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))? (\\d{4}) GMT",
+        value.strip(),
+    )
+    if not match:
+        raise ValueError("timestamp token genTime is not a supported UTC GeneralizedTime")
+    clock, fraction, year = match.groups()
+    try:
+        parsed = datetime.strptime(f"{clock} {year} GMT", "%b %d %H:%M:%S %Y GMT")
+    except ValueError as exc:
+        raise ValueError("timestamp token genTime is not a supported UTC GeneralizedTime") from exc
+    canonical = parsed.strftime("%Y-%m-%dT%H:%M:%S")
+    return canonical + (f".{fraction}" if fraction is not None else "") + "Z"
 
 
 def parse_accuracy(details: str) -> dict[str, int] | None:
@@ -128,10 +161,7 @@ def parse_accuracy(details: str) -> dict[str, int] | None:
 
 def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[str, str]:
     """Extract the CMS SignerInfo certificate and bind its TSA profile to genTime."""
-    try:
-        target = datetime.fromisoformat(gen_time.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise ValueError("verified genTime cannot be parsed for TSA certificate validity") from exc
+    # Keep the original fractional digits: datetime only represents microseconds.
     with tempfile.TemporaryDirectory(prefix="tsa-token-") as directory:
         token_path = Path(directory) / "token.der"
         signer_path = Path(directory) / "signer.pem"
@@ -184,7 +214,7 @@ def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[s
     not_after = certificate.not_valid_after_utc
     if not_before.tzinfo is None or not_after.tzinfo is None:
         raise ValueError("TSA signer certificate validity must be timezone-aware")
-    if not verification_time_within_validity(target, not_before, not_after):
+    if not verification_time_within_validity(gen_time, not_before, not_after):
         raise ValueError("TSA signer certificate is not valid at RFC 3161 genTime")
     return {
         "tsa_signer_certificate_sha256": certificate.fingerprint(hashes.SHA256()).hex(),
@@ -217,8 +247,7 @@ def verify_timestamp(
     if not gen_time:
         raise ValueError("timestamp token did not expose a generation time for historical chain verification")
     canonical_gen_time = parse_openssl_gen_time(gen_time.group(1))
-    target_instant = datetime.fromisoformat(canonical_gen_time.replace("Z", "+00:00"))
-    verification_times = verification_time_bounds(target_instant)
+    verification_times = verification_time_bounds_for_gen_time(canonical_gen_time)
     command = ["ts", "-verify", "-queryfile", str(request_path), "-in", str(response_path), "-CAfile", str(tsa_ca_path),
                "-purpose", "timestampsign"]
     if chain_path is not None:
