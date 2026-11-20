@@ -36,8 +36,8 @@ class OverlappedBackend(Protocol):
     start returns (token, count). count is an integer for an operation
     completed inline, or None when it is pending. The backend must keep the
     OVERLAPPED structure, event, and buffer alive through close. wait returns
-    true only when the I/O event is signaled. wait also observes cancel_event
-    and returns false when that event wins; complete obtains the final result
+    true only when the I/O event is signaled. wait returns false on timeout
+    or when cancel_event wins; complete obtains the final result
     after a signaled event. cancel requests cancellation for this exact token.
     drain must not return until the operation is no longer pending (including
     an aborted completion); only then may close release native storage.
