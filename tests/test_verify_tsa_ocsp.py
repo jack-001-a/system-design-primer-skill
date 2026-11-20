@@ -31,19 +31,25 @@ def der_value(tag: int, content: bytes) -> bytes:
     return bytes([tag]) + encoded_length + content
 
 
-def synthetic_ocsp_response(produced_at: bytes, this_update: bytes, next_update: bytes) -> bytes:
+def synthetic_ocsp_response(
+    produced_at: bytes,
+    this_update: bytes,
+    next_update: bytes,
+    extension: bytes | None = None,
+) -> bytes:
     """Build a minimal BasicOCSPResponse envelope for GeneralizedTime profile tests."""
+    single_response_extensions = (
+        der_value(0xA1, der_value(0x30, extension)) if extension is not None else b""
+    )
+    single_response = der_value(
+        0x30,
+        der_value(0x18, this_update)
+        + der_value(0xA0, der_value(0x18, next_update))
+        + single_response_extensions,
+    )
     response_data = der_value(
         0x30,
-        der_value(0x18, produced_at)
-        + der_value(
-            0x30,
-            der_value(
-                0x30,
-                der_value(0x18, this_update)
-                + der_value(0xA0, der_value(0x18, next_update)),
-            ),
-        ),
+        der_value(0x18, produced_at) + der_value(0x30, single_response),
     )
     basic = der_value(
         0x30,
@@ -134,6 +140,39 @@ Next Update: Nov 19 12:05:00 2026 GMT
                 response = synthetic_ocsp_response(*values)
                 with self.assertRaisesRegex(ValueError, "no fractional seconds"):
                     validate_ocsp_generalized_time_profile(response)
+
+    def test_ocsp_generalized_time_profile_checks_archive_cutoff_and_crl_id_extensions(self):
+        valid = b"20261120115700Z"
+        fractional = b"20261120115700.1Z"
+        archive_cutoff_oid = bytes.fromhex("2b0601050507300106")
+        crl_id_oid = bytes.fromhex("2b0601050507300103")
+        cases = (
+            (
+                "archiveCutoff",
+                der_value(0x06, archive_cutoff_oid)
+                + der_value(0x04, der_value(0x18, valid)),
+                der_value(0x06, archive_cutoff_oid)
+                + der_value(0x04, der_value(0x18, fractional)),
+            ),
+            (
+                "CrlID.crlTime",
+                der_value(0x06, crl_id_oid)
+                + der_value(0x04, der_value(0x30, der_value(0xA2, der_value(0x18, valid)))),
+                der_value(0x06, crl_id_oid)
+                + der_value(0x04, der_value(0x30, der_value(0xA2, der_value(0x18, fractional)))),
+            ),
+        )
+        for name, valid_extension, invalid_extension in cases:
+            with self.subTest(extension=name):
+                validate_ocsp_generalized_time_profile(synthetic_ocsp_response(
+                    b"20261120120000Z", b"20261120115800Z", b"20261120120500Z",
+                    der_value(0x30, valid_extension),
+                ))
+                with self.assertRaisesRegex(ValueError, "no fractional seconds"):
+                    validate_ocsp_generalized_time_profile(synthetic_ocsp_response(
+                        b"20261120120000Z", b"20261120115800Z", b"20261120120500Z",
+                        der_value(0x30, invalid_extension),
+                    ))
 
     def test_rejects_fractional_ocsp_time_before_invoking_openssl(self):
         self.response.write_bytes(synthetic_ocsp_response(
