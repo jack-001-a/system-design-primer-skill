@@ -173,6 +173,8 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(historical[historical.index("-attime") + 1], str(int(datetime(2026, 11, 19, 12, 0, 0, tzinfo=timezone.utc).timestamp())))
         upper_bound = run.call_args_list[3].args[0]
         self.assertEqual(upper_bound[upper_bound.index("-attime") + 1], str(int(datetime(2026, 11, 19, 12, 0, 1, tzinfo=timezone.utc).timestamp())))
+        self.assertIn("-auth_level", historical)
+        self.assertEqual(historical[historical.index("-auth_level") + 1], "2")
         self.assertIn("-purpose", historical)
         self.assertIn("timestampsign", historical)
         self.assertIn("-x509_strict", historical)
