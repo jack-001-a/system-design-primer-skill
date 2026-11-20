@@ -409,6 +409,59 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(operation.state, operation.CLOSED)
         self.assertIn(operation, connection._operations)
 
+    def test_unregister_waits_for_close_and_removes_only_closed_operation(self):
+        entered_close = threading.Event()
+        release_close = threading.Event()
+        unregister_started = threading.Event()
+        close_errors = []
+        unregister_errors = []
+
+        def blocking_close(handle):
+            entered_close.set()
+            if not release_close.wait(2):
+                raise AssertionError("event close was not released")
+            return True
+
+        operation, _ = self.make_operation(close=blocking_close)
+        operation.mark_completed()
+        connection = win32.NamedPipeConnection(10)
+        connection.register_operation(operation)
+
+        def close_operation():
+            try:
+                operation.close()
+            except Exception as exc:
+                close_errors.append(exc)
+
+        def unregister_operation():
+            unregister_started.set()
+            try:
+                connection.unregister_operation(operation)
+            except Exception as exc:
+                unregister_errors.append(exc)
+
+        closer = threading.Thread(target=close_operation)
+        unregister = threading.Thread(target=unregister_operation)
+        closer.start()
+        self.assertTrue(entered_close.wait(2))
+        unregister.start()
+        self.assertTrue(unregister_started.wait(2))
+
+        # The registry must retain the operation while its event handle is
+        # still being closed; unregister waits for the operation lock.
+        self.assertIn(operation, connection._operations)
+        self.assertEqual(operation.state, operation.COMPLETED)
+        release_close.set()
+
+        closer.join(2)
+        unregister.join(2)
+        self.assertFalse(closer.is_alive())
+        self.assertFalse(unregister.is_alive())
+        self.assertEqual(close_errors, [])
+        self.assertEqual(unregister_errors, [])
+        self.assertEqual(operation.state, operation.CLOSED)
+        self.assertNotIn(operation, connection._operations)
+
     def test_register_rejects_wrong_handle_and_disconnected_pipe(self):
         connection = win32.NamedPipeConnection(10)
         wrong, _ = self.make_operation()
