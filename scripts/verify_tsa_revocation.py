@@ -573,7 +573,7 @@ def _require_supported_openssl(executable: str) -> str:
     result = subprocess.run(
         [executable, "version"], capture_output=True, text=True, check=False,
     )
-    detail = (result.stdout or result.stderr).strip()
+    detail = "\n".join(part for part in (result.stdout, result.stderr) if part).strip()
     if result.returncode:
         raise ValueError("unable to determine OpenSSL CLI version: " + detail[-1000:])
     match = re.match(r"^OpenSSL\s+(\d+)\.(\d+)\.(\d+)\b", detail)
