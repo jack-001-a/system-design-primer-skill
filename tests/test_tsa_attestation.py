@@ -440,6 +440,38 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertEqual(result["trusted_timestamp_upper_bound"], "2026-11-20T00:00:00.000000Z")
         self.assertTrue(result["timestamp_accuracy_assessed"])
         self.assertFalse(result["signature_existed_before_revocation"])
+
+    @patch("scripts.tsa_attestation.verify_timestamp")
+    def test_absent_accuracy_does_not_create_trusted_timestamp_bounds(self, timestamp):
+        import base64
+        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
+        timestamp.return_value = {
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "gen_time": "2026-11-19T23:59:59Z", "accuracy": None,
+            "tsa_signer_valid_at_gen_time": True,
+            "tsa_signer_certificate_sha256": "a" * 64,
+        }
+        request, response, ca = (
+            self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem"
+        )
+        for path in (request, response, ca):
+            path.write_bytes(b"fixture")
+        store = json.loads(self.store.read_text())
+        store["keys"]["tsa-attester"]["status"] = "revoked"
+        store["keys"]["tsa-attester"]["revoked_at"] = "2026-11-20T00:00:00Z"
+        self.store.write_text(json.dumps(store, sort_keys=True))
+        result = verify_attestation(
+            self.report, self.attestation, self.store, digest_file(self.store),
+            request, response, ca, hashlib.sha256(b"fixture").hexdigest()
+        )
         self.assertIsNone(result["trusted_timestamp_lower_bound"])
         self.assertIsNone(result["trusted_timestamp_upper_bound"])
         self.assertFalse(result["timestamp_accuracy_assessed"])
