@@ -8,16 +8,18 @@ from __future__ import annotations
 
 import ctypes
 import os
-from ctypes import wintypes
 from dataclasses import dataclass
 from typing import Any
 
 
-DWORD = wintypes.DWORD
-BOOL = wintypes.BOOL
-HANDLE = wintypes.HANDLE
+# Use fixed-width Win32 scalar types. ctypes.wintypes follows the host C ABI on
+# POSIX systems (where c_ulong may be 64-bit), not the Windows LLP64 ABI.
+DWORD = ctypes.c_uint32
+BOOL = ctypes.c_int32
+HANDLE = ctypes.c_void_p
 ULONG_PTR = ctypes.c_size_t
-LPVOID = wintypes.LPVOID
+LPVOID = ctypes.c_void_p
+LPCWSTR = ctypes.c_wchar_p
 
 ERROR_IO_PENDING = 997
 ERROR_IO_INCOMPLETE = 996
@@ -29,7 +31,7 @@ INFINITE = 0xFFFFFFFF
 
 class _OffsetUnion(ctypes.Union):
     _fields_ = [
-        ("_offset", wintypes.DWORD * 2),
+        ("_offset", DWORD * 2),
         ("_pointer", LPVOID),
     ]
 
@@ -78,15 +80,11 @@ def load_kernel32(*, loader: Any = None) -> Kernel32Bindings:
         library = load_library("kernel32", use_last_error=True)
         create_event = _set_signature(
             library.CreateEventW,
-            [LPVOID, BOOL, BOOL, wintypes.LPCWSTR],
+            [LPVOID, BOOL, BOOL, LPCWSTR],
             HANDLE,
         )
         close_handle = _set_signature(library.CloseHandle, [HANDLE], BOOL)
-        wait = _set_signature(
-            library.WaitForSingleObject,
-            [HANDLE, DWORD],
-            DWORD,
-        )
+        wait = _set_signature(library.WaitForSingleObject, [HANDLE, DWORD], DWORD)
         cancel = _set_signature(
             library.CancelIoEx,
             [HANDLE, ctypes.POINTER(OVERLAPPED)],

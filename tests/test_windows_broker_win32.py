@@ -27,9 +27,17 @@ class FakeKernel32:
 
 
 class WindowsBrokerWin32Tests(unittest.TestCase):
+    def test_win32_scalar_types_have_windows_widths(self):
+        self.assertEqual(ctypes.sizeof(win32.DWORD), 4)
+        self.assertEqual(ctypes.sizeof(win32.BOOL), 4)
+        self.assertEqual(ctypes.sizeof(win32.ULONG_PTR), ctypes.sizeof(ctypes.c_void_p))
+
     def test_module_import_and_structure_layout_are_platform_neutral(self):
-        self.assertEqual(ctypes.sizeof(win32.OVERLAPPED), 32 if ctypes.sizeof(ctypes.c_void_p) == 8 else 20)
-        self.assertEqual(win32.OVERLAPPED.hEvent.offset, ctypes.sizeof(win32.OVERLAPPED) - ctypes.sizeof(ctypes.c_void_p))
+        pointer_size = ctypes.sizeof(ctypes.c_void_p)
+        self.assertEqual(ctypes.sizeof(win32.OVERLAPPED), 2 * pointer_size + 8)
+        self.assertEqual(win32.OVERLAPPED.Internal.offset, 0)
+        self.assertEqual(win32.OVERLAPPED.InternalHigh.offset, pointer_size)
+        self.assertEqual(win32.OVERLAPPED.hEvent.offset, 2 * pointer_size + 8)
 
     def test_loader_rejects_non_windows_without_loading_dll(self):
         with patch.object(win32.os, "name", "posix"):
