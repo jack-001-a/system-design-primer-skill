@@ -120,6 +120,14 @@ def validate_crl_der_profile(raw: bytes, crl: x509.CertificateRevocationList) ->
     signature_tag, signature_start, signature_end, signature_next = _read_der_tlv(raw, outer_alg_next)
     if signature_tag != 0x03 or signature_next != outer_end:
         raise ValueError("CertificateList lacks a complete signature BIT STRING")
+    signature_bits = raw[signature_start:signature_end]
+    if not signature_bits or signature_bits[0] > 7:
+        raise ValueError("CRL signature BIT STRING has an invalid unused-bit count")
+    unused_bits = signature_bits[0]
+    if len(signature_bits) == 1 and unused_bits:
+        raise ValueError("empty CRL signature BIT STRING must have zero unused bits")
+    if unused_bits and signature_bits[-1] & ((1 << unused_bits) - 1):
+        raise ValueError("CRL signature BIT STRING has nonzero padding bits")
     if raw[cursor:inner_next] != raw[tbs_next:outer_alg_next]:
         raise ValueError("CRL inner and outer signature AlgorithmIdentifiers must match exactly")
     has_extensions = bool(crl.extensions) or any(bool(entry.extensions) for entry in crl)
