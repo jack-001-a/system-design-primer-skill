@@ -785,6 +785,35 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(win32.start_overlapped_io(bindings, operation, buffer=buffer, length=4, write=True), ("completed", 3, None))
         self.assertEqual(operation.state, operation.COMPLETED)
 
+    def test_event_close_failure_preserves_resources_for_retry(self):
+        calls = []
+
+        def fail_once(handle):
+            calls.append(handle)
+            return len(calls) > 1
+
+        operation, _ = self.make_operation(close=fail_once)
+        operation.mark_completed()
+        original_overlapped = operation.overlapped
+        original_buffer = operation.buffer
+
+        with self.assertRaisesRegex(OSError, "CloseHandle failed"):
+            operation.close()
+
+        self.assertEqual(operation.state, operation.COMPLETED)
+        self.assertEqual(operation.event_handle, 20)
+        self.assertIs(operation.overlapped, original_overlapped)
+        self.assertIs(operation.buffer, original_buffer)
+
+        operation.close()
+        operation.close()
+        self.assertEqual(calls, [20, 20])
+        self.assertEqual(operation.state, operation.CLOSED)
+        self.assertIsNone(operation.event_handle)
+        self.assertIsNone(operation.overlapped)
+        self.assertIsNone(operation.buffer)
+        self.assertIsNone(operation.file_handle)
+
     def test_close_is_forbidden_while_pending_then_idempotent(self):
         operation, closed = self.make_operation()
         operation.mark_pending()
