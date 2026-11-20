@@ -86,6 +86,10 @@ def _parse_canonical_gen_time(value: str) -> tuple[datetime, bool]:
     except ValueError as exc:
         raise ValueError("timestamp token genTime is not a supported UTC GeneralizedTime") from exc
     fraction = match.group(2)
+    if fraction is not None and fraction.endswith("0"):
+        raise ValueError(
+            "timestamp token genTime fractional seconds must omit trailing zeros"
+        )
     return whole_seconds, bool(fraction and any(digit != "0" for digit in fraction))
 
 
@@ -118,6 +122,10 @@ def parse_openssl_gen_time(value: str) -> str:
     if not match:
         raise ValueError("timestamp token genTime is not a supported UTC GeneralizedTime")
     clock, fraction, year = match.groups()
+    if fraction is not None and fraction.endswith("0"):
+        raise ValueError(
+            "timestamp token genTime fractional seconds must omit trailing zeros"
+        )
     try:
         parsed = datetime.strptime(f"{clock} {year} GMT", "%b %d %H:%M:%S %Y GMT")
     except ValueError as exc:
