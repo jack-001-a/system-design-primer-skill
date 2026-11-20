@@ -167,7 +167,7 @@ def main() -> int:
     parser.add_argument("--source-digest", required=True)
     parser.add_argument("--bundle", type=Path, help="Previously downloaded attestation bundle (JSON or JSONL)")
     parser.add_argument("--trusted-root", type=Path, help="Explicit Sigstore trusted-root JSONL for offline verification; requires --bundle")
-    parser.add_argument("--gh-bin", default="gh", help="GitHub CLI executable (default: gh")
+    parser.add_argument("--gh-bin", default="gh", help="GitHub CLI executable (default: gh)")
     args = parser.parse_args()
     try:
         result = verify_build_provenance(
