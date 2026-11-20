@@ -988,3 +988,11 @@ requested historical verification instant must fail with OpenSSL X.509
 reason code 9 (`X509_V_ERR_CERT_NOT_YET_VALID`). Together with the expired
 intermediate case (reason code 10), this checks both sides of the CA
 certificate validity interval at the historical instant.
+
+A fractional-second boundary regression constructs an intermediate CA that
+expires exactly at the floor second of a simulated `genTime = now + 0.5s`.
+OpenSSL accepts the floor-second check but rejects the ceil-second check with
+reason code 10 (`X509_V_ERR_CERT_HAS_EXPIRED`). This demonstrates why the
+timestamp verifier must require both integer-second checks for fractional
+`genTime`: checking only the floor would validate a chain before the claimed
+instant.

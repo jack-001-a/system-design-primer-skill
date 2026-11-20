@@ -324,12 +324,13 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
             cert.public_bytes(self.serialization.Encoding.PEM) for cert in chain))
         (self.root / "leaf.pem").write_bytes(leaf.public_bytes(self.serialization.Encoding.PEM))
 
-    def _verify(self):
+    def _verify(self, verification_time=None):
         import subprocess
+        when = self.now if verification_time is None else verification_time
         return subprocess.run([
             "openssl", "verify", "-verbose", "-CAfile", str(self.root / "root.pem"),
             "-untrusted", str(self.root / "chain.pem"), "-purpose", "timestampsign",
-            "-attime", str(int(self.now.timestamp())), str(self.root / "leaf.pem")
+            "-attime", str(int(when.timestamp())), str(self.root / "leaf.pem")
         ], capture_output=True, text=True, check=False)
 
     def _assert_verify_error(self, result, expected_code):
@@ -351,6 +352,14 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
         self._make_chain(intermediate_not_before=self.now + self.timedelta(seconds=1))
         result = self._verify()
         self._assert_verify_error(result, 9)  # X509_V_ERR_CERT_NOT_YET_VALID
+
+    def test_fractional_gen_time_checks_upper_second_when_intermediate_expires(self):
+        # A genTime at now + 0.5s has floor=now and ceil=now+1s.
+        self._make_chain(intermediate_not_after=self.now)
+        floor_result = self._verify(self.now)
+        self.assertEqual(floor_result.returncode, 0, floor_result.stdout + floor_result.stderr)
+        ceil_result = self._verify(self.now + self.timedelta(seconds=1))
+        self._assert_verify_error(ceil_result, 10)  # X509_V_ERR_CERT_HAS_EXPIRED
 
     def test_openssl_rejects_name_constraints_violation(self):
         self._make_chain(constraints=[self.x509.DNSName(".example.test")],
