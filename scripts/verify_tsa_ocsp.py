@@ -283,12 +283,23 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
         raise ValueError("validation clock must be timezone-aware")
     instant = instant.astimezone(timezone.utc)
     skew = timedelta(seconds=skew_seconds)
-    if produced > instant + skew:
-        raise ValueError("OCSP producedAt is in the future beyond allowed clock skew")
-    if this_update > instant + skew:
-        raise ValueError("OCSP thisUpdate is in the future beyond allowed clock skew")
-    if next_update < instant - skew:
-        raise ValueError("OCSP response is stale: nextUpdate has passed")
+    if at_time is not None:
+        # Historical status must cover the exact target instant. Do not let a
+        # current-time clock-skew allowance widen a historical evidence window.
+        # Keep this aligned with tsa_validation_report's historical OCSP contract.
+        if produced > instant:
+            raise ValueError("historical OCSP producedAt is later than target time")
+        if this_update > instant:
+            raise ValueError("historical OCSP thisUpdate is later than target time")
+        if next_update < instant:
+            raise ValueError("historical OCSP nextUpdate is earlier than target time")
+    else:
+        if produced > instant + skew:
+            raise ValueError("OCSP producedAt is in the future beyond allowed clock skew")
+        if this_update > instant + skew:
+            raise ValueError("OCSP thisUpdate is in the future beyond allowed clock skew")
+        if next_update < instant - skew:
+            raise ValueError("OCSP response is stale: nextUpdate has passed")
     if next_update < this_update:
         raise ValueError("OCSP nextUpdate precedes thisUpdate")
     return {
