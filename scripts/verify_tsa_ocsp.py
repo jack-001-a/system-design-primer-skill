@@ -461,8 +461,11 @@ def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
         certificate_entries = list(_der_children(certificates))
         if any(tag != 0x30 for tag, _ in certificate_entries):
             raise ValueError("BasicOCSPResponse certs contains non-SEQUENCE Certificate")
-    _validate_ocsp_response_data(basic_fields[0][1])
+    # Apply the bounded whole-tree walk before the schema-specific parser so
+    # an input that exceeds depth/node/child budgets is rejected before the
+    # more detailed field parser allocates and processes its nested structures.
     _validate_generalized_time_tree(basic_response)
+    _validate_ocsp_response_data(basic_fields[0][1])
 
 
 
