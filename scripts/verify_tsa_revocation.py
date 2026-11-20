@@ -252,8 +252,6 @@ def assess_crl_entry(certificate: x509.Certificate, crl: x509.CertificateRevocat
         invalidity = ext.value.invalidity_date_utc
     except x509.ExtensionNotFound:
         pass
-    if invalidity is not None and invalidity > revoked_at:
-        raise ValueError("CRL invalidityDate must not be later than revocationDate")
     effective = min(revoked_at, invalidity) if invalidity is not None else revoked_at
     effective = effective if effective.tzinfo is not None else effective.replace(tzinfo=timezone.utc)
     revoked_at = revoked_at if revoked_at.tzinfo is not None else revoked_at.replace(tzinfo=timezone.utc)
