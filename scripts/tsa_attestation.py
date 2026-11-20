@@ -66,6 +66,14 @@ def parse_utc_parts(value: Any, field: str) -> tuple[datetime, str]:
     return whole_second, match.group(2) or ""
 
 
+def parse_rfc3161_gen_time_parts(value: Any, field: str = "gen_time") -> tuple[datetime, str]:
+    """Enforce RFC 3161's canonical DER fractional-seconds representation."""
+    whole_second, fraction = parse_utc_parts(value, field)
+    if fraction.endswith("0"):
+        raise ValueError(field + " fractional seconds must omit trailing zeros")
+    return whole_second, fraction
+
+
 def compare_utc_values(left: str, right: str, field: str = "UTC timestamp") -> int:
     """Compare UTC instants without truncating arbitrary fractional precision."""
     left_second, left_fraction = parse_utc_parts(left, field + " left value")
@@ -115,7 +123,7 @@ def calculate_accuracy_bounds(
     gen_time: str, accuracy: dict[str, int]
 ) -> tuple[str, str]:
     """Add/subtract RFC 3161 Accuracy exactly, preserving arbitrary genTime precision."""
-    whole_second, fraction = parse_utc_parts(gen_time, "timestamp gen_time")
+    whole_second, fraction = parse_rfc3161_gen_time_parts(gen_time, "timestamp gen_time")
     width = max(6, len(fraction))
     scale = 10 ** width
     epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
@@ -158,6 +166,7 @@ def validate_crl_issuer_validity(value: Any, field: str, gen_time: str) -> dict[
     times = {name: parse_utc(value.get(name), field + "." + name) for name in required}
     if not (times["not_before"] <= times["crl_this_update"] <= times["not_after"]):
         raise ValueError(field + " does not establish issuer validity at CRL thisUpdate")
+    parse_rfc3161_gen_time_parts(gen_time, "gen_time")
     if compare_utc_values(value.get("crl_this_update"), gen_time, field + " CRL thisUpdate vs gen_time") > 0:
         raise ValueError(field + " CRL thisUpdate is later than the historical target time")
     for flag in ("valid_at_this_update", "basic_constraints_ca", "key_cert_sign", "crl_sign"):
@@ -176,7 +185,7 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("unsupported TSA validation report schema or type")
     if missing:
         raise ValueError("TSA report missing required attestation fields: " + ", ".join(missing))
-    parse_utc_parts(report["gen_time"], "gen_time")
+    parse_rfc3161_gen_time_parts(report["gen_time"], "gen_time")
     require_sha256(report["tsa_certificate_sha256"], "tsa_certificate_sha256")
     require_sha256(report["timestamp_result_sha256"], "timestamp_result_sha256")
     if report["result_digest_policy"] != "caller_supplied_sha256_pins_checked_for_byte_equality_only":
@@ -206,7 +215,7 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("historical CRL assessment must explicitly report verified non-revocation")
     if historical.get("validation_time") != report["gen_time"]:
         raise ValueError("historical CRL validation_time must exactly match report gen_time")
-    gen_whole_second, gen_fraction = parse_utc_parts(report["gen_time"], "gen_time")
+    gen_whole_second, gen_fraction = parse_rfc3161_gen_time_parts(report["gen_time"], "gen_time")
     effective_second = gen_whole_second
     if any(digit != "0" for digit in gen_fraction):
         effective_second += timedelta(seconds=1)
@@ -474,7 +483,7 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
             raise ValueError("RFC 3161 timestamp did not establish a verified, valid TSA signer")
         validate_timestamp_verification_scope(trusted_timestamp)
         timestamp_gen_time = trusted_timestamp.get("gen_time")
-        parse_utc_parts(timestamp_gen_time, "timestamp gen_time")
+        parse_rfc3161_gen_time_parts(timestamp_gen_time, "timestamp gen_time")
         require_sha256(trusted_timestamp.get("tsa_signer_certificate_sha256"), "TSA signer certificate SHA-256")
         expected_signature_digest = hashlib.sha256(signature_bytes).hexdigest()
         if trusted_timestamp.get("signature_sha256") != expected_signature_digest:
