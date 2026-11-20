@@ -187,6 +187,24 @@ def get_overlapped_result_wait(
     return succeeded, int(transferred.value), error
 
 
+def get_overlapped_result_ex_wait(
+    bindings: Kernel32Bindings, file_handle: Any, overlapped: OVERLAPPED,
+    timeout_ms: int, *, get_last_error: Callable[[], int] = last_error,
+) -> tuple[bool, int, int | None]:
+    """Read completion status with a finite timeout and no alertable wait."""
+    if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool):
+        raise TypeError("timeout_ms must be an integer")
+    if timeout_ms < 0 or timeout_ms > MAX_DWORD:
+        raise ValueError("timeout_ms must fit an unsigned Win32 DWORD")
+    transferred = DWORD(0)
+    succeeded = bool(bindings.GetOverlappedResultEx(
+        file_handle, ctypes.byref(overlapped), ctypes.byref(transferred),
+        DWORD(timeout_ms), BOOL(0),
+    ))
+    error = None if succeeded else int(get_last_error())
+    return succeeded, int(transferred.value), error
+
+
 class NamedPipeConnection:
     """Track server-side connection state independently from one I/O operation."""
 
@@ -471,11 +489,20 @@ class OverlappedOperation:
         self,
         *,
         cancel_io_ex: Callable[[Any, OVERLAPPED], tuple[bool, int]],
-        get_overlapped_result: Callable[
-            [Any, OVERLAPPED, bool], tuple[bool, int, int]
+        get_overlapped_result_ex: Callable[
+            [Any, OVERLAPPED, int], tuple[bool, int, int]
         ],
+        timeout_ms: int = 5000,
     ) -> OverlappedResult:
-        """Request targeted cancellation, then wait for a terminal I/O result."""
+        """Request targeted cancellation and drain for at most timeout_ms.
+
+        A timeout leaves the operation PENDING and retains every resource so
+        the caller can retry draining without reusing the OVERLAPPED or buffer.
+        """
+        if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool):
+            raise TypeError("timeout_ms must be an integer")
+        if timeout_ms < 0 or timeout_ms > MAX_DWORD:
+            raise ValueError("timeout_ms must fit an unsigned Win32 DWORD")
         with self._lock:
             if self._state != self.PENDING:
                 raise OverlappedLifecycleError(
@@ -486,17 +513,17 @@ class OverlappedOperation:
                 self.file_handle, self.overlapped
             )
             # Always drain, including ERROR_NOT_FOUND: completion may have won
-            # the race with cancellation. The callbacks must capture last-error
-            # immediately on the calling thread.
-            result_ok, transferred, result_error = get_overlapped_result(
-                self.file_handle, self.overlapped, True
+            # the race with cancellation. CancelIoEx itself does not wait.
+            result_ok, transferred, result_error = get_overlapped_result_ex(
+                self.file_handle, self.overlapped, timeout_ms
             )
             if not result_ok and result_error in (
                 ERROR_IO_INCOMPLETE,
                 ERROR_IO_PENDING,
+                WAIT_TIMEOUT,
             ):
                 raise OverlappedStillPending(
-                    "GetOverlappedResult did not establish terminal completion"
+                    "bounded GetOverlappedResultEx did not establish terminal completion"
                 )
 
             self._state = self.COMPLETED

@@ -1006,7 +1006,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(operation.state, operation.PENDING)
         result = operation.cancel_and_drain(
             cancel_io_ex=lambda *_: (False, win32.ERROR_NOT_FOUND),
-            get_overlapped_result=lambda *_: (False, 0, win32.ERROR_OPERATION_ABORTED),
+            get_overlapped_result_ex=lambda *_: (False, 0, win32.ERROR_OPERATION_ABORTED),
         )
         self.assertEqual(result.error_code, win32.ERROR_OPERATION_ABORTED)
         operation.close()
@@ -1028,7 +1028,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(operation.state, operation.PENDING)
         operation.cancel_and_drain(
             cancel_io_ex=lambda *_: (False, win32.ERROR_NOT_FOUND),
-            get_overlapped_result=lambda *_: (False, 0, win32.ERROR_OPERATION_ABORTED),
+            get_overlapped_result_ex=lambda *_: (False, 0, win32.ERROR_OPERATION_ABORTED),
         )
         operation.close()
         self.assertEqual(closed, [20])
@@ -1101,27 +1101,99 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         def cancel(handle, overlapped):
             calls.append(("cancel", handle, overlapped))
             return False, win32.ERROR_NOT_FOUND
-        def drain(handle, overlapped, wait):
+        def drain(handle, overlapped, timeout_ms):
             calls.append(("drain", handle, overlapped, wait))
             self.assertIsNotNone(operation.buffer)
             return True, 7, 0
         result = operation.cancel_and_drain(
-            cancel_io_ex=cancel, get_overlapped_result=drain
+            cancel_io_ex=cancel, get_overlapped_result_ex=drain
         )
         self.assertEqual([call[0] for call in calls], ["cancel", "drain"])
-        self.assertTrue(calls[1][3])
+        self.assertEqual(calls[1][3], 5000)
         self.assertEqual(result.bytes_transferred, 7)
         self.assertEqual(result.cancel_error, win32.ERROR_NOT_FOUND)
         self.assertEqual(operation.state, win32.OverlappedOperation.COMPLETED)
         operation.close()
         self.assertEqual(closed, [20])
 
+    def test_get_overlapped_result_ex_wrapper_uses_finite_timeout(self):
+        fake = FakeKernel32()
+        calls = []
+        def result_ex(handle, overlapped, transferred, timeout_ms, alertable):
+            calls.append((handle, timeout_ms, alertable))
+            transferred._obj.value = 9
+            return 1
+        fake.GetOverlappedResultEx = result_ex
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+        )
+        operation = win32.OVERLAPPED()
+        self.assertEqual(
+            win32.get_overlapped_result_ex_wait(
+                bindings, 10, operation, 123, get_last_error=lambda: 6
+            ),
+            (True, 9, None),
+        )
+        self.assertEqual(calls, [(10, 123, 0)])
+
+    def test_get_overlapped_result_ex_wrapper_captures_timeout_error(self):
+        fake = FakeKernel32()
+        fake.GetOverlappedResultEx = lambda *_: 0
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+        )
+        self.assertEqual(
+            win32.get_overlapped_result_ex_wait(
+                bindings, 10, win32.OVERLAPPED(), 25,
+                get_last_error=lambda: win32.WAIT_TIMEOUT,
+            ),
+            (False, 0, win32.WAIT_TIMEOUT),
+        )
+
+    def test_bounded_drain_timeout_keeps_resources_for_retry(self):
+        operation, closed = self.make_operation()
+        operation.mark_pending()
+        calls = []
+        with self.assertRaises(win32.OverlappedStillPending):
+            operation.cancel_and_drain(
+                cancel_io_ex=lambda *_: (True, 0),
+                get_overlapped_result_ex=lambda *args: (
+                    calls.append(args) or (False, 0, win32.WAIT_TIMEOUT)
+                ),
+                timeout_ms=37,
+            )
+        self.assertEqual(calls[0][2], 37)
+        self.assertEqual(operation.state, operation.PENDING)
+        self.assertIsNotNone(operation.overlapped)
+        self.assertIsNotNone(operation.buffer)
+        self.assertEqual(closed, [])
+        result = operation.cancel_and_drain(
+            cancel_io_ex=lambda *_: (False, win32.ERROR_NOT_FOUND),
+            get_overlapped_result_ex=lambda *_: (False, 0, win32.ERROR_OPERATION_ABORTED),
+            timeout_ms=41,
+        )
+        self.assertEqual(result.error_code, win32.ERROR_OPERATION_ABORTED)
+        operation.close()
+        self.assertEqual(closed, [20])
+
+    def test_bounded_drain_rejects_invalid_timeout(self):
+        operation, _ = self.make_operation()
+        operation.mark_pending()
+        with self.assertRaises(ValueError):
+            operation.cancel_and_drain(
+                cancel_io_ex=lambda *_: (True, 0),
+                get_overlapped_result_ex=lambda *_: (True, 0, None),
+                timeout_ms=-1,
+            )
+
     def test_cancel_error_still_requires_and_performs_drain(self):
         operation, _ = self.make_operation()
         operation.mark_pending()
         result = operation.cancel_and_drain(
             cancel_io_ex=lambda *_: (False, 5),
-            get_overlapped_result=lambda *_: (False, 0, win32.ERROR_OPERATION_ABORTED),
+            get_overlapped_result_ex=lambda *_: (False, 0, win32.ERROR_OPERATION_ABORTED),
         )
         self.assertEqual(result.error_code, win32.ERROR_OPERATION_ABORTED)
         self.assertEqual(result.cancel_error, 5)
@@ -1133,7 +1205,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         with self.assertRaises(win32.OverlappedStillPending):
             operation.cancel_and_drain(
                 cancel_io_ex=lambda *_: (False, win32.ERROR_NOT_FOUND),
-                get_overlapped_result=lambda *_: (False, 0, win32.ERROR_IO_INCOMPLETE),
+                get_overlapped_result_ex=lambda *_: (False, 0, win32.WAIT_TIMEOUT),
             )
         self.assertEqual(operation.state, win32.OverlappedOperation.PENDING)
         self.assertIsNotNone(operation.buffer)
