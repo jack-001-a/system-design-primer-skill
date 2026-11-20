@@ -1126,5 +1126,52 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(connection.state, connection.CLOSED)
 
 
+    def test_disconnect_failure_retry_requires_cleanup_before_reconnect(self):
+        disconnect_calls = []
+        disconnect_results = iter([0, 1])
+        fake = FakeKernel32()
+        fake.DisconnectNamedPipe = (
+            lambda handle: disconnect_calls.append(handle) or next(disconnect_results)
+        )
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        operation, _ = self.make_operation()
+        operation.mark_completed()
+        connection = win32.NamedPipeConnection(10)
+        connection.register_operation(operation)
+
+        self.assertEqual(
+            win32.disconnect_named_pipe(
+                bindings, connection, operation, get_last_error=lambda: 109
+            ),
+            (False, 109),
+        )
+        self.assertEqual(connection.state, connection.CONNECTED)
+        self.assertEqual(connection.file_handle, 10)
+        self.assertIn(operation, connection._operations)
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            connection.mark_connected()
+
+        self.assertEqual(
+            win32.disconnect_named_pipe(bindings, connection, operation),
+            (True, None),
+        )
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertIn(operation, connection._operations)
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            connection.mark_connected()
+
+        operation.close()
+        connection.unregister_operation(operation)
+        connection.mark_connected()
+        self.assertEqual(connection.state, connection.CONNECTED)
+        self.assertEqual(connection.file_handle, 10)
+        self.assertEqual(disconnect_calls, [10, 10])
+
+
 if __name__ == "__main__":
     unittest.main()
