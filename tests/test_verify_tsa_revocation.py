@@ -295,6 +295,8 @@ class TsaRevocationTests(unittest.TestCase):
         self.assertFalse(Path(certificate_argument).exists(), "temporary target-certificate snapshot must be removed")
         self.assertIn("-no-CApath", run.call_args.args[0])
         self.assertIn("-no-CAstore", run.call_args.args[0])
+        self.assertIn("-auth_level", run.call_args.args[0])
+        self.assertEqual(run.call_args.args[0][run.call_args.args[0].index("-auth_level") + 1], "2")
         self.assertIn("-x509_strict", run.call_args.args[0])
 
     def test_rejects_crl_issuer_not_yet_valid_at_this_update(self):
