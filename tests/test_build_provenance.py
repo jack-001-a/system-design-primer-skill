@@ -299,6 +299,33 @@ class BuildProvenanceTests(unittest.TestCase):
         close.assert_called_once_with(opened_fd["value"])
         self.assertFalse(snapshot.exists())
 
+    def test_descriptor_snapshot_closes_destination_fd_if_fdopen_fails(self):
+        source = Path(self.temp.name) / "source.bin"
+        snapshot = Path(self.temp.name) / "snapshot.bin"
+        source.write_bytes(b"input")
+        real_fdopen = os.fdopen
+        real_open = os.open
+        destination_fd = {}
+
+        def capture_destination_open(path, flags, *args, **kwargs):
+            descriptor = real_open(path, flags, *args, **kwargs)
+            if Path(path) == snapshot:
+                destination_fd["value"] = descriptor
+            return descriptor
+
+        def fail_destination_fdopen(descriptor, *args, **kwargs):
+            if descriptor == destination_fd.get("value"):
+                raise OSError("destination fdopen failed")
+            return real_fdopen(descriptor, *args, **kwargs)
+
+        with patch("scripts.verify_build_provenance.os.open", side_effect=capture_destination_open):
+            with patch("scripts.verify_build_provenance.os.fdopen", side_effect=fail_destination_fdopen):
+                with patch("scripts.verify_build_provenance.os.close", wraps=os.close) as close:
+                    with self.assertRaisesRegex(OSError, "destination fdopen failed"):
+                        _copy_regular_file_snapshot(source, snapshot, "source")
+        close.assert_called_once_with(destination_fd["value"])
+        self.assertFalse(snapshot.exists())
+
     def test_descriptor_snapshot_rejects_source_mutation_during_copy(self):
         source = Path(self.temp.name) / "source.bin"
         snapshot = Path(self.temp.name) / "snapshot.bin"
