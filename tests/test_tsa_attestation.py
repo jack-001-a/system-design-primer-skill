@@ -208,6 +208,24 @@ class TsaAttestationTests(unittest.TestCase):
             "result_file_sha256": "c" * 64, "responder_certificate_sha256": "d" * 64
         }
 
+    def test_attestation_accepts_rfc6960_preproduced_historical_ocsp_response(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["current_ocsp_assessment"] = self._ocsp_fixture()
+        report["current_ocsp_assessment"]["produced_at"] = "2026-11-19T11:57:00Z"
+        report["current_ocsp_assessment"]["this_update"] = "2026-11-19T11:58:00Z"
+        report["overall_assessment"] = "historical_crl_passed_and_historical_ocsp_good_with_scope_limitations"
+        report["limitations"] = _build_limitations(
+            report["current_ocsp_assessment"],
+            report["historical_ocsp_responder_revocation_assessment"],
+        ) + report["timestamp_not_established"]
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        envelope = create_attestation(
+            self.report, self.private, "tsa-attester",
+            hashlib.sha256(b"verifier package").hexdigest(),
+            "system-design-primer TSA verifier release",
+        )
+        self.assertEqual(envelope["algorithm"], "Ed25519")
+
     def test_attestation_rejects_ocsp_historical_claim_scope_mismatch(self):
         report = json.loads(self.report.read_text(encoding="utf-8"))
         report["current_ocsp_assessment"] = self._ocsp_fixture()
