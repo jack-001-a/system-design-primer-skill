@@ -171,12 +171,17 @@ def _create_windows_job(process: subprocess.Popen[bytes]):
     kernel32.SetInformationJobObject.restype = wintypes.BOOL
     kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
     kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel32.TerminateJobObject.restype = wintypes.BOOL
 
     job = kernel32.CreateJobObjectW(None, None)
     if not job:
         raise ctypes.WinError(ctypes.get_last_error())
+    process_handle = None
     try:
         limits = ExtendedLimitInformation()
         limits.BasicLimitInformation.LimitFlags = 0x00002000  # KILL_ON_JOB_CLOSE
@@ -184,12 +189,27 @@ def _create_windows_job(process: subprocess.Popen[bytes]):
             job, 9, ctypes.byref(limits), ctypes.sizeof(limits)
         ):
             raise ctypes.WinError(ctypes.get_last_error())
-        if not kernel32.AssignProcessToJobObject(job, wintypes.HANDLE(process._handle)):
+        # Obtain the documented Win32 access rights by PID instead of relying
+        # on CPython's private Popen._handle implementation detail.
+        process_handle = kernel32.OpenProcess(
+            0x0100 | 0x0001,  # PROCESS_SET_QUOTA | PROCESS_TERMINATE
+            False,
+            process.pid,
+        )
+        if not process_handle:
+            raise ctypes.WinError(ctypes.get_last_error())
+        if not kernel32.AssignProcessToJobObject(job, process_handle):
             raise ctypes.WinError(ctypes.get_last_error())
         return job
     except BaseException:
+        # If assignment/setup fails, explicitly terminate any members already
+        # attached before releasing the Job Object.
+        kernel32.TerminateJobObject(job, 1)
         kernel32.CloseHandle(job)
         raise
+    finally:
+        if process_handle:
+            kernel32.CloseHandle(process_handle)
 
 
 def _close_windows_job(job) -> None:
