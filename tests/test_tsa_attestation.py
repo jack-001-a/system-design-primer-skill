@@ -327,7 +327,15 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-19T23:59:59Z", "accuracy": {"seconds": 1},
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
@@ -351,7 +359,15 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-19T23:59:59.500000Z",
             "accuracy": {"millis": 400, "micros": 100},
             "tsa_signer_valid_at_gen_time": True,
@@ -374,7 +390,15 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-19T12:00:00Z", "accuracy": {"seconds": 10 ** 30},
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
@@ -391,7 +415,15 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-19T12:00:00Z", "accuracy": {"millis": True},
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
@@ -408,7 +440,15 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-20T00:00:00Z",
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
@@ -430,7 +470,15 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-19T12:00:00Z", "accuracy": {"seconds": 0},
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
@@ -462,7 +510,15 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "not-a-time", "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
@@ -478,11 +534,20 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-19T12:00:00Z",
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value["verification_scope"] = None
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -495,7 +560,15 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-19T12:00:00Z", "nonce_present": True,
             "verification_scope": {
                 "cms_signature": "verified", "request_imprint": "verified",
