@@ -568,6 +568,23 @@ def validate_direct_crl_scope(
     return hashlib.sha256(signer.public_bytes(serialization.Encoding.DER)).hexdigest(), issuer_validity
 
 
+def _require_supported_openssl(executable: str) -> str:
+    """Require the CLI version that supports every verification option we use."""
+    result = subprocess.run(
+        [executable, "version"], capture_output=True, text=True, check=False,
+    )
+    detail = (result.stdout or result.stderr).strip()
+    if result.returncode:
+        raise ValueError("unable to determine OpenSSL CLI version: " + detail[-1000:])
+    match = re.match(r"^OpenSSL\\s+(\\d+)\\.(\\d+)\\.(\\d+)\\b", detail)
+    if match is None:
+        raise ValueError("OpenSSL 3.0.0 or newer is required; unrecognized version output: " + detail[-1000:])
+    version = tuple(int(part) for part in match.groups())
+    if version < (3, 0, 0):
+        raise ValueError("OpenSSL 3.0.0 or newer is required; found " + ".".join(match.groups()))
+    return ".".join(match.groups())
+
+
 def _verify_crl_status_with_snapshot(
     certificate: Path,
     issuer_roots: Path,
@@ -621,6 +638,8 @@ def _verify_crl_status_with_snapshot(
     executable = shutil.which("openssl")
     if not executable:
         raise ValueError("OpenSSL CLI is required for CRL historical validation")
+    executable = os.path.abspath(executable)
+    openssl_version = _require_supported_openssl(executable)
     command = [
         executable, "verify", "-verbose", "-attime", str(epoch), "-crl_check",
         "-CRLfile", str(crl), "-CAfile", str(issuer_roots), "-no-CApath", "-no-CAstore", "-x509_strict",
@@ -638,6 +657,7 @@ def _verify_crl_status_with_snapshot(
     return {
         "verified": True,
         "status": "not_revoked_at_validation_time",
+        "openssl_version": openssl_version,
         "at_time": at_time,
         "effective_at_time": effective_at_time,
         "time_rounding": "ceil_to_next_whole_second_for_conservative_historical_evaluation",
