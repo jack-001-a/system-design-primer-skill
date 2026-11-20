@@ -107,6 +107,10 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("historical CRL evaluation_time_upper_bound does not conservatively ceil gen_time")
     for field in ("crl_sha256", "issuer_roots_sha256", "crl_issuer_certificate_sha256", "result_file_sha256"):
         require_sha256(historical.get(field), "historical_revocation_assessment." + field)
+    if historical.get("issuer_intermediates_sha256") is not None:
+        require_sha256(historical.get("issuer_intermediates_sha256"), "historical_revocation_assessment.issuer_intermediates_sha256")
+    if historical.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted":
+        raise ValueError("historical CRL trust-anchor/intermediate separation policy is missing or unsupported")
     if not isinstance(historical.get("crl_signature_algorithm_oid"), str) or not historical["crl_signature_algorithm_oid"].strip():
         raise ValueError("historical_revocation_assessment.crl_signature_algorithm_oid must be non-empty")
     if historical.get("crl_signature_policy") != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
@@ -178,6 +182,10 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("OCSP responder revocation validation_time must match report gen_time")
         for field in ("crl_sha256", "issuer_roots_sha256", "crl_issuer_certificate_sha256", "result_file_sha256"):
             require_sha256(responder.get(field), "historical_ocsp_responder_revocation_assessment." + field)
+        if responder.get("issuer_intermediates_sha256") is not None:
+            require_sha256(responder.get("issuer_intermediates_sha256"), "historical_ocsp_responder_revocation_assessment.issuer_intermediates_sha256")
+        if responder.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted":
+            raise ValueError("historical OCSP responder CRL trust-anchor/intermediate separation policy is missing or unsupported")
         if not isinstance(responder.get("crl_signature_algorithm_oid"), str) or not responder["crl_signature_algorithm_oid"].strip():
             raise ValueError("historical OCSP responder CRL signature algorithm identity is missing")
         if responder.get("crl_signature_policy") != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":

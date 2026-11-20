@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from cryptography import x509
-from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, ed448, rsa
 from cryptography.x509.oid import ExtensionOID
 
@@ -44,6 +44,27 @@ def load_certificates(path: Path) -> list[x509.Certificate]:
     except ValueError as exc:
         raise ValueError(f"no parseable certificate found in {path}") from exc
 
+
+
+def validate_trust_anchor_bundle(certificates: list[x509.Certificate]) -> None:
+    """Keep OpenSSL's -CAfile restricted to explicitly self-issued CA anchors."""
+    if not certificates:
+        raise ValueError("trust-anchor bundle must contain at least one certificate")
+    seen = set()
+    for certificate in certificates:
+        fingerprint = certificate.fingerprint(hashes.SHA256())
+        if fingerprint in seen:
+            raise ValueError("trust-anchor bundle contains a duplicate certificate")
+        seen.add(fingerprint)
+        if certificate.subject != certificate.issuer:
+            raise ValueError("trust-anchor bundle may contain only self-issued certificates; place intermediates in --intermediates")
+        try:
+            constraints = certificate.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS)
+            usage = certificate.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
+        except x509.ExtensionNotFound as exc:
+            raise ValueError("trust anchors require basicConstraints and keyUsage extensions") from exc
+        if not constraints.critical or not constraints.value.ca or not usage.key_cert_sign:
+            raise ValueError("trust anchors must be critical CA certificates authorized for keyCertSign")
 
 def load_crl(path: Path) -> x509.CertificateRevocationList:
     raw = path.read_bytes()
@@ -288,9 +309,13 @@ def verify_crl_status(
             cert = x509.load_pem_x509_certificate(cert_bytes)
         except ValueError:
             cert = x509.load_der_x509_certificate(cert_bytes)
-        issuer_certs = load_certificates(issuer_roots)
-        if intermediates is not None:
-            issuer_certs.extend(load_certificates(intermediates))
+        trust_anchors = load_certificates(issuer_roots)
+        validate_trust_anchor_bundle(trust_anchors)
+        intermediate_certs = load_certificates(intermediates) if intermediates is not None else []
+        anchor_fingerprints = {item.fingerprint(hashes.SHA256()) for item in trust_anchors}
+        if any(item.fingerprint(hashes.SHA256()) in anchor_fingerprints for item in intermediate_certs):
+            raise ValueError("intermediate bundle must not duplicate a certificate in the trust-anchor bundle")
+        issuer_certs = trust_anchors + intermediate_certs
         parsed_crl = load_crl(crl)
         signer_digest, issuer_validity = validate_direct_crl_scope(cert, issuer_certs, parsed_crl, target_instant, instant)
         entry_assessment = assess_crl_entry(cert, parsed_crl, instant)
@@ -324,6 +349,8 @@ def verify_crl_status(
         "time_rounding": "ceil_to_next_whole_second_for_conservative_historical_evaluation",
         "certificate_sha256": hashlib.sha256(cert_bytes).hexdigest(),
         "issuer_roots_sha256": roots_digest,
+        "issuer_intermediates_sha256": hashlib.sha256(intermediates.read_bytes()).hexdigest() if intermediates is not None else None,
+        "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted",
         "crl_sha256": crl_digest,
         "crl_issuer_certificate_sha256": signer_digest,
         "crl_issuer_certificate_validity": issuer_validity,

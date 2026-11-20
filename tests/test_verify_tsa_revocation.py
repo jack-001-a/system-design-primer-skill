@@ -99,6 +99,23 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "valid UTC"):
             parse_utc_epoch("2026-02-30T12:00:00Z")
 
+    def test_rejects_non_self_issued_intermediate_in_trust_anchor_bundle(self):
+        root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        root_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Actual Root")])
+        intermediate = (
+            x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Intermediate")]))
+            .issuer_name(root_name).public_key(root_key.public_key()).serial_number(88)
+            .not_valid_before(NOW-timedelta(days=30)).not_valid_after(NOW+timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=0), True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=False,
+                data_encipherment=False, key_agreement=False, key_cert_sign=True, crl_sign=True,
+                encipher_only=None, decipher_only=None), True).sign(root_key, hashes.SHA256())
+        )
+        self.roots.write_bytes(self.issuer.public_bytes(serialization.Encoding.PEM)
+                               + intermediate.public_bytes(serialization.Encoding.PEM))
+        with self.assertRaisesRegex(ValueError, "only self-issued certificates"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
     def test_rejects_root_bundle_pin_mismatch(self):
         with self.assertRaisesRegex(ValueError, "issuer-root bundle SHA-256 pin mismatch"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, "0"*64)

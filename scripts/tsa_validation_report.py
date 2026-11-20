@@ -308,6 +308,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             raise ValueError("OCSP responder CRL validation time does not exactly match RFC 3161 genTime")
         if require_digest(responder_revocation_result.get("certificate_sha256"), "responder CRL certificate_sha256") != responder_digest:
             raise ValueError("responder CRL result refers to a different certificate than the OCSP signer")
+        if responder_revocation_result.get("trust_anchor_policy") != "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted":
+            raise ValueError("responder CRL trust-anchor/intermediate separation policy is missing or unsupported")
         responder_revocation_section = {
             "status": "not_revoked_at_gen_time",
             "validation_time": gen_time,
