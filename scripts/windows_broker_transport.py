@@ -36,7 +36,8 @@ class OverlappedBackend(Protocol):
     start returns (token, count). count is an integer for an operation
     completed inline, or None when it is pending. The backend must keep the
     OVERLAPPED structure, event, and buffer alive through close. wait returns
-    true only when the event is signaled. complete obtains the final result
+    true only when the I/O event is signaled. wait also observes cancel_event
+    and returns false when that event wins; complete obtains the final result
     after a signaled event. cancel requests cancellation for this exact token.
     drain must not return until the operation is no longer pending (including
     an aborted completion); only then may close release native storage.
@@ -193,7 +194,9 @@ class NamedPipeByteStream:
 
     The caller must authenticate the peer PID before constructing this object.
     Each individual native operation has its own finite timeout. Higher-level
-    framing code remains responsible for exact reads and complete writes.
+    framing code remains responsible for exact reads and complete writes. If
+    close_handle is omitted, closing this wrapper does not close the native
+    handle; the caller retains handle ownership.
     """
 
     def __init__(
@@ -240,9 +243,16 @@ class NamedPipeByteStream:
 
     def write(self, data: bytes | bytearray | memoryview) -> int:
         self._ensure_open()
-        raw = bytes(data)
-        if len(raw) > MAX_PIPE_IO_BYTES:
-            raise ValueError("write size exceeds the bounded pipe I/O limit")
+        if isinstance(data, memoryview):
+            if data.nbytes > MAX_PIPE_IO_BYTES:
+                raise ValueError("write size exceeds the bounded pipe I/O limit")
+            raw = data.tobytes()
+        elif isinstance(data, (bytes, bytearray)):
+            if len(data) > MAX_PIPE_IO_BYTES:
+                raise ValueError("write size exceeds the bounded pipe I/O limit")
+            raw = bytes(data)
+        else:
+            raise TypeError("write data must be bytes, bytearray, or memoryview")
         if not raw:
             return 0
         return self._io.perform(

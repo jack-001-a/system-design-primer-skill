@@ -47,14 +47,6 @@ class FakeBackend:
         self.events.append("close")
 
 
-class FakeClock:
-    def __init__(self):
-        self.now = 10.0
-
-    def __call__(self):
-        return self.now
-
-
 class WindowsBrokerTransportTests(unittest.TestCase):
     def test_pending_operation_completes_and_closes_after_result(self):
         backend = FakeBackend(result=4)
@@ -80,6 +72,30 @@ class WindowsBrokerTransportTests(unittest.TestCase):
                 "read", 12, bytearray(4), timeout=2, cancel_event=cancel
             )
         self.assertEqual(backend.events, ["start", "cancel", "drain", "close"])
+
+    def test_invalid_completion_count_is_rejected_after_native_completion(self):
+        backend = FakeBackend(result=5)
+        with self.assertRaisesRegex(OSError, "invalid write byte count"):
+            OverlappedIO(backend).perform("write", 12, b"data", timeout=2)
+        self.assertEqual(backend.events[-2:], ["complete", "close"])
+
+    def test_close_handle_failure_does_not_mark_stream_closed(self):
+        attempts = []
+
+        def close_handle(handle):
+            attempts.append(handle)
+            if len(attempts) == 1:
+                raise OSError("close failed")
+
+        stream = NamedPipeByteStream(
+            OverlappedIO(FakeBackend()), 12, close_handle=close_handle
+        )
+        with self.assertRaisesRegex(OSError, "close failed"):
+            stream.close()
+        self.assertFalse(stream.closed)
+        stream.close()
+        self.assertTrue(stream.closed)
+        self.assertEqual(attempts, [12, 12])
 
     def test_inline_completion_does_not_wait(self):
         backend = FakeBackend(immediate=3)
