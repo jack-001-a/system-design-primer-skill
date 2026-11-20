@@ -224,6 +224,8 @@ def validate_direct_crl_scope(
         raise ValueError("CRL lacks the mandatory CRLNumber extension") from exc
     if crl_number_ext.critical:
         raise ValueError("CRLNumber must be non-critical")
+    if crl_number_ext.value.crl_number < 0:
+        raise ValueError("CRLNumber must be a non-negative integer")
 
     candidates = [item for item in issuer_certificates if item.subject == crl.issuer]
     if aki is not None:
