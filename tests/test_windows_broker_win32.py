@@ -18,6 +18,7 @@ class FakeKernel32:
         for name in (
             "CreateEventW", "CloseHandle", "WaitForSingleObject",
             "CancelIoEx", "GetOverlappedResult", "GetOverlappedResultEx",
+            "ReadFile", "WriteFile",
         ):
             setattr(self, name, FakeFunction())
 
