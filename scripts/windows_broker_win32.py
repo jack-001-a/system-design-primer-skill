@@ -192,6 +192,7 @@ class NamedPipeConnection:
 
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
+    CLOSED = "closed"
 
     def __init__(self, file_handle: Any) -> None:
         if not file_handle:
@@ -223,6 +224,17 @@ class NamedPipeConnection:
                 )
             self._operations.add(operation)
 
+    def unregister_operation(self, operation: "OverlappedOperation") -> None:
+        """Forget an operation only after its OVERLAPPED resources are closed."""
+        with self._lock:
+            if operation not in self._operations:
+                raise OverlappedLifecycleError("operation is not registered")
+            if operation.state != operation.CLOSED:
+                raise OverlappedLifecycleError(
+                    "operation resources must be closed before unregistering"
+                )
+            self._operations.remove(operation)
+
     def mark_connected(self) -> None:
         """Record a successful ConnectNamedPipe completion before reuse."""
         with self._lock:
@@ -248,7 +260,8 @@ def disconnect_named_pipe(
 
     Every operation issued against the pipe must first be registered with
     its NamedPipeConnection. All registered operations must be terminal
-    (not pending) before disconnect; successful disconnect clears the registry.
+    (not pending) before disconnect. The registry remains until each operation
+    closes its event/buffer/OVERLAPPED resources and is explicitly unregistered.
     """
     with connection._lock:
         if connection._state != connection.CONNECTED:
@@ -283,7 +296,30 @@ def disconnect_named_pipe(
         if not succeeded:
             return False, int(get_last_error())
         connection._state = connection.DISCONNECTED
-        connection._operations.clear()
+        return True, None
+
+
+def close_named_pipe(
+    bindings: Kernel32Bindings,
+    connection: NamedPipeConnection,
+    *,
+    get_last_error: Callable[[], int] = last_error,
+) -> tuple[bool, int | None]:
+    """Close the server pipe handle after disconnect and operation cleanup."""
+    with connection._lock:
+        if connection._state != connection.DISCONNECTED:
+            raise OverlappedLifecycleError(
+                f"cannot close pipe handle in state {connection._state}"
+            )
+        if connection._operations:
+            raise OverlappedLifecycleError(
+                "cannot close pipe handle while registered operation resources remain"
+            )
+        succeeded = bool(bindings.CloseHandle(connection.file_handle))
+        if not succeeded:
+            return False, int(get_last_error())
+        connection.file_handle = None
+        connection._state = connection.CLOSED
         return True, None
 
 
