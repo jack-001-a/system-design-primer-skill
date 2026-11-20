@@ -17,6 +17,13 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509 import ocsp
 
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
+
+# Bound preflight work for untrusted OCSP response bytes. These are local
+# verifier resource limits, not protocol-level size constraints.
+MAX_OCSP_RESPONSE_BYTES = 16 * 1024 * 1024
+MAX_DER_DEPTH = 64
+MAX_DER_NODES = 200_000
+MAX_DER_CHILDREN = 100_000
 def parse_historical_at_time(value: str) -> datetime:
     """Parse UTC historical targets without silently truncating sub-microsecond precision."""
     match = re.fullmatch(
@@ -57,101 +64,132 @@ def load_certificate(path: Path, description: str) -> x509.Certificate:
             raise ValueError("could not parse " + description) from exc
 
 
-def _der_tlv(data: bytes, offset: int = 0) -> tuple[int, bytes, int]:
+def _der_tlv(data: bytes | memoryview, offset: int = 0) -> tuple[int, memoryview, int]:
     if offset >= len(data):
-        raise ValueError("truncated DER SubjectPublicKeyInfo")
-    tag = data[offset]
+        raise ValueError("truncated DER value")
+    view = memoryview(data)
+    tag = view[offset]
     offset += 1
     if tag & 0x1f == 0x1f:
         raise ValueError("high-tag-number DER encoding is not supported in OCSP structures")
-    if offset >= len(data):
+    if offset >= len(view):
         raise ValueError("truncated DER length")
-    first = data[offset]
+    first = view[offset]
     offset += 1
     if first & 0x80:
         count = first & 0x7f
-        if count == 0 or count > 4 or offset + count > len(data):
+        if count == 0 or count > 4 or offset + count > len(view):
             raise ValueError("invalid DER length")
-        if data[offset] == 0:
+        if view[offset] == 0:
             raise ValueError("non-minimal DER length")
-        length = int.from_bytes(data[offset:offset + count], "big")
+        length = int.from_bytes(view[offset:offset + count], "big")
         if length < 128:
             raise ValueError("non-minimal DER long-form length")
         offset += count
     else:
         length = first
     end = offset + length
-    if end > len(data):
+    if end > len(view):
         raise ValueError("truncated DER value")
-    return tag, data[offset:end], end
+    # memoryview slices share the original buffer; nested constructed values
+    # therefore do not repeatedly copy their full contents during traversal.
+    return tag, view[offset:end], end
 
 
-def _der_children(data: bytes):
-    """Yield one complete DER value at a time from a constructed value."""
+def _der_children(data: bytes | memoryview):
+    """Yield bounded, complete DER child values from a constructed value."""
     offset = 0
+    child_count = 0
     while offset < len(data):
+        if child_count >= MAX_DER_CHILDREN:
+            raise ValueError("DER constructed value exceeds the child-count limit")
         tag, value, end = _der_tlv(data, offset)
         yield tag, value
         offset = end
+        child_count += 1
     if offset != len(data):
         raise ValueError("DER constructed value has trailing bytes")
 
 
-def _require_single_der_value(data: bytes, expected_tag: int, field: str) -> bytes:
+def _require_single_der_value(
+    data: bytes | memoryview, expected_tag: int, field: str
+) -> memoryview:
     tag, value, end = _der_tlv(data)
     if tag != expected_tag or end != len(data):
         raise ValueError(field + " is not one complete DER value")
     return value
 
 
-def _validate_generalized_time_value(value: bytes) -> None:
-    if not re.fullmatch(rb"[0-9]{14}Z", value):
+def _validate_generalized_time_value(value: bytes | memoryview) -> None:
+    # Reject oversized values before copying a view into a standalone bytes object.
+    if len(value) != 15:
+        raise ValueError(
+            "OCSP GeneralizedTime values must be UTC seconds with no fractional seconds"
+        )
+    raw = bytes(value)
+    if not re.fullmatch(rb"[0-9]{14}Z", raw):
         raise ValueError(
             "OCSP GeneralizedTime values must be UTC seconds with no fractional seconds"
         )
     try:
-        datetime.strptime(value.decode("ascii"), "%Y%m%d%H%M%SZ")
+        datetime.strptime(raw.decode("ascii"), "%Y%m%d%H%M%SZ")
     except (UnicodeDecodeError, ValueError) as exc:
         raise ValueError("OCSP GeneralizedTime contains an invalid calendar time") from exc
 
 
-def _validate_generalized_time_tree(data: bytes) -> None:
-    """Validate direct GeneralizedTime fields and known OCSP time-bearing extensions."""
+def _validate_generalized_time_tree(data: bytes | memoryview) -> None:
+    """Validate OCSP times with explicit depth and total-node budgets."""
     archive_cutoff_oid = bytes.fromhex("2b0601050507300106")  # id-pkix-ocsp-archive-cutoff
     crl_id_oid = bytes.fromhex("2b0601050507300103")  # id-pkix-ocsp-crl
     invalidity_date_oid = bytes.fromhex("551d18")  # id-ce-invalidityDate
-    children = list(_der_children(data))
 
-    # data is the contents of the parent constructed value. When that parent
-    # is an Extension SEQUENCE, its contents are OID, optional critical BOOLEAN,
-    # and extnValue OCTET STRING. Match the known time-bearing extension OIDs
-    # here because recursion deliberately strips the enclosing SEQUENCE tag.
-    if (len(children) in (2, 3) and children[0][0] == 0x06
-            and children[-1][0] == 0x04
-            and (len(children) == 2 or children[1][0] == 0x01)):
-        extension_oid = children[0][1]
-        extension_value = children[-1][1]
-        if extension_oid in (archive_cutoff_oid, invalidity_date_oid):
-            field = (
-                "OCSP archiveCutoff"
-                if extension_oid == archive_cutoff_oid
-                else "OCSP invalidityDate"
-            )
-            generalized_time = _require_single_der_value(
-                extension_value, 0x18, field
-            )
-            _validate_generalized_time_value(generalized_time)
-        elif extension_oid == crl_id_oid:
-            crl_id = _require_single_der_value(
-                extension_value, 0x30, "OCSP CrlID"
-            )
-            _validate_generalized_time_tree(crl_id)
+    # Use an explicit stack instead of Python recursion so hostile nesting cannot
+    # exhaust the interpreter call stack. OCTET STRING payloads stay opaque unless
+    # an identified OCSP extension defines them as an embedded ASN.1 value.
+    pending: list[tuple[int, memoryview, int]] = [(0x30, memoryview(data), 0)]
+    visited_nodes = 0
+    while pending:
+        parent_tag, parent_value, depth = pending.pop()
+        if depth > MAX_DER_DEPTH:
+            raise ValueError("OCSP DER structure exceeds the nesting-depth limit")
 
-    for tag, value in children:
-        if tag == 0x18:
-            _validate_generalized_time_value(value)
-        elif tag & 0x20:
-            _validate_generalized_time_tree(value)
+        children = list(_der_children(parent_value))
+        if parent_tag == 0x30 and len(children) in (2, 3):
+            # Extension ::= SEQUENCE { extnID, critical DEFAULT FALSE, extnValue }
+            if (children[0][0] == 0x06 and children[-1][0] == 0x04
+                    and (len(children) == 2 or children[1][0] == 0x01)):
+                extension_oid = children[0][1]
+                extension_value = children[-1][1]
+                if extension_oid in (archive_cutoff_oid, invalidity_date_oid):
+                    field = (
+                        "OCSP archiveCutoff"
+                        if extension_oid == archive_cutoff_oid
+                        else "OCSP invalidityDate"
+                    )
+                    embedded_time = _require_single_der_value(
+                        extension_value, 0x18, field
+                    )
+                    visited_nodes += 1
+                    if visited_nodes > MAX_DER_NODES:
+                        raise ValueError("OCSP DER structure exceeds the node-count limit")
+                    _validate_generalized_time_value(embedded_time)
+                elif extension_oid == crl_id_oid:
+                    crl_id = _require_single_der_value(
+                        extension_value, 0x30, "OCSP CrlID"
+                    )
+                    visited_nodes += 1
+                    if visited_nodes > MAX_DER_NODES:
+                        raise ValueError("OCSP DER structure exceeds the node-count limit")
+                    pending.append((0x30, crl_id, depth + 1))
+
+        for tag, value in children:
+            visited_nodes += 1
+            if visited_nodes > MAX_DER_NODES:
+                raise ValueError("OCSP DER structure exceeds the node-count limit")
+            if tag == 0x18:
+                _validate_generalized_time_value(value)
+            elif tag & 0x20:
+                pending.append((tag, value, depth + 1))
 
 
 def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
