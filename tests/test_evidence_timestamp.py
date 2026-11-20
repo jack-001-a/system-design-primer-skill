@@ -325,27 +325,29 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
     def _verify(self):
         import subprocess
         return subprocess.run([
-            "openssl", "verify", "-CAfile", str(self.root / "root.pem"),
+            "openssl", "verify", "-verbose", "-CAfile", str(self.root / "root.pem"),
             "-untrusted", str(self.root / "chain.pem"), "-purpose", "timestampsign",
             "-attime", str(int(self.now.timestamp())), str(self.root / "leaf.pem")
         ], capture_output=True, text=True, check=False)
 
+    def _assert_verify_error(self, result, expected_code):
+        diagnostic = result.stdout + "\\n" + result.stderr
+        self.assertNotEqual(result.returncode, 0, diagnostic)
+        self.assertRegex(diagnostic, rf"\\berror\\s+{expected_code}\\b", diagnostic)
+
     def test_openssl_rejects_path_length_constraint_violation(self):
         self._make_chain(intermediate_path_length=0, add_subordinate=True)
         result = self._verify()
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertRegex(result.stderr.lower(), r"path length|pathlen")
+        self._assert_verify_error(result, 25)  # X509_V_ERR_PATH_LENGTH_EXCEEDED
 
     def test_openssl_rejects_intermediate_expired_at_historical_gen_time(self):
         self._make_chain(intermediate_not_after=self.now - self.timedelta(seconds=1))
         result = self._verify()
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertRegex(result.stderr.lower(), r"expired|certificate has expired")
+        self._assert_verify_error(result, 10)  # X509_V_ERR_CERT_HAS_EXPIRED
 
     def test_openssl_rejects_name_constraints_violation(self):
         self._make_chain(constraints=[self.x509.DNSName(".example.test")],
                          leaf_dns="tsa.outside.invalid")
         result = self._verify()
-        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertRegex(result.stderr.lower(), r"name constraint|permitted subtree")
+        self._assert_verify_error(result, 47)  # X509_V_ERR_PERMITTED_VIOLATION
 

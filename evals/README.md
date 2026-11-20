@@ -973,3 +973,12 @@ The direct-CRL verifier now requires the CRL issuer certificate to carry critica
 
 The RFC 3161 verifier delegates certification-path processing to OpenSSL with the timestamp-signing purpose and historical genTime bounds. OpenSSL path validation is responsible for CA pathLenConstraint and RFC 5280 Name Constraints; these are not reimplemented by the Python verifier. The test suite includes real-CLI integration cases that construct timestamp-signing chains and require OpenSSL to reject a subordinate-CA path-length violation and a TSA signer DNS SAN outside the permitted Name Constraints subtree. These tests establish enforcement by the installed OpenSSL build, rather than merely asserting that command-line flags were assembled.
 
+The real-CLI integration tests assert OpenSSL's numeric X.509 verification
+reason codes rather than matching free-form English diagnostics: 25
+(`X509_V_ERR_PATH_LENGTH_EXCEEDED`), 10
+(`X509_V_ERR_CERT_HAS_EXPIRED`), and 47
+(`X509_V_ERR_PERMITTED_VIOLATION`). This keeps the semantic assertions
+independent of wording differences between OpenSSL releases and build
+locales. The complete stdout/stderr is still included in assertion failures
+for diagnosis. These are OpenSSL verification error identifiers, not
+application-defined policy codes.
