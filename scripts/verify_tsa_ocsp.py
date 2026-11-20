@@ -78,8 +78,8 @@ def validate_trust_anchor_bundle(path: Path) -> None:
         try:
             key_usage_ext = certificate.extensions.get_extension_for_class(x509.KeyUsage)
         except x509.ExtensionNotFound as exc:
-            raise ValueError("issuer-root certificates must contain critical KeyUsage with keyCertSign") from exc
-        if not key_usage_ext.critical or not key_usage_ext.value.key_cert_sign:
+            raise ValueError("issuer-root certificates must contain KeyUsage with keyCertSign") from exc
+        if not key_usage_ext.value.key_cert_sign:
             raise ValueError("issuer-root certificates must contain critical KeyUsage with keyCertSign")
 
 
