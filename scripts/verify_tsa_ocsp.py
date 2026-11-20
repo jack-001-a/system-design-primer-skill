@@ -272,8 +272,8 @@ def _validate_generalized_time_tree(data: bytes | memoryview) -> None:
 
 
 def _validate_ocsp_explicit_value(tag, value, expected_tag, field):
-    if tag not in (0xA0, 0xA1, 0xA2) or tag & 0x1F != expected_tag:
-        raise ValueError(field + " incorrect explicit tag")
+    if tag not in (0xA0, 0xA1, 0xA2):
+        raise ValueError(field + " incorrect explicit context-specific tag")
     return _require_single_der_value(value, expected_tag, field)
 
 def _validate_ocsp_algorithm_identifier(value, field):
@@ -322,6 +322,8 @@ def _validate_ocsp_revoked_info(value):
         raise ValueError("OCSP revoked CertStatus has invalid implicit RevokedInfo")
     _validate_generalized_time_value(fields[0][1])
     if len(fields) == 2:
+        if fields[1][0] != 0xA0:
+            raise ValueError("OCSP revocationReason has an incorrect explicit tag")
         reason = _validate_ocsp_explicit_value(fields[1][0], fields[1][1],
                                                 0x0A, "OCSP revocationReason")
         _validate_der_primitive(0x0A, reason)
