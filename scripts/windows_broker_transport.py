@@ -108,26 +108,41 @@ class OverlappedIO:
             finally:
                 self._backend.close(token)
 
+        safe_to_close = False
+        cancellation_attempted = False
         try:
             while True:
                 if cancel_event is not None and cancel_event.is_set():
+                    cancellation_attempted = True
                     self._cancel_and_drain(token)
+                    safe_to_close = True
                     raise TransportCancelled(f"{operation} operation was cancelled")
                 remaining = _remaining_ms(deadline, self._clock)
                 if remaining == 0:
+                    cancellation_attempted = True
                     self._cancel_and_drain(token)
+                    safe_to_close = True
                     raise TransportTimeout(f"{operation} operation timed out")
                 if self._backend.wait(token, remaining):
+                    safe_to_close = True
                     return self._validate_count(
                         self._backend.complete(token), len(buffer), operation
                     )
+                cancellation_attempted = True
+                self._cancel_and_drain(token)
+                safe_to_close = True
+                raise TransportTimeout(f"{operation} operation timed out")
         except (TransportCancelled, TransportTimeout):
             raise
         except BaseException:
-            self._cancel_and_drain(token)
+            if not cancellation_attempted:
+                cancellation_attempted = True
+                self._cancel_and_drain(token)
+                safe_to_close = True
             raise
         finally:
-            self._backend.close(token)
+            if safe_to_close:
+                self._backend.close(token)
 
     def _cancel_and_drain(self, token: Any) -> None:
         cancel_error: BaseException | None = None
@@ -221,9 +236,9 @@ class NamedPipeByteStream:
     def close(self) -> None:
         if self._closed:
             return
-        self._closed = True
         if self._close_handle is not None:
             self._close_handle(self._handle)
+        self._closed = True
 
     def __enter__(self) -> "NamedPipeByteStream":
         self._ensure_open()
