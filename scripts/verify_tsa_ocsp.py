@@ -127,6 +127,38 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
                          at_time: datetime | None = None,
                          responder_certificate: Path | None = None,
                          expected_responder_certificate_sha256: str | None = None) -> dict[str, Any]:
+    """Verify one immutable snapshot of every caller-supplied OCSP input."""
+    with tempfile.TemporaryDirectory(prefix="tsa-ocsp-inputs-") as temporary:
+        snapshot_dir = Path(temporary)
+
+        def snapshot(name: str, source: Path | None) -> Path | None:
+            if source is None:
+                return None
+            destination = snapshot_dir / name
+            destination.write_bytes(source.read_bytes())
+            return destination
+
+        return _verify_ocsp_response_snapshot(
+            snapshot("target-certificate", certificate),
+            snapshot("issuer-certificate", issuer),
+            snapshot("issuer-roots", roots),
+            snapshot("ocsp-response.der", response),
+            expected_roots_sha256,
+            snapshot("intermediates.pem", intermediates),
+            now=now,
+            skew_seconds=skew_seconds,
+            at_time=at_time,
+            responder_certificate=snapshot("responder-certificate", responder_certificate),
+            expected_responder_certificate_sha256=expected_responder_certificate_sha256,
+        )
+
+
+def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path, response: Path,
+                         expected_roots_sha256: str, intermediates: Path | None = None,
+                         now: datetime | None = None, skew_seconds: int = 300,
+                         at_time: datetime | None = None,
+                         responder_certificate: Path | None = None,
+                         expected_responder_certificate_sha256: str | None = None) -> dict[str, Any]:
     if not isinstance(expected_roots_sha256, str) or not HEX256.fullmatch(expected_roots_sha256):
         raise ValueError("expected issuer-root SHA-256 must be 64 lowercase hex characters")
     if isinstance(skew_seconds, bool) or not isinstance(skew_seconds, int) or not 0 <= skew_seconds <= 3600:
@@ -139,10 +171,11 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
     if not executable:
         raise ValueError("OpenSSL CLI is required for OCSP response verification")
     responder_digest = None
+    pinned_responder_certificate = None
     if (responder_certificate is None) != (expected_responder_certificate_sha256 is None):
         raise ValueError("responder certificate and its SHA-256 pin must be supplied together")
     if responder_certificate is not None:
-        _, responder_digest = bind_responder_certificate(
+        pinned_responder_certificate, responder_digest = bind_responder_certificate(
             response, responder_certificate, expected_responder_certificate_sha256 or ""
         )
     with tempfile.TemporaryDirectory(prefix="tsa-ocsp-") as temporary:
@@ -158,11 +191,9 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
                    "-x509_strict", "-no_nonce"]
         if responder_certificate is not None:
             signer_bundle = Path(temporary) / "responder-signer-bundle.pem"
-            signer_pem = x509.load_pem_x509_certificate(responder_certificate.read_bytes()).public_bytes(
-                serialization.Encoding.PEM
-            ) if responder_certificate.read_bytes().lstrip().startswith(b"-----BEGIN") else x509.load_der_x509_certificate(
-                responder_certificate.read_bytes()
-            ).public_bytes(serialization.Encoding.PEM)
+            if pinned_responder_certificate is None:
+                raise ValueError("pinned OCSP responder certificate was not loaded")
+            signer_pem = pinned_responder_certificate.public_bytes(serialization.Encoding.PEM)
             signer_bundle.write_bytes(signer_pem + (intermediates.read_bytes() if intermediates is not None else b""))
             command.extend(["-no_intern", "-verify_other", str(signer_bundle)])
         elif intermediates is not None:
