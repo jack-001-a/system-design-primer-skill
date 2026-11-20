@@ -3,7 +3,7 @@ import base64
 import json
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
 from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verification_time_bounds, verification_time_within_validity, parse_openssl_gen_time, verify_timestamp
@@ -66,7 +66,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertTrue(verification_time_within_validity(
             start.replace(microsecond=1), start, end))
         self.assertTrue(verification_time_within_validity(
-            end.replace(microsecond=0) - __import__("datetime").timedelta(microseconds=1), start, end))
+            end.replace(microsecond=0) - timedelta(microseconds=1), start, end))
         self.assertFalse(verification_time_within_validity(
             start - __import__("datetime").timedelta(microseconds=1), start, end))
         self.assertFalse(verification_time_within_validity(
