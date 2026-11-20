@@ -205,12 +205,12 @@ Next Update: Nov 19 12:05:00 2026 GMT
             b"20261120120000Z", b"20261120115800Z", b"20261120120500Z"
         )
         # Replace successful(0) with malformedRequest(1), retaining responseBytes.
-        malformed = der_value(0x30, der_value(0x0A, b"\\x01") + valid[5:])
+        malformed = der_value(0x30, der_value(0x0A, b"\x01") + valid[5:])
         with self.assertRaisesRegex(ValueError, "OCSP error response must not contain responseBytes"):
             validate_ocsp_generalized_time_profile(malformed)
 
     def test_successful_ocsp_response_requires_response_bytes(self):
-        malformed = der_value(0x30, der_value(0x0A, b"\\x00"))
+        malformed = der_value(0x30, der_value(0x0A, b"\x00"))
         with self.assertRaisesRegex(ValueError, "successful OCSPResponse is missing responseBytes"):
             validate_ocsp_generalized_time_profile(malformed)
 
