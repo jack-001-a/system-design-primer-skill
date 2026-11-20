@@ -109,7 +109,7 @@ def parse_accuracy(details: str) -> dict[str, int] | None:
     return result
 
 
-def inspect_tsa_signer_certificate(response_path: Path, gen_time: str, tsa_ca_path: Path | None = None, chain_path: Path | None = None) -> dict[str, str]:
+def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[str, str]:
     """Extract the CMS SignerInfo certificate and bind its TSA profile to genTime."""
     try:
         target = datetime.fromisoformat(gen_time.replace("Z", "+00:00"))
@@ -142,18 +142,6 @@ def inspect_tsa_signer_certificate(response_path: Path, gen_time: str, tsa_ca_pa
             certificate = x509.load_pem_x509_certificate(signer_path.read_bytes())
         except (OSError, ValueError) as exc:
             raise ValueError("CMS timestamp signer certificate is not valid PEM X.509") from exc
-        if tsa_ca_path is not None:
-            # ts -verify has no historical-time option. Rebuild this exact CMS
-            # SignerInfo path at genTime using OpenSSL's historical verifier.
-            historical_verify = [
-                "verify", "-purpose", "timestampsign",
-                "-attime", str(int(target.timestamp())),
-                "-CAfile", str(tsa_ca_path),
-            ]
-            if chain_path is not None:
-                historical_verify.extend(["-untrusted", str(chain_path)])
-            historical_verify.append(str(signer_path))
-            run_openssl(historical_verify)
     try:
         eku_ext = certificate.extensions.get_extension_for_oid(ExtensionOID.EXTENDED_KEY_USAGE)
     except x509.ExtensionNotFound as exc:
@@ -203,11 +191,17 @@ def verify_timestamp(
         raise ValueError("timestamp request must use SHA-256")
     if not imprint or imprint.group(1).lower() != expected_imprint:
         raise ValueError("timestamp request does not bind the supplied Ed25519 signature")
-    command = ["ts", "-verify", "-queryfile", str(request_path), "-in", str(response_path), "-CAfile", str(tsa_ca_path)]
+    details = run_openssl(["ts", "-reply", "-in", str(response_path), "-text"])
+    gen_time = re.search(r"^Time(?: stamp)?\\s*:\\s*(.+)$", details, re.I | re.M)
+    if not gen_time:
+        raise ValueError("timestamp token did not expose a generation time for historical chain verification")
+    canonical_gen_time = parse_openssl_gen_time(gen_time.group(1))
+    command = ["ts", "-verify", "-queryfile", str(request_path), "-in", str(response_path), "-CAfile", str(tsa_ca_path),
+               "-attime", str(int(datetime.fromisoformat(canonical_gen_time.replace("Z", "+00:00")).timestamp())),
+               "-purpose", "timestampsign"]
     if chain_path is not None:
         command.extend(["-untrusted", str(chain_path)])
     run_openssl(command)
-    details = run_openssl(["ts", "-reply", "-in", str(response_path), "-text"])
     gen_time = re.search(r"^Time(?: stamp)?\s*:\s*(.+)$", details, re.I | re.M)
     policy = re.search(r"^Policy OID\s*:\s*(\S+)", details, re.I | re.M)
     serial = re.search(r"^Serial number\s*:\s*(\S+)", details, re.I | re.M)
@@ -222,7 +216,7 @@ def verify_timestamp(
     if not response_imprint or response_imprint.group(1).lower() != expected_imprint:
         raise ValueError("timestamp token message imprint does not bind the supplied Ed25519 signature")
     canonical_gen_time = parse_openssl_gen_time(gen_time.group(1))
-    signer_evidence = inspect_tsa_signer_certificate(response_path, canonical_gen_time, tsa_ca_path, chain_path)
+    signer_evidence = inspect_tsa_signer_certificate(response_path, canonical_gen_time)
     ordering = re.search(r"^Ordering:\s*(yes|no)", details, re.I | re.M)
     nonce = re.search(r"^Nonce:\s*(\S+)", details, re.I | re.M)
     return {
@@ -239,7 +233,7 @@ def verify_timestamp(
         "tsa_ca_sha256": actual_ca_sha256,
         "tsa_chain_valid_at_gen_time": True,
         "tsa_chain_validation_time": canonical_gen_time,
-        "tsa_chain_validation_policy": "OpenSSL verify -purpose timestampsign -attime; pathLenConstraint and Name Constraints enforced by OpenSSL",
+        "tsa_chain_validation_policy": "OpenSSL ts -verify -purpose timestampsign -attime; pathLenConstraint and Name Constraints enforced by OpenSSL",
         **signer_evidence,
         "verification": "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), and TSA chain verification at genTime",
     }
