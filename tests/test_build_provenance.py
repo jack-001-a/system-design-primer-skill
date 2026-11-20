@@ -329,6 +329,30 @@ class BuildProvenanceTests(unittest.TestCase):
         time.sleep(0.5)
         self.assertFalse(marker.exists())
 
+    @unittest.skipUnless(os.name == "nt", "Windows Job Object cleanup is Windows-specific")
+    def test_cli_success_stops_windows_job_descendants(self):
+        import time
+
+        marker = Path(self.temp.name) / "late-windows-child-write"
+        child_code = (
+            "import pathlib,time; time.sleep(0.8); "
+            f"pathlib.Path({str(marker)!r}).write_text('late')"
+        )
+        parent_code = (
+            "import subprocess,sys,time; "
+            f"subprocess.Popen([sys.executable, '-c', {child_code!r}]); "
+            "time.sleep(0.3)"
+        )
+        result = _run_cli_bounded(
+            [sys.executable, "-c", parent_code],
+            timeout=5,
+            output_dir=Path(self.temp.name),
+            stdout_limit=128,
+        )
+        self.assertEqual(result.returncode, 0)
+        time.sleep(1.0)
+        self.assertFalse(marker.exists())
+
     def test_sha256_file_hashes_large_files_incrementally(self):
         artifact = Path(self.temp.name) / "large-artifact.bin"
         payload = (b"streaming-hash-check-" * 100000)

@@ -121,8 +121,95 @@ def _copy_regular_file_snapshot(source: Path, destination: Path, label: str) -> 
 
 
 
-def _kill_and_reap_cli(process: subprocess.Popen[bytes]) -> None:
-    """Stop the isolated CLI process group where supported, then reap its leader."""
+def _create_windows_job(process: subprocess.Popen[bytes]):
+    """Assign the CLI to a kill-on-close Job Object so descendants cannot outlive it."""
+    if os.name != "nt":
+        return None
+
+    import ctypes
+    from ctypes import wintypes
+
+    class BasicLimitInformation(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_longlong),
+            ("PerJobUserTimeLimit", ctypes.c_longlong),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    class IoCounters(ctypes.Structure):
+        _fields_ = [
+            ("ReadOperationCount", ctypes.c_ulonglong),
+            ("WriteOperationCount", ctypes.c_ulonglong),
+            ("OtherOperationCount", ctypes.c_ulonglong),
+            ("ReadTransferCount", ctypes.c_ulonglong),
+            ("WriteTransferCount", ctypes.c_ulonglong),
+            ("OtherTransferCount", ctypes.c_ulonglong),
+        ]
+
+    class ExtendedLimitInformation(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", BasicLimitInformation),
+            ("IoInfo", IoCounters),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateJobObjectW.argtypes = [ctypes.c_void_p, wintypes.LPCWSTR]
+    kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    kernel32.SetInformationJobObject.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD
+    ]
+    kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        limits = ExtendedLimitInformation()
+        limits.BasicLimitInformation.LimitFlags = 0x00002000  # KILL_ON_JOB_CLOSE
+        if not kernel32.SetInformationJobObject(
+            job, 9, ctypes.byref(limits), ctypes.sizeof(limits)
+        ):
+            raise ctypes.WinError(ctypes.get_last_error())
+        if not kernel32.AssignProcessToJobObject(job, wintypes.HANDLE(process._handle)):
+            raise ctypes.WinError(ctypes.get_last_error())
+        return job
+    except BaseException:
+        kernel32.CloseHandle(job)
+        raise
+
+
+def _close_windows_job(job) -> None:
+    """Close a Job Object; KILL_ON_JOB_CLOSE terminates all remaining members."""
+    if job is None:
+        return
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    if not kernel32.CloseHandle(job):
+        raise ctypes.WinError(ctypes.get_last_error())
+
+
+def _kill_and_reap_cli(
+    process: subprocess.Popen[bytes], windows_job=None
+) -> None:
+    """Stop the isolated CLI process tree where supported, then reap its leader."""
     if os.name == "posix":
         try:
             os.killpg(process.pid, signal.SIGKILL)
@@ -135,6 +222,8 @@ def _kill_and_reap_cli(process: subprocess.Popen[bytes]) -> None:
                     process.kill()
                 except ProcessLookupError:
                     pass
+    elif windows_job is not None:
+        _close_windows_job(windows_job)
     elif process.poll() is None:
         try:
             process.kill()
@@ -163,6 +252,13 @@ def _run_cli_bounded(
             text=False,
             start_new_session=(os.name == "posix"),
         )
+        windows_job = None
+        try:
+            if os.name == "nt":
+                windows_job = _create_windows_job(process)
+        except BaseException:
+            _kill_and_reap_cli(process)
+            raise
         failure = None
         try:
             while True:
@@ -190,9 +286,20 @@ def _run_cli_bounded(
 
             # Also stop descendants that inherited the output handles. On POSIX,
             # start_new_session gives this CLI an isolated process group.
-            _kill_and_reap_cli(process)
+            _kill_and_reap_cli(process, windows_job)
+            windows_job = None
         except BaseException:
-            _kill_and_reap_cli(process)
+            try:
+                _kill_and_reap_cli(process, windows_job)
+                windows_job = None
+            except BaseException:
+                # Preserve the operation's original failure after attempting cleanup.
+                if process.poll() is None:
+                    try:
+                        process.kill()
+                    except ProcessLookupError:
+                        pass
+                process.wait()
             raise
         stdout_file.flush()
         stderr_file.flush()
