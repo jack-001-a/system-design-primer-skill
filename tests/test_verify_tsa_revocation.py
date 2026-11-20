@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from scripts.verify_tsa_revocation import (parse_utc_epoch, verify_crl_status, validate_crl_signature_policy,
     validate_crl_number_value, validate_crl_der_profile, validate_direct_crl_scope, validate_trust_anchor_bundle,
-    _read_der_tlv, load_crl, load_certificates)
+    _read_der_tlv, _validate_crl_time_der, load_crl, load_certificates)
 
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
@@ -653,6 +653,25 @@ class TsaRevocationTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "explicit successful"):
                 verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
+
+    def test_crl_der_time_rejects_invalid_calendar_values(self):
+        cases = (
+            (0x17, b"261332120000Z"),
+            (0x17, b"260230120000Z"),
+            (0x17, b"261119240000Z"),
+            (0x18, b"20261332120000Z"),
+            (0x18, b"20260230120000Z"),
+            (0x18, b"20261119240000Z"),
+        )
+        for tag, encoded in cases:
+            with self.subTest(tag=tag, encoded=encoded), self.assertRaisesRegex(
+                ValueError, "valid calendar date and time"
+            ):
+                _validate_crl_time_der(tag, encoded, "CRL time")
+
+    def test_crl_der_time_uses_asn1_utc_year_pivot(self):
+        _validate_crl_time_der(0x17, b"491231235959Z", "CRL time")
+        _validate_crl_time_der(0x17, b"500101000000Z", "CRL time")
 
     def test_der_tlv_reader_accepts_minimal_long_form_length(self):
         encoded = b"\x04\x81\x80" + b"x" * 128
