@@ -198,9 +198,9 @@ def validate_direct_crl_scope(
         aki_ext = crl.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER)
     except x509.ExtensionNotFound as exc:
         raise ValueError("CRL lacks the mandatory AuthorityKeyIdentifier extension") from exc
-    if aki_ext.critical:
-        raise ValueError("CRL AuthorityKeyIdentifier must be non-critical")
     aki = aki_ext.value
+    if aki.key_identifier is None:
+        raise ValueError("CRL AuthorityKeyIdentifier must use the key identifier method")
 
     try:
         crl_number_ext = crl.extensions.get_extension_for_oid(ExtensionOID.CRL_NUMBER)
