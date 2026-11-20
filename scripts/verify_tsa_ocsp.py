@@ -62,6 +62,8 @@ def _der_tlv(data: bytes, offset: int = 0) -> tuple[int, bytes, int]:
         raise ValueError("truncated DER SubjectPublicKeyInfo")
     tag = data[offset]
     offset += 1
+    if tag & 0x1f == 0x1f:
+        raise ValueError("high-tag-number DER encoding is not supported in OCSP structures")
     if offset >= len(data):
         raise ValueError("truncated DER length")
     first = data[offset]
@@ -102,24 +104,49 @@ def _require_single_der_value(data: bytes, expected_tag: int, field: str) -> byt
     return value
 
 
+def _validate_generalized_time_value(value: bytes) -> None:
+    if not re.fullmatch(rb"[0-9]{14}Z", value):
+        raise ValueError(
+            "OCSP GeneralizedTime values must be UTC seconds with no fractional seconds"
+        )
+    try:
+        datetime.strptime(value.decode("ascii"), "%Y%m%d%H%M%SZ")
+    except (UnicodeDecodeError, ValueError) as exc:
+        raise ValueError("OCSP GeneralizedTime contains an invalid calendar time") from exc
+
+
 def _validate_generalized_time_tree(data: bytes) -> None:
-    """Reject fractional, non-Z, or malformed GeneralizedTime values in DER structures."""
+    """Validate direct GeneralizedTime fields and known OCSP time-bearing extensions."""
+    archive_cutoff_oid = bytes.fromhex("2b0601050507300106")  # id-pkix-ocsp-archive-cutoff
+    crl_id_oid = bytes.fromhex("2b0601050507300103")  # id-pkix-ocsp-crl
     for tag, value in _der_children(data):
         if tag == 0x18:
-            if not re.fullmatch(rb"[0-9]{14}Z", value):
-                raise ValueError(
-                    "OCSP GeneralizedTime values must be UTC seconds with no fractional seconds"
-                )
-            try:
-                datetime.strptime(value.decode("ascii"), "%Y%m%d%H%M%SZ")
-            except (UnicodeDecodeError, ValueError) as exc:
-                raise ValueError("OCSP GeneralizedTime contains an invalid calendar time") from exc
+            _validate_generalized_time_value(value)
         elif tag & 0x20:
-            _validate_generalized_time_tree(value)
+            children = list(_der_children(value))
+            if tag == 0x30 and len(children) in (2, 3):
+                # Extension ::= SEQUENCE { extnID, critical DEFAULT FALSE, extnValue }
+                if (children[0][0] == 0x06 and children[-1][0] == 0x04
+                        and (len(children) == 2 or children[1][0] == 0x01)):
+                    extension_oid = children[0][1]
+                    extension_value = children[-1][1]
+                    if extension_oid == archive_cutoff_oid:
+                        generalized_time = _require_single_der_value(
+                            extension_value, 0x18, "OCSP archiveCutoff"
+                        )
+                        _validate_generalized_time_value(generalized_time)
+                    elif extension_oid == crl_id_oid:
+                        crl_id = _require_single_der_value(
+                            extension_value, 0x30, "OCSP CrlID"
+                        )
+                        _validate_generalized_time_tree(crl_id)
+            for child_tag, child_value in children:
+                if child_tag & 0x20:
+                    _validate_generalized_time_tree(child_value)
 
 
 def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
-    """Enforce RFC 5280 time syntax for GeneralizedTime values in BasicOCSPResponse."""
+    """Enforce RFC 5280 time syntax for core and standard extension times in BasicOCSPResponse."""
     response_content = _require_single_der_value(
         response_der, 0x30, "OCSPResponse"
     )
