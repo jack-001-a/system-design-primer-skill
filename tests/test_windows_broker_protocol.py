@@ -163,7 +163,7 @@ class WindowsBrokerProtocolTests(unittest.TestCase):
 
     def test_launch_payload_rejects_oversized_command_and_environment(self):
         payload = self._launch_payload()
-        payload["argv"] = ["x" * 32768]
+        payload["argv"] = ["worker.exe", "x" * 32760]
         with self.assertRaisesRegex(ProtocolError, "command-line length"):
             validate_message(message(payload))
         payload["argv"] = ["worker.exe", '"' * 20000]
