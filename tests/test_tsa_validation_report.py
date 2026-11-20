@@ -48,7 +48,8 @@ class TsaValidationReportTests(unittest.TestCase):
             "response_sha256": hashlib.sha256(b"response").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"ocsp roots").hexdigest(),
             "issuer_intermediates_sha256": None,
-            "trust_anchor_policy": "issuer-roots bundle contains only self-issued trust-anchor certificates; CRL issuer CA/keyCertSign/cRLSign are checked independently; intermediates are supplied separately via -untrusted",
+            "trust_anchor_policy": "issuer-roots bundle is SHA-256 pinned and restricted to self-issued CA certificates with critical BasicConstraints and keyCertSign; optional responder certificates/intermediates are supplied separately via -verify_other",
+            "verification": "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, -x509_strict, and -auth_level 2; Python verifies exact target CertID, status, and freshness",
         }
         self.timestamp = {
             "verified": True, "signature_sha256": hashlib.sha256(b"signature").hexdigest(),
@@ -339,6 +340,32 @@ class TsaValidationReportTests(unittest.TestCase):
         bad = dict(self.ocsp, certificate_sha256=hashlib.sha256(b"other cert").hexdigest())
         with self.assertRaisesRegex(ValueError, "different TSA certificates"):
             self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash)
+    def test_preserves_ocsp_chain_provenance_in_report(self):
+        report = self.build_report_with_timestamp(
+            self.gen_time, self.crl, self.crl_file_hash, self.ocsp, self.ocsp_file_hash
+        )
+        assessment = report["current_ocsp_assessment"]
+        self.assertIsNone(assessment["issuer_intermediates_sha256"])
+        self.assertEqual(assessment["trust_anchor_policy"], self.ocsp["trust_anchor_policy"])
+        self.assertEqual(assessment["verification"], self.ocsp["verification"])
+
+    def test_rejects_ocsp_result_missing_chain_provenance(self):
+        for field in ("trust_anchor_policy", "verification"):
+            with self.subTest(field=field):
+                bad = dict(self.ocsp)
+                bad.pop(field)
+                with self.assertRaisesRegex(ValueError, "OCSP"):
+                    self.build_report_with_timestamp(
+                        self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash
+                    )
+
+    def test_rejects_malformed_ocsp_intermediates_digest(self):
+        bad = dict(self.ocsp, issuer_intermediates_sha256="not-a-sha256")
+        with self.assertRaisesRegex(ValueError, "issuer_intermediates_sha256"):
+            self.build_report_with_timestamp(
+                self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash
+            )
+
     def test_rejects_ocsp_unknown_scope_or_nonce_claim(self):
         bad = dict(self.ocsp, scope="historical verified")
         with self.assertRaisesRegex(ValueError, "scope"):
