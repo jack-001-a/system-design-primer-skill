@@ -92,7 +92,7 @@ class TsaValidationReportTests(unittest.TestCase):
             produced_at="2026-11-19T11:59:00Z",
             this_update="2026-11-19T11:58:00Z",
             responder_chain_validation_scope=(
-                "OpenSSL responder PKIX path validation at both floor and ceiling Unix-second bounds of historical validation_time"
+                "OpenSSL responder PKIX path validation at the exact floor/ceiling Unix-second bound(s) of historical validation_time"
             ),
             responder_chain_validation_times=[1795089600],
         )
