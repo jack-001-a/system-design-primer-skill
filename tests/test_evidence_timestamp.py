@@ -419,7 +419,7 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
 
     def _make_chain(self, *, intermediate_path_length=1, constraints=None, leaf_dns="tsa.example.test",
                     add_subordinate=False, intermediate_not_after=None,
-                    intermediate_not_before=None):
+                    intermediate_not_before=None, leaf_key_size=2048):
         x509 = self.x509
         name = lambda value: x509.Name([x509.NameAttribute(self.NameOID.COMMON_NAME, value)])
         root_key = self.rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -441,7 +441,7 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
                 subordinate_key.public_key(), issuer_key, serial, ca=True, path_length=0)
             chain.append(subordinate)
             issuer_name, issuer_key, serial = subordinate.subject, subordinate_key, serial + 1
-        leaf_key = self.rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        leaf_key = self.rsa.generate_private_key(public_exponent=65537, key_size=leaf_key_size)
         leaf = self._issue(name("TSA Signer"), issuer_name, leaf_key.public_key(),
             issuer_key, serial, ca=False,
             extensions=[(x509.SubjectAlternativeName([x509.DNSName(leaf_dns)]), False)])
@@ -456,14 +456,22 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
         return subprocess.run([
             "openssl", "verify", "-verbose", "-CAfile", str(self.root / "root.pem"),
             "-no-CApath", "-no-CAstore",
-            "-untrusted", str(self.root / "chain.pem"), "-purpose", "timestampsign",
-            "-attime", str(int(when.timestamp())), str(self.root / "leaf.pem")
+            "-untrusted", str(self.root / "chain.pem"), "-auth_level", "2",
+            "-purpose", "timestampsign", "-attime", str(int(when.timestamp())),
+            str(self.root / "leaf.pem")
         ], capture_output=True, text=True, check=False)
 
     def _assert_verify_error(self, result, expected_code):
         diagnostic = result.stdout + "\n" + result.stderr
         self.assertNotEqual(result.returncode, 0, diagnostic)
         self.assertRegex(diagnostic, rf"\berror\s+{expected_code}\b", diagnostic)
+
+    def test_openssl_rejects_undersized_tsa_signer_key_at_auth_level_two(self):
+        self._make_chain(leaf_key_size=1024)
+        result = self._verify()
+        diagnostic = result.stdout + "\\n" + result.stderr
+        self.assertNotEqual(result.returncode, 0, diagnostic)
+        self.assertRegex(diagnostic.lower(), r"key (too small|too weak)")
 
     def test_openssl_rejects_path_length_constraint_violation(self):
         self._make_chain(intermediate_path_length=0, add_subordinate=True)
