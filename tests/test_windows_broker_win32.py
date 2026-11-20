@@ -411,6 +411,76 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         with self.assertRaises(win32.OverlappedLifecycleError):
             connection.mark_connected()
 
+    def test_pipe_close_is_serialized_against_reconnect_and_registration(self):
+        entered_close = threading.Event()
+        release_close = threading.Event()
+        reconnect_started = threading.Event()
+        register_started = threading.Event()
+        reconnect_errors = []
+        register_errors = []
+
+        fake = FakeKernel32()
+        def blocking_close(handle):
+            self.assertEqual(handle, 10)
+            entered_close.set()
+            if not release_close.wait(2):
+                raise AssertionError("pipe close was not released")
+            return 1
+
+        fake.CloseHandle = blocking_close
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        connection = win32.NamedPipeConnection(10)
+        connection._state = connection.DISCONNECTED
+        operation, _ = self.make_operation()
+
+        close_result = []
+        closer = threading.Thread(
+            target=lambda: close_result.append(win32.close_named_pipe(bindings, connection))
+        )
+        def reconnect():
+            reconnect_started.set()
+            try:
+                connection.mark_connected()
+            except win32.OverlappedLifecycleError as exc:
+                reconnect_errors.append(str(exc))
+
+        def register():
+            register_started.set()
+            try:
+                connection.register_operation(operation)
+            except win32.OverlappedLifecycleError as exc:
+                register_errors.append(str(exc))
+
+        closer.start()
+        self.assertTrue(entered_close.wait(2))
+        reconnecter = threading.Thread(target=reconnect)
+        registrar = threading.Thread(target=register)
+        reconnecter.start()
+        registrar.start()
+        self.assertTrue(reconnect_started.wait(2))
+        self.assertTrue(register_started.wait(2))
+        self.assertFalse(reconnect_errors)
+        self.assertFalse(register_errors)
+        release_close.set()
+
+        closer.join(2)
+        reconnecter.join(2)
+        registrar.join(2)
+        self.assertFalse(closer.is_alive())
+        self.assertFalse(reconnecter.is_alive())
+        self.assertFalse(registrar.is_alive())
+        self.assertEqual(close_result, [(True, None)])
+        self.assertTrue(reconnect_errors)
+        self.assertTrue(register_errors)
+        self.assertEqual(connection.state, connection.CLOSED)
+        self.assertIsNone(connection.file_handle)
+        self.assertNotIn(operation, connection._operations)
+
     def test_pipe_handle_close_failure_preserves_disconnected_handle(self):
         fake = FakeKernel32()
         fake.CloseHandle = lambda handle: 0
