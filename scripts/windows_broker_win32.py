@@ -632,8 +632,8 @@ class OverlappedOperation:
         """
         if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool):
             raise TypeError("timeout_ms must be an integer")
-        if timeout_ms < 0 or timeout_ms > MAX_DWORD:
-            raise ValueError("timeout_ms must fit an unsigned Win32 DWORD")
+        if timeout_ms < 0 or timeout_ms >= INFINITE:
+            raise ValueError("timeout_ms must be finite and fit an unsigned Win32 DWORD")
         with self._lock:
             if self._state != self.PENDING:
                 raise OverlappedLifecycleError(

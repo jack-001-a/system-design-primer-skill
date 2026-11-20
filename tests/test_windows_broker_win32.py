@@ -139,6 +139,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
             fake.DisconnectNamedPipe,
         )
         operation, _ = self.make_operation()
+        operation.buffer = ctypes.create_string_buffer(b"payload")
         connection = win32.NamedPipeConnection(10)
         connection.register_operation(operation)
         start_results = []
@@ -148,7 +149,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         def start_io():
             try:
                 start_results.append(connection.start_operation(
-                    bindings, operation, buffer=operation.buffer, length=len(operation.buffer),
+                    bindings, operation, buffer=operation.buffer, length=ctypes.sizeof(operation.buffer),
                     get_last_error=lambda: win32.ERROR_IO_PENDING,
                 ))
             except Exception as exc:
@@ -812,6 +813,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         connection = win32.NamedPipeConnection(10)
         connection._state = connection.DISCONNECTED
         operation, _ = self.make_operation()
+        reconnect_operation, _ = self.make_operation()
 
         close_result = []
         closer = threading.Thread(
@@ -820,7 +822,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         def reconnect():
             reconnect_started.set()
             try:
-                connection.mark_connected()
+                connection.start_connect(bindings, reconnect_operation)
             except win32.OverlappedLifecycleError as exc:
                 reconnect_errors.append(str(exc))
 
@@ -855,6 +857,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(connection.state, connection.CLOSED)
         self.assertIsNone(connection.file_handle)
         self.assertNotIn(operation, connection._operations)
+        reconnect_operation.close()
 
     def test_pipe_close_failure_serializes_reconnect_after_state_preservation(self):
         entered_close = threading.Event()
@@ -882,6 +885,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         )
         connection = win32.NamedPipeConnection(10)
         connection._state = connection.DISCONNECTED
+        reconnect_operation, _ = self.make_operation()
 
         def close_pipe():
             try:
@@ -894,7 +898,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         def reconnect():
             reconnect_started.set()
             try:
-                connection.mark_connected()
+                connection.start_connect(bindings, reconnect_operation)
             except win32.OverlappedLifecycleError as exc:
                 reconnect_errors.append(str(exc))
             finally:
@@ -921,6 +925,8 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertTrue(reconnect_finished.is_set())
         self.assertEqual(connection.state, connection.CONNECTED)
         self.assertEqual(connection.file_handle, 10)
+        reconnect_operation.close()
+        connection.unregister_operation(reconnect_operation)
 
     def test_pipe_handle_close_failure_preserves_disconnected_handle(self):
         fake = FakeKernel32()
@@ -1378,7 +1384,10 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
             ),
             (True, 9, None),
         )
-        self.assertEqual(calls, [(10, 123, 0)])
+        self.assertEqual(
+            [(handle, timeout.value, alertable.value) for handle, timeout, alertable in calls],
+            [(10, 123, 0)],
+        )
 
     def test_get_overlapped_result_ex_wrapper_captures_timeout_error(self):
         fake = FakeKernel32()
