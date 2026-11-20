@@ -271,18 +271,18 @@ class EvidenceTimestampTests(unittest.TestCase):
             "scripts.evidence_timestamp.subprocess.run", side_effect=fake_run
         ):
             result = inspect_tsa_signer_certificate(
-                self.response, (not_before + timedelta(microseconds=1)).isoformat()
+                self.response, (not_before + timedelta(microseconds=1)).isoformat().replace("+00:00", "Z")
             )
             end_result = inspect_tsa_signer_certificate(
-                self.response, (not_after - timedelta(microseconds=1)).isoformat()
+                self.response, (not_after - timedelta(microseconds=1)).isoformat().replace("+00:00", "Z")
             )
             with self.assertRaisesRegex(ValueError, "not valid at RFC 3161 genTime"):
                 inspect_tsa_signer_certificate(
-                    self.response, (not_before - timedelta(microseconds=1)).isoformat()
+                    self.response, (not_before - timedelta(microseconds=1)).isoformat().replace("+00:00", "Z")
                 )
             with self.assertRaisesRegex(ValueError, "not valid at RFC 3161 genTime"):
                 inspect_tsa_signer_certificate(
-                    self.response, (not_after + timedelta(microseconds=1)).isoformat()
+                    self.response, (not_after + timedelta(microseconds=1)).isoformat().replace("+00:00", "Z")
                 )
         self.assertEqual(result["tsa_signer_certificate_sha256"], cert.fingerprint(hashes.SHA256()).hex())
         self.assertTrue(end_result["tsa_signer_valid_at_gen_time"])
