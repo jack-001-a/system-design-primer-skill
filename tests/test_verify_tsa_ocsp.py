@@ -39,6 +39,23 @@ class TsaOcspTests(unittest.TestCase):
                 key_cert_sign=True, crl_sign=True, encipher_only=False, decipher_only=False), critical=True)
             .sign(self.root_key, hashes.SHA256()))
         self.roots.write_bytes(self.root_certificate.public_bytes(Encoding.PEM))
+        target_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        target_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "TSA target certificate")])
+        self.target_certificate = (x509.CertificateBuilder().subject_name(target_name)
+            .issuer_name(self.root_name).public_key(target_key.public_key())
+            .serial_number(200).not_valid_before(self.now - timedelta(days=1))
+            .not_valid_after(self.now + timedelta(days=30))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .sign(self.root_key, hashes.SHA256()))
+        self.cert.write_bytes(self.target_certificate.public_bytes(Encoding.PEM))
+        self.issuer.write_bytes(self.root_certificate.public_bytes(Encoding.PEM))
+        initial_response = (ocsp.OCSPResponseBuilder()
+            .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
+                ocsp.OCSPCertStatus.GOOD, self.now - timedelta(minutes=2),
+                self.now + timedelta(minutes=5), None, None)
+            .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
+            .sign(self.root_key, hashes.SHA256()))
+        self.response.write_bytes(initial_response.public_bytes(Encoding.DER))
         self.output = """Response verify OK
 Cert Status: good
 Produced At: Nov 19 11:59:00 2026 GMT
@@ -48,6 +65,15 @@ Next Update: Nov 19 12:05:00 2026 GMT
     def tearDown(self): self.temp.cleanup()
     def pin(self): return hashlib.sha256(self.roots.read_bytes()).hexdigest()
     def run_valid(self, output=None):
+        if output is not None and "Cert Status: revoked" in output:
+            revoked_response = (ocsp.OCSPResponseBuilder()
+                .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
+                    ocsp.OCSPCertStatus.REVOKED, self.now - timedelta(minutes=2),
+                    self.now + timedelta(minutes=5), self.now - timedelta(hours=1),
+                    x509.ReasonFlags.key_compromise)
+                .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
+                .sign(self.root_key, hashes.SHA256()))
+            self.response.write_bytes(revoked_response.public_bytes(Encoding.DER))
         with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
             request_result = Mock(returncode=0, stdout="", stderr="")
             response_result = Mock(returncode=0, stdout=self.output if output is None else output, stderr="")
@@ -204,14 +230,19 @@ Next Update: Nov 19 12:05:00 2026 GMT
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "OCSP test responder")])
         now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
-        cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name)
+        cert = (x509.CertificateBuilder().subject_name(name).issuer_name(self.root_name)
                 .public_key(key.public_key()).serial_number(x509.random_serial_number())
                 .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=30))
-                .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
-                .sign(key, hashes.SHA256()))
+                .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+                .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.OCSP_SIGNING]), critical=False)
+                .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                    key_encipherment=False, data_encipherment=False, key_agreement=False,
+                    key_cert_sign=False, crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
+                .sign(self.root_key, hashes.SHA256()))
         response = (ocsp.OCSPResponseBuilder()
-            .add_response(cert, cert, hashes.SHA1(), ocsp.OCSPCertStatus.GOOD,
-                          now - timedelta(minutes=1), now + timedelta(minutes=5), None, None)
+            .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
+                          ocsp.OCSPCertStatus.GOOD, now - timedelta(minutes=1),
+                          now + timedelta(minutes=5), None, None)
             .responder_id(responder_encoding, cert).sign(key, hashes.SHA256()))
         self.responder.write_bytes(cert.public_bytes(Encoding.PEM))
         self.response.write_bytes(response.public_bytes(Encoding.DER))
