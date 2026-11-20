@@ -242,3 +242,104 @@ class EvidenceTimestampTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
+    """Exercise real OpenSSL path validation for the timestamp-signing purpose."""
+
+    @classmethod
+    def setUpClass(cls):
+        import shutil
+        if not shutil.which("openssl"):
+            raise unittest.SkipTest("OpenSSL CLI is required for path-constraint integration tests")
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        from datetime import timedelta
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
+        self.x509, self.hashes, self.serialization = x509, hashes, serialization
+        self.rsa, self.NameOID, self.EKU = rsa, NameOID, ExtendedKeyUsageOID
+        self.now = datetime(2026, 11, 19, 12, 0, 0, tzinfo=timezone.utc)
+        self.timedelta = timedelta
+
+    def tearDown(self):
+        self.temp.cleanup()
+
+    def _issue(self, subject, issuer, public_key, issuer_key, serial, *, ca,
+               path_length=None, extensions=()):
+        x509 = self.x509
+        builder = (x509.CertificateBuilder().subject_name(subject).issuer_name(issuer)
+            .public_key(public_key).serial_number(serial)
+            .not_valid_before(self.now - self.timedelta(days=30))
+            .not_valid_after(self.now + self.timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=ca, path_length=path_length), critical=True))
+        if ca:
+            builder = builder.add_extension(x509.KeyUsage(
+                digital_signature=True, content_commitment=False, key_encipherment=False,
+                data_encipherment=False, key_agreement=False, key_cert_sign=True,
+                crl_sign=True, encipher_only=None, decipher_only=None), critical=True)
+        else:
+            builder = (builder.add_extension(x509.ExtendedKeyUsage([self.EKU.TIME_STAMPING]), critical=True)
+                .add_extension(x509.KeyUsage(
+                    digital_signature=True, content_commitment=False, key_encipherment=False,
+                    data_encipherment=False, key_agreement=False, key_cert_sign=False,
+                    crl_sign=False, encipher_only=None, decipher_only=None), critical=True))
+        for extension, critical in extensions:
+            builder = builder.add_extension(extension, critical)
+        return builder.sign(issuer_key, self.hashes.SHA256())
+
+    def _make_chain(self, *, intermediate_path_length=1, constraints=None, leaf_dns="tsa.example.test",
+                    add_subordinate=False):
+        x509 = self.x509
+        name = lambda value: x509.Name([x509.NameAttribute(self.NameOID.COMMON_NAME, value)])
+        root_key = self.rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        root_name = name("Integration Root")
+        root = self._issue(root_name, root_name, root_key.public_key(), root_key, 1, ca=True, path_length=3)
+        intermediate_key = self.rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        extra = []
+        if constraints is not None:
+            extra.append((x509.NameConstraints(permitted_subtrees=constraints, excluded_subtrees=None), True))
+        intermediate = self._issue(name("Policy Intermediate"), root_name,
+            intermediate_key.public_key(), root_key, 2, ca=True,
+            path_length=intermediate_path_length, extensions=extra)
+        chain = [intermediate]
+        issuer_name, issuer_key, serial = intermediate.subject, intermediate_key, 3
+        if add_subordinate:
+            subordinate_key = self.rsa.generate_private_key(public_exponent=65537, key_size=2048)
+            subordinate = self._issue(name("Subordinate CA"), issuer_name,
+                subordinate_key.public_key(), issuer_key, serial, ca=True, path_length=0)
+            chain.append(subordinate)
+            issuer_name, issuer_key, serial = subordinate.subject, subordinate_key, serial + 1
+        leaf_key = self.rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        leaf = self._issue(name("TSA Signer"), issuer_name, leaf_key.public_key(),
+            issuer_key, serial, ca=False,
+            extensions=[(x509.SubjectAlternativeName([x509.DNSName(leaf_dns)]), False)])
+        (self.root / "root.pem").write_bytes(root.public_bytes(self.serialization.Encoding.PEM))
+        (self.root / "chain.pem").write_bytes(b"".join(
+            cert.public_bytes(self.serialization.Encoding.PEM) for cert in chain))
+        (self.root / "leaf.pem").write_bytes(leaf.public_bytes(self.serialization.Encoding.PEM))
+
+    def _verify(self):
+        import subprocess
+        return subprocess.run([
+            "openssl", "verify", "-CAfile", str(self.root / "root.pem"),
+            "-untrusted", str(self.root / "chain.pem"), "-purpose", "timestampsign",
+            "-attime", str(int(self.now.timestamp())), str(self.root / "leaf.pem")
+        ], capture_output=True, text=True, check=False)
+
+    def test_openssl_rejects_path_length_constraint_violation(self):
+        self._make_chain(intermediate_path_length=0, add_subordinate=True)
+        result = self._verify()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stderr.lower(), r"path length|pathlen")
+
+    def test_openssl_rejects_name_constraints_violation(self):
+        self._make_chain(constraints=[self.x509.DNSName(".example.test")],
+                         leaf_dns="tsa.outside.invalid")
+        result = self._verify()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stderr.lower(), r"name constraint|permitted subtree")
+

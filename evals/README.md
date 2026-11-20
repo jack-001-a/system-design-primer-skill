@@ -968,3 +968,8 @@ RFC 3161 `genTime` may include fractional seconds, while the OpenSSL historical 
 ### CRL issuer certificate authorization time
 
 The direct-CRL verifier now requires the CRL issuer certificate to carry critical `basicConstraints CA=true` and explicit `keyUsage` with both `keyCertSign` and `cRLSign`. Its validity interval must include the CRL's signed `thisUpdate` instant, with inclusive `notBefore` and `notAfter` boundaries. This is distinct from the target certificate's revocation-status evaluation at RFC 3161 `genTime`: the issuer must have been authorized when it issued the CRL, while the CRL must separately cover the historical target time. The result, unified report, and detached Attestation preserve and validate the issuer validity evidence and its explicit time-basis declaration. OpenSSL still validates the target certificate path at the historical evaluation time; this preflight does not claim an independent issuer-chain validation at the CRL issuance instant or broaden supported direct-CRL coverage.
+
+### TSA certificate path constraints
+
+The RFC 3161 verifier delegates certification-path processing to OpenSSL with the timestamp-signing purpose and historical genTime bounds. OpenSSL path validation is responsible for CA pathLenConstraint and RFC 5280 Name Constraints; these are not reimplemented by the Python verifier. The test suite includes real-CLI integration cases that construct timestamp-signing chains and require OpenSSL to reject a subordinate-CA path-length violation and a TSA signer DNS SAN outside the permitted Name Constraints subtree. These tests establish enforcement by the installed OpenSSL build, rather than merely asserting that command-line flags were assembled.
+
