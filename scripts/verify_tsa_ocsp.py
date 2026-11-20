@@ -116,35 +116,42 @@ def _validate_generalized_time_value(value: bytes) -> None:
 
 
 def _validate_generalized_time_tree(data: bytes) -> None:
-    """Validate direct GeneralizedTime fields and known OCSP time-bearing extensions."""
+    """Validate GeneralizedTime nodes while preserving their constructed-node context."""
     archive_cutoff_oid = bytes.fromhex("2b0601050507300106")  # id-pkix-ocsp-archive-cutoff
     crl_id_oid = bytes.fromhex("2b0601050507300103")  # id-pkix-ocsp-crl
-    for tag, value in _der_children(data):
+
+    def visit(tag: int, value: bytes) -> None:
         if tag == 0x18:
             _validate_generalized_time_value(value)
-        elif tag & 0x20:
-            children = list(_der_children(value))
-            if tag == 0x30 and len(children) in (2, 3):
-                # Extension ::= SEQUENCE { extnID, critical DEFAULT FALSE, extnValue }
-                if (children[0][0] == 0x06 and children[-1][0] == 0x04
-                        and (len(children) == 2 or children[1][0] == 0x01)):
-                    extension_oid = children[0][1]
-                    extension_value = children[-1][1]
-                    if extension_oid == archive_cutoff_oid:
-                        generalized_time = _require_single_der_value(
-                            extension_value, 0x18, "OCSP archiveCutoff"
-                        )
-                        _validate_generalized_time_value(generalized_time)
-                    elif extension_oid == crl_id_oid:
-                        crl_id = _require_single_der_value(
-                            extension_value, 0x30, "OCSP CrlID"
-                        )
-                        _validate_generalized_time_tree(crl_id)
-            for child_tag, child_value in children:
-                if child_tag == 0x18:
-                    _validate_generalized_time_value(child_value)
-                elif child_tag & 0x20:
-                    _validate_generalized_time_tree(child_value)
+            return
+        if not tag & 0x20:
+            return
+
+        children = list(_der_children(value))
+        if tag == 0x30 and len(children) in (2, 3):
+            # Extension ::= SEQUENCE { extnID, critical DEFAULT FALSE, extnValue }
+            if (children[0][0] == 0x06 and children[-1][0] == 0x04
+                    and (len(children) == 2 or children[1][0] == 0x01)):
+                extension_oid = children[0][1]
+                extension_value = children[-1][1]
+                if extension_oid == archive_cutoff_oid:
+                    generalized_time = _require_single_der_value(
+                        extension_value, 0x18, "OCSP archiveCutoff"
+                    )
+                    _validate_generalized_time_value(generalized_time)
+                elif extension_oid == crl_id_oid:
+                    crl_id = _require_single_der_value(
+                        extension_value, 0x30, "OCSP CrlID"
+                    )
+                    # The OCTET STRING contains a second DER value, so restore
+                    # its SEQUENCE tag before walking its explicitly tagged time.
+                    visit(0x30, crl_id)
+
+        for child_tag, child_value in children:
+            visit(child_tag, child_value)
+
+    for child_tag, child_value in _der_children(data):
+        visit(child_tag, child_value)
 
 
 def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
@@ -153,15 +160,27 @@ def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
         response_der, 0x30, "OCSPResponse"
     )
     response_fields = list(_der_children(response_content))
-    if len(response_fields) < 2 or response_fields[0][0] != 0x0A:
+    if not response_fields or response_fields[0][0] != 0x0A:
         raise ValueError("OCSPResponse has an invalid responseStatus envelope")
-    response_bytes_fields = [field for field in response_fields[1:] if field[0] == 0xA0]
-    if not response_bytes_fields:
+
+    status_bytes = response_fields[0][1]
+    if len(status_bytes) != 1 or status_bytes[0] not in (0, 1, 2, 3, 5, 6):
+        raise ValueError("OCSPResponse has an invalid responseStatus value")
+    response_status = status_bytes[0]
+
+    if len(response_fields) > 2 or (
+        len(response_fields) == 2 and response_fields[1][0] != 0xA0
+    ):
+        raise ValueError("OCSPResponse has unexpected responseStatus envelope fields")
+    if response_status != 0:
+        if len(response_fields) != 1:
+            raise ValueError("OCSP error response must not contain responseBytes")
         return
-    if len(response_bytes_fields) != 1:
-        raise ValueError("OCSPResponse contains duplicate responseBytes")
+    if len(response_fields) != 2:
+        raise ValueError("successful OCSPResponse is missing responseBytes")
+
     response_bytes_content = _require_single_der_value(
-        response_bytes_fields[0][1], 0x30, "OCSP responseBytes"
+        response_fields[1][1], 0x30, "OCSP responseBytes"
     )
     fields = list(_der_children(response_bytes_content))
     if len(fields) != 2 or fields[0][0] != 0x06 or fields[1][0] != 0x04:
@@ -172,6 +191,15 @@ def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
     basic_response = _require_single_der_value(
         fields[1][1], 0x30, "BasicOCSPResponse"
     )
+    basic_fields = list(_der_children(basic_response))
+    if not (
+        len(basic_fields) in (3, 4)
+        and basic_fields[0][0] == 0x30
+        and basic_fields[1][0] == 0x30
+        and basic_fields[2][0] == 0x03
+        and (len(basic_fields) == 3 or basic_fields[3][0] == 0xA0)
+    ):
+        raise ValueError("BasicOCSPResponse has an invalid structure")
     _validate_generalized_time_tree(basic_response)
 
 
