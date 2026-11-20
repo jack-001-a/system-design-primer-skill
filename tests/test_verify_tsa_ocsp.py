@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509.oid import NameOID
 from cryptography.x509 import ocsp
 from scripts.verify_tsa_ocsp import bind_responder_certificate
-from scripts.verify_tsa_ocsp import verify_ocsp_response, validate_trust_anchor_bundle
+from scripts.verify_tsa_ocsp import verify_ocsp_response, validate_trust_anchor_bundle, verification_time_bounds
 
 class TsaOcspTests(unittest.TestCase):
     def setUp(self):
@@ -335,19 +335,36 @@ Next Update: Nov 19 12:05:00 2026 GMT
             verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,"0"*64,now=self.now)
     def test_historical_mode_uses_target_time_for_responder_chain_and_status_window(self):
         target = self.now + timedelta(minutes=1)
-        result, _, command = self.run_historical(target)
+        result, _, commands = self.run_historical(target)
         self.assertTrue(result["verified"])
         self.assertEqual(result["scope"], "historical OCSP status validation at the supplied target time")
         self.assertEqual(result["historical_at_time"], target.isoformat().replace("+00:00", "Z"))
-        self.assertIn("-attime", command)
-        self.assertIn(str(int(target.timestamp())), command)
+        self.assertEqual(result["responder_chain_validation_times"], list(verification_time_bounds(target)))
+        self.assertEqual(len(commands), 1)
+        self.assertIn("-attime", commands[0])
+        self.assertIn(str(verification_time_bounds(target)[0]), commands[0])
+
+    def test_fractional_historical_time_checks_both_responder_chain_bounds(self):
+        target = self.now + timedelta(microseconds=500000)
+        result, _, commands = self.run_historical(target)
+        expected = list(verification_time_bounds(target))
+        self.assertEqual(len(expected), 2)
+        self.assertEqual(result["responder_chain_validation_times"], expected)
+        self.assertEqual(len(commands), 2)
+        for command, instant in zip(commands, expected):
+            self.assertEqual(command[command.index("-attime") + 1], str(instant))
 
     def run_historical(self, target):
+        bounds = verification_time_bounds(target)
+        response_results = [
+            Mock(returncode=0, stdout=self.output, stderr="") for _ in bounds
+        ]
         with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
-            run.side_effect = [Mock(returncode=0, stdout="", stderr=""), Mock(returncode=0, stdout=self.output, stderr="")]
+            run.side_effect = [Mock(returncode=0, stdout="", stderr=""), *response_results]
             result = verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,self.pin(),
                                           at_time=target)
-            return result, run.call_args_list[0].args[0], run.call_args_list[1].args[0]
+            commands = [call.args[0] for call in run.call_args_list[1:]]
+            return result, run.call_args_list[0].args[0], commands
 
     def test_historical_mode_rejects_target_outside_signed_interval(self):
         target = self.now + timedelta(minutes=11)
