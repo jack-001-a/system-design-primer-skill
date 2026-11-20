@@ -292,6 +292,22 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             responder_digest = require_digest(responder_digest, "OCSP responder_certificate_sha256")
         ocsp_digest = require_digest(ocsp_result.get("response_sha256"), "OCSP response_sha256")
         ocsp_roots_digest = require_digest(ocsp_result.get("issuer_roots_sha256"), "OCSP issuer_roots_sha256")
+        ocsp_intermediates_digest = ocsp_result.get("issuer_intermediates_sha256")
+        if ocsp_intermediates_digest is not None:
+            ocsp_intermediates_digest = require_digest(
+                ocsp_intermediates_digest, "OCSP issuer_intermediates_sha256"
+            )
+        if ocsp_result.get("trust_anchor_policy") != (
+            "issuer-roots bundle is SHA-256 pinned and restricted to self-issued CA certificates "
+            "with critical BasicConstraints and keyCertSign; optional responder "
+            "certificates/intermediates are supplied separately via -verify_other"
+        ):
+            raise ValueError("OCSP trust-anchor/intermediate separation policy is missing or unsupported")
+        if ocsp_result.get("verification") != (
+            "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, "
+            "-x509_strict, and -auth_level 2; Python verifies exact target CertID, status, and freshness"
+        ):
+            raise ValueError("OCSP verification method provenance is missing or unsupported")
         ocsp_section = {
             "provided": True,
             "assessment": status,
@@ -305,6 +321,9 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "nonce_checked": False,
             "response_sha256": ocsp_digest,
             "issuer_roots_sha256": ocsp_roots_digest,
+            "issuer_intermediates_sha256": ocsp_intermediates_digest,
+            "trust_anchor_policy": ocsp_result["trust_anchor_policy"],
+            "verification": ocsp_result["verification"],
             "responder_certificate_sha256": responder_digest,
             "result_file_sha256": ocsp_result_sha256,
         }
