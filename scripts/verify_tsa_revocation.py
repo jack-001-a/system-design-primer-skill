@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -565,7 +566,7 @@ def validate_direct_crl_scope(
     return hashlib.sha256(signer.public_bytes(serialization.Encoding.DER)).hexdigest(), issuer_validity
 
 
-def verify_crl_status(
+def _verify_crl_status_with_snapshot(
     certificate: Path,
     issuer_roots: Path,
     crl: Path,
@@ -651,6 +652,26 @@ def verify_crl_status(
         "revocation_entry": entry_assessment,
         "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
     }
+
+
+def verify_crl_status(
+    certificate: Path,
+    issuer_roots: Path,
+    crl: Path,
+    at_time: str,
+    expected_roots_sha256: str,
+    intermediates: Path | None = None,
+    expected_crl_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Verify one immutable CRL snapshot for both preflight and OpenSSL."""
+    crl_bytes = crl.read_bytes()
+    with tempfile.TemporaryDirectory(prefix="tsa-crl-") as directory:
+        snapshot = Path(directory) / "input.crl"
+        snapshot.write_bytes(crl_bytes)
+        return _verify_crl_status_with_snapshot(
+            certificate, issuer_roots, snapshot, at_time, expected_roots_sha256,
+            intermediates=intermediates, expected_crl_sha256=expected_crl_sha256,
+        )
 
 
 def main() -> int:
