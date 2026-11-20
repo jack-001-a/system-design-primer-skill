@@ -119,69 +119,90 @@ def _read_der_tlv(data: bytes, offset: int) -> tuple[int, int, int, int]:
 
 
 
+def _validate_crl_time_der(tag: int, encoded: bytes, field: str) -> None:
+    """Require the RFC 5280 UTC time syntax for CRL Time values."""
+    if tag == 0x17:
+        valid = re.fullmatch(rb"[0-9]{12}Z", encoded) is not None
+    elif tag == 0x18:
+        valid = re.fullmatch(rb"[0-9]{14}Z", encoded) is not None
+    else:
+        valid = False
+    if not valid:
+        raise ValueError(
+            f"{field} must use UTC time with seconds and a trailing Z; GeneralizedTime must not use fractional seconds"
+        )
+
+
 def validate_invalidity_date_der_encoding(raw: bytes, tbs_start: int, tbs_end: int) -> None:
-    """Require CRL invalidityDate values to use RFC 5280's canonical GeneralizedTime."""
+    """Validate original DER time encodings in CRL fields and entry extensions."""
+    def read_child(offset: int, parent_end: int) -> tuple[int, int, int, int]:
+        tag, value_start, value_end, next_offset = _read_der_tlv(raw, offset)
+        if next_offset > parent_end:
+            raise ValueError("DER child exceeds its enclosing CRL structure")
+        return tag, value_start, value_end, next_offset
+
     cursor = tbs_start
-    tag, _, _, next_cursor = _read_der_tlv(raw, cursor)
+    tag, _, _, next_cursor = read_child(cursor, tbs_end)
     if tag == 0x02:  # optional v2 version
         cursor = next_cursor
-    # signature, issuer, thisUpdate
-    for expected in (0x30, 0x30):
-        tag, _, _, cursor = _read_der_tlv(raw, cursor)
+    for expected in (0x30, 0x30):  # signature and issuer
+        tag, _, _, cursor = read_child(cursor, tbs_end)
         if tag != expected:
-            raise ValueError("malformed TBSCertList while locating invalidityDate")
-    tag, _, _, cursor = _read_der_tlv(raw, cursor)
-    if tag not in (0x17, 0x18):
-        raise ValueError("malformed TBSCertList thisUpdate")
-    # nextUpdate is optional.
+            raise ValueError("malformed TBSCertList while locating CRL times")
+    time_tag, time_start, time_end, cursor = read_child(cursor, tbs_end)
+    _validate_crl_time_der(time_tag, raw[time_start:time_end], "thisUpdate")
+
+    # nextUpdate is optional in ASN.1, though RFC 5280 profile issuers must include it.
     if cursor < tbs_end:
-        tag, _, _, next_cursor = _read_der_tlv(raw, cursor)
+        tag, value_start, value_end, next_cursor = read_child(cursor, tbs_end)
         if tag in (0x17, 0x18):
+            _validate_crl_time_der(tag, raw[value_start:value_end], "nextUpdate")
             cursor = next_cursor
+
     # revokedCertificates is optional and precedes [0] EXPLICIT crlExtensions.
     if cursor >= tbs_end:
         return
-    tag, entries_start, entries_end, next_cursor = _read_der_tlv(raw, cursor)
+    tag, entries_start, entries_end, entries_next = read_child(cursor, tbs_end)
     if tag != 0x30:
         return
     entry_cursor = entries_start
     while entry_cursor < entries_end:
-        entry_tag, entry_start, entry_end, entry_next = _read_der_tlv(raw, entry_cursor)
+        entry_tag, entry_start, entry_end, entry_next = read_child(entry_cursor, entries_end)
         if entry_tag != 0x30:
             raise ValueError("malformed revokedCertificates entry")
         field_cursor = entry_start
-        serial_tag, _, _, field_cursor = _read_der_tlv(raw, field_cursor)
-        date_tag, _, _, field_cursor = _read_der_tlv(raw, field_cursor)
-        if serial_tag != 0x02 or date_tag not in (0x17, 0x18):
-            raise ValueError("malformed CRL entry serial number or revocationDate")
+        serial_tag, _, _, field_cursor = read_child(field_cursor, entry_end)
+        date_tag, date_start, date_end, field_cursor = read_child(field_cursor, entry_end)
+        if serial_tag != 0x02:
+            raise ValueError("malformed CRL entry serial number")
+        _validate_crl_time_der(date_tag, raw[date_start:date_end], "revocationDate")
+
         if field_cursor < entry_end:
-            extensions_tag, extensions_start, extensions_end, _ = _read_der_tlv(raw, field_cursor)
-            if extensions_tag == 0x30:
-                extension_cursor = extensions_start
-                while extension_cursor < extensions_end:
-                    ext_tag, ext_start, ext_end, ext_next = _read_der_tlv(raw, extension_cursor)
-                    if ext_tag != 0x30:
-                        raise ValueError("malformed CRL entry extension")
-                    oid_tag, oid_start, oid_end, ext_field = _read_der_tlv(raw, ext_start)
-                    if oid_tag != 0x06:
-                        raise ValueError("malformed CRL entry extension OID")
-                    oid = raw[oid_start:oid_end]
-                    if ext_field < ext_end:
-                        maybe_tag, _, _, maybe_next = _read_der_tlv(raw, ext_field)
-                        if maybe_tag == 0x01:
-                            ext_field = maybe_next
-                    value_tag, value_start, value_end, _ = _read_der_tlv(raw, ext_field)
-                    if value_tag != 0x04 or value_end != ext_end:
-                        raise ValueError("malformed CRL entry extension value")
-                    if oid == b"\\x55\\x1d\\x18":
-                        time_tag, time_start, time_end, time_next = _read_der_tlv(raw, value_start)
-                        encoded_time = raw[time_start:time_end]
-                        if (time_tag != 0x18 or time_next != value_end
-                                or re.fullmatch(rb"[0-9]{14}Z", encoded_time) is None):
-                            raise ValueError(
-                                "invalidityDate must be GeneralizedTime in YYYYMMDDHHMMSSZ form without fractional seconds"
-                            )
-                    extension_cursor = ext_next
+            extensions_tag, extensions_start, extensions_end, extensions_next = read_child(field_cursor, entry_end)
+            if extensions_tag != 0x30 or extensions_next != entry_end:
+                raise ValueError("malformed CRL entry extensions")
+            extension_cursor = extensions_start
+            while extension_cursor < extensions_end:
+                ext_tag, ext_start, ext_end, ext_next = read_child(extension_cursor, extensions_end)
+                if ext_tag != 0x30:
+                    raise ValueError("malformed CRL entry extension")
+                oid_tag, oid_start, oid_end, ext_field = read_child(ext_start, ext_end)
+                if oid_tag != 0x06:
+                    raise ValueError("malformed CRL entry extension OID")
+                oid = raw[oid_start:oid_end]
+                if ext_field < ext_end:
+                    maybe_tag, _, _, maybe_next = read_child(ext_field, ext_end)
+                    if maybe_tag == 0x01:
+                        ext_field = maybe_next
+                value_tag, value_start, value_end, value_next = read_child(ext_field, ext_end)
+                if value_tag != 0x04 or value_next != ext_end:
+                    raise ValueError("malformed CRL entry extension value")
+                if oid == b"\x55\x1d\x18":
+                    time_tag, time_start, time_end, time_next = read_child(value_start, value_end)
+                    if time_next != value_end or time_tag != 0x18:
+                        raise ValueError("invalidityDate must be a single GeneralizedTime value")
+                    _validate_crl_time_der(time_tag, raw[time_start:time_end], "invalidityDate")
+                extension_cursor = ext_next
         entry_cursor = entry_next
 
 def validate_crl_der_profile(raw: bytes, crl: x509.CertificateRevocationList) -> None:
