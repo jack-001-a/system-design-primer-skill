@@ -4,8 +4,10 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -20,6 +22,35 @@ from cryptography.x509.oid import ExtendedKeyUsageOID, ExtensionOID
 ENVELOPE_FIELDS = {"schema_version", "algorithm", "key_id", "signed_at", "evidence_root", "signature"}
 ATTESTATION_FIELDS = {"schema_version", "algorithm", "key_id", "attested_at", "report_sha256", "verifier_bundle_sha256", "verifier_identity", "claims_sha256", "signature"}
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
+MAX_TIMESTAMP_INPUT_BYTES = 16 * 1024 * 1024
+
+
+def _read_stable_timestamp_input(source: Path) -> bytes:
+    """Read one regular evidence input and reject oversized or changing files."""
+    try:
+        with source.open("rb") as handle:
+            before = os.fstat(handle.fileno())
+            if not stat.S_ISREG(before.st_mode):
+                raise ValueError("timestamp evidence inputs must be regular files")
+            if before.st_size > MAX_TIMESTAMP_INPUT_BYTES:
+                raise ValueError("timestamp evidence input exceeds the 16 MiB limit")
+            data = handle.read(MAX_TIMESTAMP_INPUT_BYTES + 1)
+            after = os.fstat(handle.fileno())
+    except OSError:
+        raise
+    if len(data) > MAX_TIMESTAMP_INPUT_BYTES:
+        raise ValueError("timestamp evidence input exceeds the 16 MiB limit")
+    identity_before = (
+        before.st_dev, before.st_ino, before.st_size,
+        before.st_mtime_ns, before.st_ctime_ns,
+    )
+    identity_after = (
+        after.st_dev, after.st_ino, after.st_size,
+        after.st_mtime_ns, after.st_ctime_ns,
+    )
+    if identity_before != identity_after or len(data) != after.st_size:
+        raise ValueError("timestamp evidence input changed while being snapshotted: " + str(source))
+    return data
 
 
 def load_signature(path: Path) -> tuple[dict[str, Any], bytes]:
@@ -246,6 +277,34 @@ def parse_ordering(details: str) -> bool:
 
 
 def verify_timestamp(
+    signature_path: Path, request_path: Path, response_path: Path,
+    tsa_ca_path: Path, expected_ca_sha256: str, chain_path: Path | None = None,
+) -> dict[str, Any]:
+    """Verify one immutable snapshot of all RFC 3161 input files."""
+    if not HEX256.fullmatch(expected_ca_sha256):
+        raise ValueError("expected TSA CA SHA-256 must be 64 lowercase hex characters")
+    with tempfile.TemporaryDirectory(prefix="tsa-timestamp-inputs-") as directory:
+        snapshot_dir = Path(directory)
+
+        def snapshot(name: str, source: Path) -> Path:
+            destination = snapshot_dir / f"{name}{source.suffix}"
+            destination.write_bytes(_read_stable_timestamp_input(source))
+            return destination
+
+        ca_snapshot = snapshot("tsa-ca", tsa_ca_path)
+        if hashlib.sha256(ca_snapshot.read_bytes()).hexdigest() != expected_ca_sha256:
+            raise ValueError("TSA CA bundle SHA-256 pin mismatch")
+        signature_snapshot = snapshot("signature-envelope", signature_path)
+        request_snapshot = snapshot("timestamp-request", request_path)
+        response_snapshot = snapshot("timestamp-response", response_path)
+        chain_snapshot = snapshot("tsa-chain", chain_path) if chain_path is not None else None
+        return _verify_timestamp_snapshot(
+            signature_snapshot, request_snapshot, response_snapshot,
+            ca_snapshot, expected_ca_sha256, chain_snapshot,
+        )
+
+
+def _verify_timestamp_snapshot(
     signature_path: Path, request_path: Path, response_path: Path,
     tsa_ca_path: Path, expected_ca_sha256: str, chain_path: Path | None = None,
 ) -> dict[str, Any]:
