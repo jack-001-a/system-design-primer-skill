@@ -219,6 +219,23 @@ The ACK is permission for the broker to retire its copies; it is not, by itself,
 
 This host-pull handoff is preferred over broker-push duplication followed by sending remote handle values: the host can synchronously record every successfully duplicated local handle, so a truncated IPC response cannot conceal a local handle leak. The exact access masks and ACK/disconnect races must still be validated on Windows. Do not use `DUPLICATE_SAME_ACCESS` by default if a smaller explicit access mask is sufficient. `DuplicateHandle` requires `PROCESS_DUP_HANDLE` on the process whose handle table is being accessed; the returned value is valid in the target process context only. See Microsoft's [DuplicateHandle contract](https://learn.microsoft.com/en-us/windows/win32/api/handleapi/nf-handleapi-duplicatehandle) and [process access rights](https://learn.microsoft.com/en-us/windows/win32/procthread/process-security-and-access-rights).
 
+### Broker process-handle serialization
+
+The broker process handle is a shared kernel capability, not a freely closable implementation detail. The host adapter must give it one serialized lifecycle owner (for example, a per-broker mutex guarding the handle and lifecycle state). Every operation that can affect or depend on that handle—bounded wait, termination request, optional exit-code query, and close—must participate in that serialization policy.
+
+Use the following monotonic lifecycle:
+
+- `OPEN`: the process handle is valid and no termination outcome has been committed.
+- `TERMINATION_REQUESTED`: a shutdown/termination path has been selected; repeated cancellation requests must join or observe this same path rather than starting a competing cleanup sequence.
+- `EXIT_CONFIRMED`: a wait on the still-open handle returned `WAIT_OBJECT_0`.
+- `CLOSED`: the handle was closed after exit confirmation and after any required diagnostics were collected.
+
+A bounded wait may temporarily own the lifecycle lock. No other thread may call `CloseHandle` on the process handle while `WaitForSingleObject` is pending: Microsoft documents the wait behavior as undefined if that handle is closed before the wait returns. A second caller must wait for the current lifecycle operation to finish, then observe its recorded result; it must not race a second `TerminateProcess`, wait, or close against the first caller. Keep each wait bounded so this serialization cannot become an unbounded lock hold.
+
+A successful `TerminateProcess` call only records that termination was requested. It does not transition to `EXIT_CONFIRMED`; only `WAIT_OBJECT_0` from a wait on the same still-open process handle does. `WAIT_TIMEOUT`, `WAIT_FAILED` (capture `GetLastError` immediately), and every unexpected result leave the outcome unresolved. In those cases preserve the process and pulled Job handles and report cleanup failure; do not close either handle or report ownership committed.
+
+If an exit code is needed for diagnostics, query it only after `EXIT_CONFIRMED`. The broker process handle must then also have `PROCESS_QUERY_LIMITED_INFORMATION` (or the documented stronger query right); add that right at handle acquisition rather than assuming the existing `PROCESS_DUP_HANDLE | PROCESS_TERMINATE | SYNCHRONIZE` mask includes it. The wait result remains the authoritative termination test. Do not infer liveness from the numeric exit code: an application may itself exit with value `STILL_ACTIVE` (259), so that value is ambiguous when used as a standalone completion test. If diagnostics are not required, omit the query right and close after the successful wait.
+
 ### Popen-compatible adapter surface
 
 The host-side adapter should expose the subset actually used by `_run_cli_bounded`, not imitate the entire `Popen` API:
@@ -346,6 +363,8 @@ The per-launch broker prototype uses one dedicated local named-pipe instance for
 4. Force connect/read/write deadlines to expire; verify `CancelIoEx` completion is drained before event/OVERLAPPED/buffer release and that no worker or handle remains blocked.
 5. Kill the host and broker at every handshake/handle-transfer phase; verify the surviving side closes only resources it owns and no target or Job is orphaned.
 6. Verify malformed/oversized frames and partial-frame disconnects fail closed without protocol resynchronization.
-7. Run the tests on the declared minimum supported Windows desktop version as well as the hosted Windows CI image.
+7. Race two cancellation callers against one another; assert termination/wait/close are serialized, both callers observe one stable outcome, and the process handle is never closed while a wait is pending.
+8. Force `WAIT_TIMEOUT`, `WAIT_FAILED`, unexpected wait values, and delayed process exit; assert unresolved outcomes retain both the broker process and pulled Job handles. Verify exit-code diagnostics occur only after `WAIT_OBJECT_0`, and do not use `STILL_ACTIVE` as the wait substitute.
+9. Run the tests on the declared minimum supported Windows desktop version as well as the hosted Windows CI image.
 
 The transport remains a prototype until these real Windows tests pass. Platform-neutral protocol tests and mocked Win32 calls are useful but are not evidence of DACL enforcement, process identity, overlapped cancellation, or kernel handle cleanup.
