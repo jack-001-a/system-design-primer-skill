@@ -49,6 +49,28 @@ def _der_tlv(data: bytes, offset: int = 0) -> tuple[int, bytes, int]:
     return tag, data[offset:end], end
 
 
+
+def validate_trust_anchor_bundle(path: Path) -> None:
+    """Restrict the OCSP trust store to unique, explicitly self-issued anchors."""
+    raw = path.read_bytes()
+    blocks = re.findall(rb"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", raw, re.DOTALL)
+    try:
+        certificates = ([x509.load_pem_x509_certificate(block) for block in blocks]
+                        if blocks else [x509.load_der_x509_certificate(raw)])
+    except ValueError as exc:
+        raise ValueError("issuer-root bundle must contain parseable PEM or DER certificates") from exc
+    if not certificates:
+        raise ValueError("issuer-root bundle must contain at least one trust anchor")
+    seen: set[bytes] = set()
+    for certificate in certificates:
+        fingerprint = certificate.fingerprint(hashes.SHA256())
+        if fingerprint in seen:
+            raise ValueError("issuer-root bundle contains a duplicate certificate")
+        seen.add(fingerprint)
+        if certificate.subject != certificate.issuer:
+            raise ValueError("issuer-root bundle may contain only self-issued trust anchors; place intermediates in --intermediates")
+
+
 def bind_responder_certificate(response_path: Path, certificate_path: Path,
                                expected_sha256: str) -> tuple[x509.Certificate, str]:
     if not isinstance(expected_sha256, str) or not HEX256.fullmatch(expected_sha256):
@@ -98,6 +120,7 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
     roots_digest = hashlib.sha256(roots.read_bytes()).hexdigest()
     if roots_digest != expected_roots_sha256:
         raise ValueError("issuer-root bundle SHA-256 pin mismatch")
+    validate_trust_anchor_bundle(roots)
     executable = shutil.which("openssl")
     if not executable:
         raise ValueError("OpenSSL CLI is required for OCSP response verification")
