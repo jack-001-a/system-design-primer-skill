@@ -195,9 +195,19 @@ def validate_direct_crl_scope(
         raise ValueError("certificate CRLDistributionPoints matching is unsupported")
 
     try:
-        aki = crl.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER).value
-    except x509.ExtensionNotFound:
-        aki = None
+        aki_ext = crl.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER)
+    except x509.ExtensionNotFound as exc:
+        raise ValueError("CRL lacks the mandatory AuthorityKeyIdentifier extension") from exc
+    if aki_ext.critical:
+        raise ValueError("CRL AuthorityKeyIdentifier must be non-critical")
+    aki = aki_ext.value
+
+    try:
+        crl_number_ext = crl.extensions.get_extension_for_oid(ExtensionOID.CRL_NUMBER)
+    except x509.ExtensionNotFound as exc:
+        raise ValueError("CRL lacks the mandatory CRLNumber extension") from exc
+    if crl_number_ext.critical:
+        raise ValueError("CRLNumber must be non-critical")
 
     candidates = [item for item in issuer_certificates if item.subject == crl.issuer]
     if aki is not None:
