@@ -12,6 +12,7 @@ from scripts.windows_broker_protocol import (
     read_message,
     validate_message,
     write_message,
+    BrokerProtocolState,
 )
 
 
@@ -114,6 +115,80 @@ class WindowsBrokerProtocolTests(unittest.TestCase):
     def test_validate_message_returns_original_mapping(self):
         candidate = message()
         self.assertIs(validate_message(candidate), candidate)
+
+    def _launch_payload(self):
+        return {
+            "application": "worker.exe", "argv": ["worker.exe"], "cwd": None,
+            "environment": {}, "stdin_handle": 10, "stdout_handle": 11, "stderr_handle": 12,
+        }
+
+    def test_message_payload_schemas_are_strict(self):
+        valid = self._launch_payload()
+        validate_message({**message({"broker_pid": 42}), "type": "broker_ready"})
+        validate_message({**message({"accepted": True}), "type": "handles_ack"})
+        validate_message({**message({}), "type": "cancel"})
+        validate_message({**message({"code": "CREATE", "message": "failed"}), "type": "broker_error"})
+        for invalid in (
+            {**valid, "extra": True},
+            {**valid, "stdout_handle": True},
+            {**valid, "stderr_handle": 0},
+            {**valid, "argv": []},
+            {**valid, "application": "bad\x00path"},
+            {**valid, "environment": {"=C:": "bad"}},
+        ):
+            with self.subTest(invalid=invalid), self.assertRaises(ProtocolError):
+                validate_message(message(invalid))
+
+    def test_launch_result_payload_variants(self):
+        for payload in (
+            {"status": "created", "pid": 123, "process_handle": 44, "job_handle": 45},
+            {"status": "failed", "error_code": 5, "message": "denied"},
+        ):
+            validate_message({**message(payload), "type": "launch_result"})
+        for payload in (
+            {"status": "created", "pid": True, "process_handle": 44, "job_handle": 45},
+            {"status": "created", "pid": 123, "process_handle": 0, "job_handle": 45},
+            {"status": "failed", "error_code": -1, "message": "bad"},
+            {"status": "unknown"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(ProtocolError):
+                validate_message({**message(payload), "type": "launch_result"})
+
+    def test_host_state_machine_requires_ordered_handshake_and_ack(self):
+        state = BrokerProtocolState("host", "launch-001")
+        self.assertEqual(state.advance("receive", {**message({"broker_pid": 99}), "type": "broker_ready"}), "ready")
+        self.assertEqual(state.advance("send", message(self._launch_payload())), "waiting_result")
+        self.assertEqual(state.advance("receive", {**message({
+            "status": "created", "pid": 123, "process_handle": 44, "job_handle": 45,
+        }), "type": "launch_result"}), "result_received")
+        self.assertEqual(state.advance("send", {**message({"accepted": True}), "type": "handles_ack"}), "complete")
+        with self.assertRaises(ProtocolError):
+            state.advance("receive", {**message({}), "type": "cancel"})
+
+    def test_broker_state_machine_rejects_wrong_request_and_out_of_order_events(self):
+        state = BrokerProtocolState("broker", "launch-001")
+        with self.assertRaises(ProtocolError):
+            state.advance("receive", message(self._launch_payload()))
+        state.advance("send", {**message({"broker_pid": 99}), "type": "broker_ready"})
+        with self.assertRaises(ProtocolError):
+            state.advance("receive", {**message(self._launch_payload()), "request_id": "other"})
+        state.advance("receive", message(self._launch_payload()))
+        state.advance("send", {**message({
+            "status": "created", "pid": 123, "process_handle": 44, "job_handle": 45,
+        }), "type": "launch_result"})
+        self.assertEqual(state.advance("receive", {**message({"accepted": True}), "type": "handles_ack"}), "complete")
+
+    def test_cancel_and_failed_launch_are_terminal(self):
+        host = BrokerProtocolState("host", "launch-001")
+        host.advance("receive", {**message({"broker_pid": 99}), "type": "broker_ready"})
+        host.advance("send", message(self._launch_payload()))
+        self.assertEqual(host.advance("send", {**message({}), "type": "cancel"}), "cancelled")
+        broker = BrokerProtocolState("broker", "launch-001")
+        broker.advance("send", {**message({"broker_pid": 99}), "type": "broker_ready"})
+        broker.advance("receive", message(self._launch_payload()))
+        self.assertEqual(broker.advance("send", {**message({
+            "status": "failed", "error_code": 5, "message": "denied",
+        }), "type": "launch_result"}), "failed")
 
 
 if __name__ == "__main__":
