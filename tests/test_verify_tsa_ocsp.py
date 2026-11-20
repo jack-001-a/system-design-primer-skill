@@ -366,6 +366,59 @@ Next Update: Nov 19 12:05:00 2026 GMT
             commands = [call.args[0] for call in run.call_args_list[1:]]
             return result, run.call_args_list[0].args[0], commands
 
+    def run_historical_with_response_times(self, target, produced_at=None,
+                                            this_update=None, next_update=None):
+        from types import SimpleNamespace
+
+        single = next(iter(ocsp.load_der_ocsp_response(self.response.read_bytes()).responses))
+        parsed_single = SimpleNamespace(
+            serial_number=single.serial_number,
+            issuer_name_hash=single.issuer_name_hash,
+            issuer_key_hash=single.issuer_key_hash,
+            hash_algorithm=single.hash_algorithm,
+            certificate_status=single.certificate_status,
+            this_update=this_update or single.this_update,
+            next_update=next_update or single.next_update,
+        )
+        parsed = SimpleNamespace(
+            response_status=ocsp.OCSPResponseStatus.SUCCESSFUL,
+            responses=[parsed_single],
+            produced_at=produced_at or self.now,
+        )
+        bounds = verification_time_bounds(target)
+        response_results = [
+            Mock(returncode=0, stdout=self.output, stderr="") for _ in bounds
+        ]
+        with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), \\
+             patch("scripts.verify_tsa_ocsp.subprocess.run",
+                   side_effect=[Mock(returncode=0, stdout="", stderr=""), *response_results]), \\
+             patch("scripts.verify_tsa_ocsp.ocsp.load_der_ocsp_response", return_value=parsed):
+            return verify_ocsp_response(
+                self.cert, self.issuer, self.roots, self.response, self.pin(),
+                at_time=target,
+            )
+
+    def test_historical_mode_rejects_produced_at_after_target_within_clock_skew(self):
+        target = self.now
+        with self.assertRaisesRegex(ValueError, "historical OCSP producedAt"):
+            self.run_historical_with_response_times(
+                target, produced_at=target + timedelta(seconds=1)
+            )
+
+    def test_historical_mode_rejects_this_update_after_target_within_clock_skew(self):
+        target = self.now
+        with self.assertRaisesRegex(ValueError, "historical OCSP thisUpdate"):
+            self.run_historical_with_response_times(
+                target, this_update=target + timedelta(seconds=1)
+            )
+
+    def test_historical_mode_rejects_next_update_before_target_within_clock_skew(self):
+        target = self.now
+        with self.assertRaisesRegex(ValueError, "historical OCSP nextUpdate"):
+            self.run_historical_with_response_times(
+                target, next_update=target - timedelta(seconds=1)
+            )
+
     def test_historical_mode_rejects_target_outside_signed_interval(self):
         target = self.now + timedelta(minutes=11)
         with self.assertRaisesRegex(ValueError, "stale"):
