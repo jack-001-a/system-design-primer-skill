@@ -129,7 +129,7 @@ class WindowsBrokerProtocolTests(unittest.TestCase):
     def test_validate_message_returns_original_mapping(self):
         candidate = message({
             "application": "worker.exe", "argv": ["worker.exe"], "cwd": None,
-            "environment": {}, "stdin_handle": 10, "stdout_handle": 11, "stderr_handle": 12,
+            "environment": {"=C:": "C:\\work"}, "stdin_handle": 10, "stdout_handle": 11, "stderr_handle": 12,
         })
         self.assertIs(validate_message(candidate), candidate)
 
@@ -151,10 +151,25 @@ class WindowsBrokerProtocolTests(unittest.TestCase):
             {**valid, "stderr_handle": 0},
             {**valid, "argv": []},
             {**valid, "application": "bad\x00path"},
-            {**valid, "environment": {"=C:": "bad"}},
+            {**valid, "environment": {"BAD=KEY": "bad"}},
         ):
             with self.subTest(invalid=invalid), self.assertRaises(ProtocolError):
                 validate_message(message(invalid))
+
+    def test_launch_payload_preserves_drive_current_directory_environment_entries(self):
+        payload = self._launch_payload()
+        payload["environment"] = {"=C:": "C:\\work", "PATH": "C:\\Windows"}
+        validate_message(message(payload))
+
+    def test_launch_payload_rejects_oversized_command_and_environment(self):
+        payload = self._launch_payload()
+        payload["argv"] = ["x" * 32768]
+        with self.assertRaisesRegex(ProtocolError, "command-line length"):
+            validate_message(message(payload))
+        payload = self._launch_payload()
+        payload["environment"] = {"A": "x" * 32768}
+        with self.assertRaisesRegex(ProtocolError, "environment block"):
+            validate_message(message(payload))
 
     def test_launch_result_payload_variants(self):
         for payload in (

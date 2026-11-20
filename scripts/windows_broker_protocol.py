@@ -100,11 +100,17 @@ def _validate_payload(message_type: str, payload: dict[str, Any]) -> None:
         environment = payload["environment"]
         if not isinstance(environment, dict) or len(environment) > 32767:
             raise ProtocolError("environment must be an object with at most 32767 entries")
+        environment_chars = 1
         for key, value in environment.items():
             _require_text(key, "environment key")
-            if "=" in key:
-                raise ProtocolError("environment keys must not contain '='")
+            if "=" in key and re.fullmatch(r"=[A-Za-z]:", key) is None:
+                raise ProtocolError("environment keys may contain '=' only for drive-current-directory entries")
             _require_text(value, f"environment[{key!r}]", allow_empty=True)
+            environment_chars += len(key) + len(value) + 2
+        if environment_chars > 32767:
+            raise ProtocolError("environment block exceeds the Windows 32767-character limit")
+        if sum(len(argument) + 1 for argument in argv) > 32767:
+            raise ProtocolError("argv exceeds the Windows command-line length limit")
         for name in ("stdin_handle", "stdout_handle", "stderr_handle"):
             _require_handle(payload[name], name)
     elif message_type == "launch_result":
