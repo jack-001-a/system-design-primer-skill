@@ -69,11 +69,17 @@ class WindowsBrokerTransportTests(unittest.TestCase):
         clock = FakeClock()
 
         def slow_read(size, timeout):
-            clock.advance(0.6)
+            clock.advance(1.1)
             return b"x"
 
         with self.assertRaises(PipeDeadlineExceeded):
             read_exact(slow_read, 2, Deadline(1, clock=clock))
+        with self.assertRaises(PipeDeadlineExceeded):
+            write_all(
+                lambda data, timeout: (clock.advance(1.1) or len(data)),
+                b"x",
+                Deadline(1, clock=clock),
+            )
 
     def test_write_all_handles_short_writes_and_zero_progress(self):
         chunks = []

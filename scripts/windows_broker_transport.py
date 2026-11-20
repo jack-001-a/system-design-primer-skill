@@ -98,6 +98,8 @@ def read_exact(
             chunk = read_chunk(length - len(chunks), remaining)
         except TimeoutError as exc:
             raise PipeDeadlineExceeded("named-pipe read deadline expired") from exc
+        if deadline.expired:
+            raise PipeDeadlineExceeded("named-pipe read deadline expired")
         if not isinstance(chunk, bytes):
             raise TypeError("read callback must return bytes")
         if not chunk:
@@ -128,6 +130,8 @@ def write_all(
             written = write_chunk(view[offset:], remaining)
         except TimeoutError as exc:
             raise PipeDeadlineExceeded("named-pipe write deadline expired") from exc
+        if deadline.expired:
+            raise PipeDeadlineExceeded("named-pipe write deadline expired")
         if type(written) is not int:
             raise TypeError("write callback must return an integer byte count")
         if written <= 0:
