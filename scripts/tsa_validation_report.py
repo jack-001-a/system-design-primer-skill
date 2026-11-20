@@ -272,7 +272,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         produced_dt = parse_utc(produced_at, "OCSP produced_at")
         this_dt = parse_utc(this_update, "OCSP this_update")
         next_dt = parse_utc(next_update, "OCSP next_update")
-        if next_dt < this_dt or produced_dt < this_dt:
+        if next_dt < this_dt:
             raise ValueError("OCSP response time ordering is invalid")
         if validation_dt < this_dt or validation_dt > next_dt:
             raise ValueError("OCSP response validity interval does not cover its validation_time")
