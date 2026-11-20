@@ -2,9 +2,8 @@
 """Verify GitHub-hosted SLSA build provenance for a distribution artifact.
 
 Cryptographic bundle, certificate, transparency-log, and trust-root verification
-is delegated to the GitHub CLI's `gh attestation verify` implementation. This
-wrapper supplies a strict repository, workflow, source-ref, and source-commit
-policy and fails closed when verification cannot be completed.
+is delegated to a security-patched GitHub CLI. This wrapper adds a strict
+repository, workflow, source-ref, source-commit, predicate, and subject policy.
 """
 from __future__ import annotations
 
@@ -15,13 +14,50 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+GH_VERSION_RE = re.compile(r"^gh version (\d+)\.(\d+)\.(\d+)(?:\s|$)")
+MIN_GH_VERSION = (2, 102, 0)
 PREDICATE_TYPE = "https://slsa.dev/provenance/v1"
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
+
+
+def _version_tuple(output: str) -> tuple[int, int, int]:
+    match = GH_VERSION_RE.search(output.strip())
+    if not match:
+        raise RuntimeError("could not parse GitHub CLI version; require gh >= 2.102.0")
+    return tuple(int(part) for part in match.groups())
+
+
+def _validate_verified_statements(
+    verified: Any, expected_sha256: str
+) -> int:
+    if not isinstance(verified, list) or not verified:
+        raise RuntimeError("gh attestation verify returned no verified attestations")
+    for item in verified:
+        if not isinstance(item, dict):
+            raise RuntimeError("gh attestation verify returned an unexpected result schema")
+        result = item.get("verificationResult")
+        statement = result.get("statement") if isinstance(result, dict) else None
+        if not isinstance(statement, dict):
+            raise RuntimeError("verified attestation is missing its in-toto statement")
+        if statement.get("predicateType") != PREDICATE_TYPE:
+            raise RuntimeError("verified attestation has an unexpected predicate type")
+        subjects = statement.get("subject")
+        if not isinstance(subjects, list) or not subjects:
+            raise RuntimeError("verified attestation has no subject entries")
+        if not any(
+            isinstance(subject, dict)
+            and isinstance(subject.get("digest"), dict)
+            and subject["digest"].get("sha256") == expected_sha256
+            for subject in subjects
+        ):
+            raise RuntimeError("verified attestation does not name the exact artifact SHA-256")
+    return len(verified)
 
 
 def verify_build_provenance(
@@ -37,8 +73,14 @@ def verify_build_provenance(
         raise ValueError("artifact must identify an existing regular file")
     if not REPO_RE.fullmatch(repository):
         raise ValueError("repository must use owner/repository syntax")
-    if not signer_workflow.startswith(repository + "/") or "\n" in signer_workflow:
-        raise ValueError("signer_workflow must be a path within the expected repository")
+    workflow_prefix = repository + "/.github/workflows/"
+    if (
+        not signer_workflow.startswith(workflow_prefix)
+        or not signer_workflow.endswith((".yml", ".yaml"))
+        or "\n" in signer_workflow
+        or ".." in signer_workflow
+    ):
+        raise ValueError("signer_workflow must be a workflow file in the expected repository")
     if not (source_ref.startswith("refs/heads/") or source_ref.startswith("refs/tags/")):
         raise ValueError("source_ref must be a fully qualified branch or tag ref")
     if "\n" in source_ref or not SHA1_RE.fullmatch(source_digest):
@@ -48,34 +90,49 @@ def verify_build_provenance(
     if executable is None:
         raise RuntimeError("GitHub CLI (gh) is required for cryptographic attestation verification")
 
-    command = [
-        executable, "attestation", "verify", str(artifact),
-        "--repo", repository,
-        "--signer-workflow", signer_workflow,
-        "--source-ref", source_ref,
-        "--source-digest", source_digest,
-        "--cert-oidc-issuer", OIDC_ISSUER,
-        "--predicate-type", PREDICATE_TYPE,
-        "--deny-self-hosted-runners",
-        "--format", "json",
-    ]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
-    if completed.returncode != 0:
-        detail = (completed.stderr or completed.stdout or "no diagnostic output").strip()
-        raise RuntimeError("gh attestation verify rejected the artifact: " + detail[-4000:])
-    try:
-        verified = json.loads(completed.stdout)
-    except json.JSONDecodeError as exc:
-        raise RuntimeError("gh attestation verify returned invalid JSON despite success") from exc
-    if not isinstance(verified, list) or not verified:
-        raise RuntimeError("gh attestation verify returned no verified attestations")
-    if any(not isinstance(item, dict) or not isinstance(item.get("verificationResult"), dict)
-           for item in verified):
-        raise RuntimeError("gh attestation verify returned an unexpected verification result schema")
+    version = subprocess.run(
+        [executable, "version"], capture_output=True, text=True, check=False
+    )
+    if version.returncode != 0:
+        raise RuntimeError("could not determine GitHub CLI version")
+    gh_version = _version_tuple(version.stdout)
+    if gh_version < MIN_GH_VERSION:
+        raise RuntimeError(
+            "GitHub CLI >= 2.102.0 is required; older releases have vulnerable "
+            "source-ref and signer-workflow identity matching"
+        )
+
+    # Verify a private snapshot so the file cannot change between hashing and
+    # the CLI reading it (TOCTOU). The CLI itself computes and checks its digest.
+    with tempfile.TemporaryDirectory(prefix="slsa-verify-") as temp_dir:
+        snapshot = Path(temp_dir) / artifact.name
+        shutil.copyfile(artifact, snapshot)
+        artifact_sha256 = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+        command = [
+            executable, "attestation", "verify", str(snapshot),
+            "--repo", repository,
+            "--signer-workflow", signer_workflow,
+            "--source-ref", source_ref,
+            "--source-digest", source_digest,
+            "--cert-oidc-issuer", OIDC_ISSUER,
+            "--predicate-type", PREDICATE_TYPE,
+            "--deny-self-hosted-runners",
+            "--format", "json",
+        ]
+        completed = subprocess.run(command, capture_output=True, text=True, check=False)
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "no diagnostic output").strip()
+            raise RuntimeError("gh attestation verify rejected the artifact: " + detail[-4000:])
+        try:
+            verified = json.loads(completed.stdout)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("gh attestation verify returned invalid JSON despite success") from exc
+        count = _validate_verified_statements(verified, artifact_sha256)
 
     return {
         "verified": True,
         "verification_tool": "gh attestation verify",
+        "minimum_gh_version": "2.102.0",
         "repository": repository,
         "signer_workflow": signer_workflow,
         "source_ref": source_ref,
@@ -83,8 +140,8 @@ def verify_build_provenance(
         "predicate_type": PREDICATE_TYPE,
         "oidc_issuer": OIDC_ISSUER,
         "self_hosted_runners_denied": True,
-        "artifact_sha256": hashlib.sha256(artifact.read_bytes()).hexdigest(),
-        "verified_attestation_count": len(verified),
+        "artifact_sha256": artifact_sha256,
+        "verified_attestation_count": count,
     }
 
 

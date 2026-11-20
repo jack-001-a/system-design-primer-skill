@@ -30,3 +30,8 @@ python scripts/verify_build_provenance.py dist/system-design-primer-v2.3.0.zip \
 ```
 
 The verifier delegates cryptographic signature, certificate, transparency-log, and trusted-root validation to the installed GitHub CLI's `gh attestation verify` command. It additionally requires the repository, signer workflow, source ref, source commit, GitHub Actions OIDC issuer, SLSA provenance v1 predicate, and GitHub-hosted runner policy. Install and authenticate a current GitHub CLI before running it. A successful result proves the artifact is covered by a GitHub-verified attestation matching that policy; it does not prove the build was bug-free, reproducible, or free from compromise inside the authorized workflow.
+
+
+### Verifier version and subject policy
+
+The repository verifier requires GitHub CLI **2.102.0 or newer**. Versions through 2.101.0 had security advisories affecting case-sensitive source-ref matching and exact signer-workflow identity matching; do not use those versions for provenance authorization. The wrapper also checks the verified in-toto statement's predicate type and SHA-256 subject against a private snapshot of the exact artifact bytes passed to the CLI. This supplements, but does not replace, the CLI's cryptographic verification.
