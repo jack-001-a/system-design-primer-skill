@@ -133,6 +133,48 @@ def last_error() -> int:
     return int(getter())
 
 
+def create_manual_reset_event(
+    bindings: Kernel32Bindings, *, get_last_error: Callable[[], int] = last_error
+) -> tuple[Any, int | None]:
+    """Create a non-inheritable, initially nonsignaled manual-reset event."""
+    handle = bindings.CreateEventW(None, BOOL(1), BOOL(0), None)
+    if not handle:
+        return None, int(get_last_error())
+    return handle, None
+
+
+def close_kernel_handle(
+    bindings: Kernel32Bindings, handle: Any,
+    *, get_last_error: Callable[[], int] = last_error,
+) -> tuple[bool, int | None]:
+    """Close a kernel handle and capture GetLastError immediately on failure."""
+    succeeded = bool(bindings.CloseHandle(handle))
+    return (True, None) if succeeded else (False, int(get_last_error()))
+
+
+def cancel_exact_io(
+    bindings: Kernel32Bindings, file_handle: Any, overlapped: OVERLAPPED,
+    *, get_last_error: Callable[[], int] = last_error,
+) -> tuple[bool, int | None]:
+    """Request cancellation for exactly one OVERLAPPED operation."""
+    succeeded = bool(bindings.CancelIoEx(file_handle, ctypes.byref(overlapped)))
+    return (True, None) if succeeded else (False, int(get_last_error()))
+
+
+def get_overlapped_result_wait(
+    bindings: Kernel32Bindings, file_handle: Any, overlapped: OVERLAPPED,
+    wait: bool = True, *, get_last_error: Callable[[], int] = last_error,
+) -> tuple[bool, int, int | None]:
+    """Read completion status; optionally block until the I/O is terminal."""
+    transferred = DWORD(0)
+    succeeded = bool(bindings.GetOverlappedResult(
+        file_handle, ctypes.byref(overlapped), ctypes.byref(transferred),
+        BOOL(1 if wait else 0),
+    ))
+    error = None if succeeded else int(get_last_error())
+    return succeeded, int(transferred.value), error
+
+
 class OverlappedOperation:
     """Own one event, OVERLAPPED object and buffer until I/O is truly complete.
 

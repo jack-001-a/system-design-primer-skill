@@ -68,6 +68,48 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
             with self.assertRaises(win32.Win32ApiUnavailable):
                 win32.load_kernel32(loader=lambda *args, **kwargs: IncompleteKernel32())
 
+    def test_create_event_uses_manual_reset_and_captures_failure(self):
+        fake = FakeKernel32()
+        calls = []
+        fake.CreateEventW = lambda *args: calls.append(args) or None
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx)
+        handle, error = win32.create_manual_reset_event(bindings, get_last_error=lambda: 123)
+        self.assertIsNone(handle)
+        self.assertEqual(error, 123)
+        self.assertIsNone(calls[0][0])
+        self.assertEqual(tuple(int(x.value) for x in calls[0][1:3]), (1, 0))
+
+    def test_cancel_wrapper_targets_exact_overlapped_and_captures_error(self):
+        fake = FakeKernel32()
+        seen = []
+        fake.CancelIoEx = lambda handle, pointer: seen.append((handle, pointer)) or 0
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx)
+        operation = win32.OVERLAPPED()
+        ok, error = win32.cancel_exact_io(bindings, 44, operation, get_last_error=lambda: 1168)
+        self.assertFalse(ok)
+        self.assertEqual(error, 1168)
+        self.assertEqual(seen[0][0], 44)
+        self.assertIs(seen[0][1]._obj, operation)
+
+    def test_result_wrapper_captures_error_and_transferred_bytes(self):
+        fake = FakeKernel32()
+        def failed(handle, overlapped, transferred, wait):
+            transferred._obj.value = 9
+            return 0
+        fake.GetOverlappedResult = failed
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx)
+        ok, count, error = win32.get_overlapped_result_wait(
+            bindings, 44, win32.OVERLAPPED(), True, get_last_error=lambda: 996
+        )
+        self.assertFalse(ok)
+        self.assertEqual((count, error), (9, 996))
+
     def test_close_is_forbidden_while_pending_then_idempotent(self):
         operation, closed = self.make_operation()
         operation.mark_pending()
