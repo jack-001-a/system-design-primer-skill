@@ -353,13 +353,17 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
         result = self._verify()
         self._assert_verify_error(result, 9)  # X509_V_ERR_CERT_NOT_YET_VALID
 
-    def test_fractional_gen_time_checks_upper_second_when_intermediate_expires(self):
+    def test_fractional_gen_time_checks_upper_second_and_later_expiry(self):
         # A genTime at now + 0.5s has floor=now and ceil=now+1s.
+        # OpenSSL builds differ on whether the exact notAfter second is inclusive.
         self._make_chain(intermediate_not_after=self.now + self.timedelta(seconds=1))
         floor_result = self._verify(self.now)
         self.assertEqual(floor_result.returncode, 0, floor_result.stdout + floor_result.stderr)
         ceil_result = self._verify(self.now + self.timedelta(seconds=1))
-        self._assert_verify_error(ceil_result, 10)  # X509_V_ERR_CERT_HAS_EXPIRED
+        if ceil_result.returncode != 0:
+            self._assert_verify_error(ceil_result, 10)  # X509_V_ERR_CERT_HAS_EXPIRED
+        after_ceil_result = self._verify(self.now + self.timedelta(seconds=2))
+        self._assert_verify_error(after_ceil_result, 10)  # X509_V_ERR_CERT_HAS_EXPIRED
 
     def test_openssl_rejects_name_constraints_violation(self):
         self._make_chain(constraints=[self.x509.DNSName(".example.test")],

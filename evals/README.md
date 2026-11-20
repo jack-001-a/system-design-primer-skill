@@ -991,9 +991,12 @@ certificate validity interval at the historical instant.
 
 A fractional-second boundary regression constructs an intermediate CA
 whose `notAfter` is the ceil second of a simulated
-`genTime = now + 0.5s`. OpenSSL accepts the floor-second check and rejects
-the ceil-second check with reason code 10
-(`X509_V_ERR_CERT_HAS_EXPIRED`); OpenSSL treats the exact `notAfter` second
-as expired. This demonstrates why the timestamp verifier must require both
-integer-second checks for fractional `genTime`: checking only the floor
-would validate a chain before the claimed instant.
+`genTime = now + 0.5s`. OpenSSL accepts the floor-second check. Its treatment
+of the exact `notAfter` second differs across supported platform builds: some
+reject that instant with reason code 10
+(`X509_V_ERR_CERT_HAS_EXPIRED`), while others accept the inclusive boundary.
+The test therefore requires rejection one second after the ceil boundary on
+all platforms, while accepting either documented exact-boundary behavior.
+The production verifier still checks both floor and ceil seconds for a
+fractional `genTime`; checking only the floor would validate a chain before
+the claimed instant.
