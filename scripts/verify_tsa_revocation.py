@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import re
@@ -105,7 +106,7 @@ def validate_crl_der_profile(raw: bytes, crl: x509.CertificateRevocationList) ->
     first_tag, first_start, first_end, first_next = _read_der_tlv(raw, cursor)
     version_present = first_tag == 0x02
     if version_present:
-        if raw[first_start:first_end] != b"\\x01":
+        if raw[first_start:first_end] != b"\x01":
             raise ValueError("CRL version must be v2")
         cursor = first_next
     inner_tag, inner_start, inner_end, inner_next = _read_der_tlv(raw, cursor)
@@ -123,14 +124,22 @@ def validate_crl_der_profile(raw: bytes, crl: x509.CertificateRevocationList) ->
 
 def load_crl(path: Path) -> x509.CertificateRevocationList:
     raw = path.read_bytes()
-    try:
-        crl = x509.load_pem_x509_crl(raw)
-    except ValueError:
+    pem_match = re.fullmatch(
+        rb"\\s*-----BEGIN X509 CRL-----\\s*(.*?)\\s*-----END X509 CRL-----\\s*",
+        raw, re.DOTALL,
+    )
+    if pem_match:
+        try:
+            der = base64.b64decode(re.sub(rb"\\s+", b"", pem_match.group(1)), validate=True)
+            crl = x509.load_pem_x509_crl(raw)
+        except (ValueError, base64.binascii.Error) as exc:
+            raise ValueError("CRL must be a parseable PEM or DER X.509 CRL") from exc
+    else:
+        der = raw
         try:
             crl = x509.load_der_x509_crl(raw)
         except ValueError as exc:
             raise ValueError("CRL must be a parseable PEM or DER X.509 CRL") from exc
-    der = crl.public_bytes(serialization.Encoding.DER)
     validate_crl_der_profile(der, crl)
     return crl
 
