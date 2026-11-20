@@ -77,6 +77,8 @@ Next Update: Nov 19 12:05:00 2026 GMT
         self.assertEqual(result["status"], "good")
         self.assertFalse(result["nonce_checked"])
         self.assertIn("-respin", command)
+        self.assertIn("-issuer", command)
+        self.assertIn(str(self.issuer), command)
         self.assertIn("-issuer", request_command)
         self.assertIn("-cert", request_command)
         self.assertIn("-CAfile", command)
