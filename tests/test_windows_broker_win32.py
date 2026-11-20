@@ -941,6 +941,37 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
             win32.load_kernel32(loader=lambda *args, **kwargs: fake)
         self.assertEqual(fake.ConnectNamedPipe.argtypes[-1], ctypes.POINTER(win32.OVERLAPPED))
 
+    def test_connect_operation_must_be_closed_before_read_write_registration(self):
+        fake = FakeKernel32()
+        fake.ConnectNamedPipe = lambda *_: 0
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        connect_operation = win32.OverlappedOperation(
+            file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=20,
+            buffer=None, close_handle=lambda _: True,
+        )
+        connection = win32.NamedPipeConnection(10)
+        connection._state = connection.DISCONNECTED
+        self.assertEqual(connection.start_connect(bindings, connect_operation), ("connected", None))
+
+        read_operation, _ = self.make_operation()
+        with self.assertRaisesRegex(win32.OverlappedLifecycleError, "connect operation resources"):
+            connection.register_operation(read_operation)
+        with self.assertRaisesRegex(win32.OverlappedLifecycleError, "connect operation resources"):
+            connection.start_operation(
+                bindings, read_operation, buffer=read_operation.buffer,
+                length=len(read_operation.buffer),
+            )
+
+        connect_operation.close()
+        connection.unregister_operation(connect_operation)
+        connection.register_operation(read_operation)
+        self.assertIn(read_operation, connection._operations)
+
     def test_connection_start_connect_tracks_pending_until_completion(self):
         fake = FakeKernel32()
         fake.ConnectNamedPipe = lambda *_: 0
@@ -1554,7 +1585,12 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
 
         operation.close()
         connection.unregister_operation(operation)
-        connection.mark_connected()
+        reconnect_operation, _ = self.make_operation()
+        self.assertEqual(
+            connection.start_connect(bindings, reconnect_operation), ("connected", None)
+        )
+        reconnect_operation.close()
+        connection.unregister_operation(reconnect_operation)
         self.assertEqual(connection.state, connection.CONNECTED)
         self.assertEqual(connection.file_handle, 10)
         self.assertEqual(disconnect_calls, [10, 10])

@@ -221,6 +221,7 @@ class NamedPipeConnection:
         self._state = self.CONNECTED
         self._lock = threading.RLock()
         self._operations: set[Any] = set()
+        self._connect_operation: Any | None = None
 
     @property
     def state(self) -> str:
@@ -236,6 +237,10 @@ class NamedPipeConnection:
             if self._state != self.CONNECTED:
                 raise OverlappedLifecycleError(
                     "cannot register I/O on a disconnected pipe"
+                )
+            if self._connect_operation is not None:
+                raise OverlappedLifecycleError(
+                    "connect operation resources must be closed and unregistered before I/O"
                 )
             if operation.file_handle != self.file_handle:
                 raise OverlappedLifecycleError(
@@ -269,6 +274,10 @@ class NamedPipeConnection:
                 raise OverlappedLifecycleError(
                     "cannot submit I/O on a disconnected pipe"
                 )
+            if self._connect_operation is not None:
+                raise OverlappedLifecycleError(
+                    "connect operation resources must be closed and unregistered before I/O"
+                )
             if operation not in self._operations:
                 raise OverlappedLifecycleError(
                     "operation must be registered before I/O submission"
@@ -300,6 +309,8 @@ class NamedPipeConnection:
                     "operation resources must be closed before unregistering"
                 )
             self._operations.remove(operation)
+            if operation is self._connect_operation:
+                self._connect_operation = None
 
     def start_connect(
         self,
@@ -333,6 +344,7 @@ class NamedPipeConnection:
                     f"cannot start connect in operation state {operation.state}"
                 )
             self._operations.add(operation)
+            self._connect_operation = operation
             self._state = self.CONNECTING
             try:
                 result, error = start_overlapped_connect(
@@ -345,6 +357,7 @@ class NamedPipeConnection:
                 # the uncertain kernel operation has been drained.
                 if operation.state == operation.CREATED:
                     self._operations.discard(operation)
+                    self._connect_operation = None
                     self._state = self.DISCONNECTED
                 raise
             if result == "connected":
@@ -464,7 +477,11 @@ def close_named_pipe(
 
 
 def start_overlapped_connect(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, get_last_error: Callable[[], int] = last_error) -> tuple[str, int | None]:
-    """Start ConnectNamedPipe and normalize the already-connected race."""
+    """Low-level ConnectNamedPipe primitive; prefer NamedPipeConnection.start_connect.
+
+    This helper owns only the operation state transition. It cannot serialize
+    against pipe disconnect/reuse and must not be used as a connection API.
+    """
     if operation.state != operation.CREATED:
         raise OverlappedLifecycleError(f"cannot start connect in state {operation.state}")
     if not operation.event_handle:
