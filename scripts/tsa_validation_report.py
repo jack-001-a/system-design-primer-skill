@@ -15,7 +15,7 @@ UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 def parse_utc_parts(value: str, field: str) -> tuple[datetime, str]:
     """Parse UTC seconds separately from the arbitrary-precision GeneralizedTime fraction."""
     match = re.fullmatch(
-        r"(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))?Z",
+        r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z",
         value if isinstance(value, str) else "",
     )
     if not match:
