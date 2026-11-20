@@ -233,8 +233,7 @@ class TsaRevocationTests(unittest.TestCase):
         builder = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
             .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
             .add_extension(x509.CRLNumber(3), False))
-        self.listing = builder.sign(self.issuer.public_key() if False else
-            rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256())
+        self.listing = builder.sign(rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256())
         self.write_material()
         with self.assertRaisesRegex(ValueError, "mandatory AuthorityKeyIdentifier"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
