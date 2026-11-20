@@ -192,6 +192,7 @@ class NamedPipeConnection:
 
     CONNECTED = "connected"
     DISCONNECTED = "disconnected"
+    CLOSING = "closing"
     CLOSED = "closed"
 
     def __init__(self, file_handle: Any) -> None:
@@ -310,7 +311,7 @@ def close_named_pipe(
 ) -> tuple[bool, int | None]:
     """Close the server pipe handle after disconnect and operation cleanup."""
     with connection._lock:
-        if connection._state != connection.DISCONNECTED:
+        if connection._state not in (connection.DISCONNECTED, connection.CLOSING):
             raise OverlappedLifecycleError(
                 f"cannot close pipe handle in state {connection._state}"
             )
@@ -318,8 +319,12 @@ def close_named_pipe(
             raise OverlappedLifecycleError(
                 "cannot close pipe handle while registered operation resources remain"
             )
+        # A Python/API exception leaves the close outcome uncertain. Keep the
+        # handle for a retry, but block reconnect until that retry resolves it.
+        connection._state = connection.CLOSING
         succeeded = bool(bindings.CloseHandle(connection.file_handle))
         if not succeeded:
+            connection._state = connection.DISCONNECTED
             return False, int(get_last_error())
         connection.file_handle = None
         connection._state = connection.CLOSED

@@ -268,7 +268,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "close-api"):
             win32.close_named_pipe(bindings, connection)
-        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertEqual(connection.state, connection.CLOSING)
         self.assertEqual(connection.file_handle, 10)
         with self.assertRaises(win32.OverlappedLifecycleError):
             connection.mark_connected()
@@ -944,6 +944,35 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertIsNone(operation.overlapped)
         self.assertIsNone(operation.buffer)
         self.assertIsNone(operation.file_handle)
+
+    def test_event_close_api_exception_preserves_resources_for_retry(self):
+        calls = []
+
+        def fail_once(handle):
+            calls.append(handle)
+            if len(calls) == 1:
+                raise RuntimeError("event-close-api")
+            return True
+
+        operation, _ = self.make_operation(close=fail_once)
+        operation.mark_completed()
+        original_overlapped = operation.overlapped
+        original_buffer = operation.buffer
+
+        with self.assertRaisesRegex(RuntimeError, "event-close-api"):
+            operation.close()
+
+        self.assertEqual(operation.state, operation.COMPLETED)
+        self.assertEqual(operation.event_handle, 20)
+        self.assertIs(operation.overlapped, original_overlapped)
+        self.assertIs(operation.buffer, original_buffer)
+
+        operation.close()
+        self.assertEqual(calls, [20, 20])
+        self.assertEqual(operation.state, operation.CLOSED)
+        self.assertIsNone(operation.event_handle)
+        self.assertIsNone(operation.overlapped)
+        self.assertIsNone(operation.buffer)
 
     def test_close_is_forbidden_while_pending_then_idempotent(self):
         operation, closed = self.make_operation()
