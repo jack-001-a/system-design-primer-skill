@@ -355,7 +355,7 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
 
     def test_fractional_gen_time_checks_upper_second_when_intermediate_expires(self):
         # A genTime at now + 0.5s has floor=now and ceil=now+1s.
-        self._make_chain(intermediate_not_after=self.now)
+        self._make_chain(intermediate_not_after=self.now + self.timedelta(seconds=1))
         floor_result = self._verify(self.now)
         self.assertEqual(floor_result.returncode, 0, floor_result.stdout + floor_result.stderr)
         ceil_result = self._verify(self.now + self.timedelta(seconds=1))
