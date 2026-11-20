@@ -52,7 +52,7 @@ class TsaValidationReportTests(unittest.TestCase):
             "responder_chain_validation_scope": "OpenSSL responder PKIX path validation at the host wall-clock time",
             "responder_chain_validation_times": [],
             "responder_chain_validation_policy": "OpenSSL ocsp uses the SHA-256-pinned -CAfile, empty -CApath/-CAstore, -x509_strict, and -auth_level 2",
-            "verification": "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, empty -CApath/-CAstore, -x509_strict, and -auth_level 2; historical validation repeats path verification at floor/ceiling Unix-second bounds; Python verifies exact target CertID, status, and freshness",
+            "verification": "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, empty -CApath/-CAstore, -x509_strict, and -auth_level 2; historical validation repeats path verification at exact floor/ceiling Unix-second bound(s); Python verifies exact target CertID, status, and freshness",
         }
         self.timestamp = {
             "verified": True, "signature_sha256": hashlib.sha256(b"signature").hexdigest(),
