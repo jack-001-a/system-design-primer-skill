@@ -20,7 +20,7 @@ from typing import Any
 
 SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
 REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
-GH_VERSION_RE = re.compile(r"^gh version (\d+)\.(\d+)\.(\d+)(?:\s|$)")
+GH_VERSION_RE = re.compile(r"^gh version (\d+)\.(\d+)\.(\d+)(?: \([^()\r\n]+\))?$")
 MIN_GH_VERSION = (2, 102, 0)
 PREDICATE_TYPE = "https://slsa.dev/provenance/v1"
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
@@ -40,7 +40,8 @@ def _is_valid_git_ref(ref: str) -> bool:
 
 
 def _version_tuple(output: str) -> tuple[int, int, int]:
-    match = GH_VERSION_RE.search(output.strip())
+    first_line = output.splitlines()[0].strip() if output.splitlines() else ""
+    match = GH_VERSION_RE.fullmatch(first_line)
     if not match:
         raise RuntimeError("could not parse GitHub CLI version; require gh >= 2.102.0")
     return tuple(int(part) for part in match.groups())

@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.verify_build_provenance import (
-    PREDICATE_TYPE, verify_build_provenance,
+    PREDICATE_TYPE, _version_tuple, verify_build_provenance,
 )
 
 
@@ -39,6 +39,24 @@ class BuildProvenanceTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def test_cli_version_parser_accepts_only_supported_release_lines(self):
+        self.assertEqual(_version_tuple("gh version 2.102.0"), (2, 102, 0))
+        self.assertEqual(
+            _version_tuple("gh version 2.103.1 (2026-11-20)"),
+            (2, 103, 1),
+        )
+        for output in (
+            "gh version 2.101.99",
+            "gh version 2.102.0-rc.1",
+            "gh version 2.102.0 unexpected",
+            "prefix gh version 2.102.0",
+            "",
+        ):
+            with self.subTest(output=output), self.assertRaisesRegex(
+                RuntimeError, "could not parse"
+            ):
+                _version_tuple(output)
 
     def _mock_cli(self, run, output=None, version="gh version 2.102.0"):
         run.side_effect = [
