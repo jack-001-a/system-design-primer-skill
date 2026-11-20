@@ -205,6 +205,47 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         ), (False, 109))
         self.assertEqual(connection.state, connection.CONNECTED)
 
+    def test_disconnect_api_exception_preserves_state_for_retry(self):
+        calls = []
+        fake = FakeKernel32()
+
+        def disconnect(handle):
+            calls.append(handle)
+            if len(calls) == 1:
+                raise RuntimeError("disconnect-api")
+            return 1
+
+        fake.DisconnectNamedPipe = disconnect
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        operation, _ = self.make_operation()
+        operation.mark_completed()
+        connection = win32.NamedPipeConnection(10)
+        connection.register_operation(operation)
+
+        with self.assertRaisesRegex(RuntimeError, "disconnect-api"):
+            win32.disconnect_named_pipe(bindings, connection, operation)
+        self.assertEqual(connection.state, connection.CONNECTED)
+        self.assertEqual(connection.file_handle, 10)
+        self.assertIn(operation, connection._operations)
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            connection.mark_connected()
+
+        self.assertEqual(
+            win32.disconnect_named_pipe(bindings, connection, operation),
+            (True, None),
+        )
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+        operation.close()
+        connection.unregister_operation(operation)
+        connection.mark_connected()
+        self.assertEqual(connection.state, connection.CONNECTED)
+        self.assertEqual(calls, [10, 10])
+
     def test_pipe_close_error_lookup_exception_preserves_handle_for_retry(self):
         fake = FakeKernel32()
         calls = []
