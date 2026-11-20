@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from scripts.verify_tsa_revocation import (parse_utc_epoch, verify_crl_status, validate_crl_signature_policy,
-    validate_crl_number_value, validate_crl_der_profile, validate_direct_crl_scope, _read_der_tlv, load_crl)
+    validate_crl_number_value, validate_crl_der_profile, validate_direct_crl_scope, _read_der_tlv, load_crl, load_certificates)
 
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
@@ -116,6 +116,28 @@ class TsaRevocationTests(unittest.TestCase):
         self.roots.write_bytes(self.issuer.public_bytes(serialization.Encoding.PEM)
                                + intermediate.public_bytes(serialization.Encoding.PEM))
         with self.assertRaisesRegex(ValueError, "only self-issued certificates"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_rejects_openssl_trusted_certificate_pem_blocks(self):
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        intermediate = (
+            x509.CertificateBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Unreviewed Intermediate")]))
+            .issuer_name(self.issuer.subject).public_key(key.public_key()).serial_number(99)
+            .not_valid_before(NOW-timedelta(days=30)).not_valid_after(NOW+timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=0), True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=False,
+                data_encipherment=False, key_agreement=False, key_cert_sign=True, crl_sign=True,
+                encipher_only=None, decipher_only=None), True)
+            .sign(key, hashes.SHA256())
+        )
+        trusted_pem = intermediate.public_bytes(serialization.Encoding.PEM)
+        trusted_pem = trusted_pem.replace(b"BEGIN CERTIFICATE", b"BEGIN TRUSTED CERTIFICATE")
+        trusted_pem = trusted_pem.replace(b"END CERTIFICATE", b"END TRUSTED CERTIFICATE")
+        self.roots.write_bytes(self.issuer.public_bytes(serialization.Encoding.PEM) + trusted_pem)
+        with self.assertRaisesRegex(ValueError, "TRUSTED CERTIFICATE PEM blocks"):
+            load_certificates(self.roots)
+        with self.assertRaisesRegex(ValueError, "TRUSTED CERTIFICATE PEM blocks"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_root_bundle_pin_mismatch(self):
