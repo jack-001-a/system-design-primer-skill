@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import json
+import os
+import stat
 import tempfile
 import unittest
 from pathlib import Path
@@ -260,6 +261,14 @@ class BuildProvenanceTests(unittest.TestCase):
         source.write_bytes(b"stable input")
         _copy_regular_file_snapshot(source, snapshot, "source")
         self.assertEqual(snapshot.read_bytes(), b"stable input")
+
+    @unittest.skipIf(os.name == "nt", "POSIX permission bits are not portable to Windows")
+    def test_descriptor_snapshot_creates_private_file_permissions(self):
+        source = Path(self.temp.name) / "source.bin"
+        snapshot = Path(self.temp.name) / "snapshot.bin"
+        source.write_bytes(b"input")
+        _copy_regular_file_snapshot(source, snapshot, "source")
+        self.assertEqual(stat.S_IMODE(snapshot.stat().st_mode), 0o600)
 
     def test_descriptor_snapshot_preserves_existing_destination(self):
         source = Path(self.temp.name) / "source.bin"

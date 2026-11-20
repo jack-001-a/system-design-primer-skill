@@ -12,8 +12,8 @@ import hashlib
 import json
 import os
 import re
-import stat
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -82,8 +82,19 @@ def _copy_regular_file_snapshot(source: Path, destination: Path, label: str) -> 
             opened = os.fstat(source_stream.fileno())
             if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
                 raise ValueError(f"{label} changed identity while being opened")
-            destination_stream = destination.open("xb")
+            destination_flags = (
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+            )
+            destination_descriptor = os.open(destination, destination_flags, 0o600)
             destination_created = True
+            try:
+                destination_stream = os.fdopen(destination_descriptor, "wb")
+            except Exception:
+                try:
+                    os.close(destination_descriptor)
+                except OSError:
+                    pass
+                raise
             with destination_stream:
                 shutil.copyfileobj(source_stream, destination_stream)
             after = os.fstat(source_stream.fileno())
