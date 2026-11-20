@@ -85,6 +85,7 @@ class TsaValidationReportTests(unittest.TestCase):
             "request_sha256": hashlib.sha256(b"request").hexdigest(),
             "response_sha256": hashlib.sha256(b"timestamp token").hexdigest(),
             "tsa_ca_sha256": hashlib.sha256(b"tsa ca").hexdigest(),
+            "tsa_chain_sha256": None,
             "tsa_signer_certificate_sha256": self.cert,
             "tsa_signer_valid_at_gen_time": True, "tsa_signer_serial_number": "1234",
             "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer",
@@ -142,6 +143,7 @@ class TsaValidationReportTests(unittest.TestCase):
         self.assertEqual(chain["validation_time"], self.gen_time)
         self.assertEqual(chain["scope"], self.timestamp["tsa_chain_validation_scope"])
         self.assertEqual(chain["policy"], self.timestamp["tsa_chain_validation_policy"])
+        self.assertIsNone(chain["intermediates_sha256"])
         self.assertIn("empty -CApath/-CAstore", chain["policy"])
         self.assertIn("-auth_level 2", chain["policy"])
 
@@ -150,6 +152,38 @@ class TsaValidationReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "does not exactly match genTime"):
             build_report(self.gen_time, self.crl, self.crl_file_hash,
                          timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_preserves_and_validates_tsa_intermediate_chain_digest(self):
+        digest = hashlib.sha256(b"tsa intermediate chain").hexdigest()
+        timestamp = dict(self.timestamp, tsa_chain_sha256=digest)
+        report = build_report(
+            self.gen_time, self.crl, self.crl_file_hash,
+            timestamp_result=timestamp,
+            timestamp_result_sha256=self.timestamp_file_hash,
+        )
+        self.assertEqual(
+            report["timestamp_chain_validation"]["intermediates_sha256"], digest
+        )
+        for invalid in ("not-a-digest", "A" * 64, ""):
+            bad = dict(timestamp, tsa_chain_sha256=invalid)
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                ValueError, "tsa_chain_sha256"
+            ):
+                build_report(
+                    self.gen_time, self.crl, self.crl_file_hash,
+                    timestamp_result=bad,
+                    timestamp_result_sha256=self.timestamp_file_hash,
+                )
+
+    def test_rejects_missing_tsa_intermediate_chain_digest_contract(self):
+        bad = dict(self.timestamp)
+        bad.pop("tsa_chain_sha256")
+        with self.assertRaisesRegex(ValueError, "intermediate-chain digest"):
+            build_report(
+                self.gen_time, self.crl, self.crl_file_hash,
+                timestamp_result=bad,
+                timestamp_result_sha256=self.timestamp_file_hash,
+            )
 
     def test_rejects_missing_or_unsupported_timestamp_chain_policy(self):
         for field, value in (
