@@ -79,10 +79,10 @@ class Kernel32Bindings:
     CancelIoEx: Any
     GetOverlappedResult: Any
     GetOverlappedResultEx: Any
-    ReadFile: Any
-    WriteFile: Any
-    ConnectNamedPipe: Any
-    SetEvent: Any
+    ReadFile: Any = None
+    WriteFile: Any = None
+    ConnectNamedPipe: Any = None
+    SetEvent: Any = None
 
 
 def _set_signature(function: Any, argtypes: list[Any], restype: Any) -> Any:
