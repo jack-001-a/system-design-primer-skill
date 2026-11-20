@@ -261,7 +261,7 @@ def verify_timestamp(
         raise ValueError("timestamp request must use SHA-256")
     if not imprint or imprint.group(1).lower() != expected_imprint:
         raise ValueError("timestamp request does not bind the supplied Ed25519 signature")
-    request_nonce = re.search(r"^Nonce:\\s*(\\S+)", request_text, re.I | re.M)
+    request_nonce = re.search(r"^Nonce:\s*(\S+)", request_text, re.I | re.M)
     details = run_openssl(["ts", "-reply", "-in", str(response_path), "-text"])
     gen_time = re.search(r"^Time(?: stamp)?\s*:\s*(.+)$", details, re.I | re.M)
     if not gen_time:

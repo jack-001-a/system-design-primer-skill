@@ -135,7 +135,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         digest = hashlib.sha256(b"s" * 64).hexdigest()
         with patch("scripts.evidence_timestamp.inspect_tsa_signer_certificate", return_value={"tsa_signer_certificate_sha256": "a" * 64, "tsa_signer_serial_number": "01", "tsa_signer_valid_at_gen_time": True, "tsa_signer_eku": "critical:id-kp-timeStamping", "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer"}), patch("scripts.evidence_timestamp.run_openssl") as run:
             run.side_effect = [
-                "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\n",
+                "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\nNonce: 0x1234\n",
                 "Time stamp: Nov 19 12:00:00.000001 2026 GMT\nPolicy OID: 1.2.3\nSerial number: 01\nHash Algorithm: sha256\nMessage data: 0x" + digest + "\nAccuracy: 1 seconds, 2 millis, 3 micros\nOrdering: no\nNonce: 0x1234\n",
                 "",
                 "",
@@ -148,7 +148,7 @@ class EvidenceTimestampTests(unittest.TestCase):
             "request_imprint": "verified",
             "response_imprint": "verified",
             "request_response_binding": "verified",
-            "nonce_binding": "not_requested",
+            "nonce_binding": "verified",
             "tsa_pkix_chain_at_gen_time": "verified",
             "tsa_signer_certificate_profile": "verified",
             "tsa_signer_validity_at_gen_time": "verified",
