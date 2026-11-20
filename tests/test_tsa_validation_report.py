@@ -130,7 +130,7 @@ class TsaValidationReportTests(unittest.TestCase):
         ):
             with self.subTest(field=field):
                 bad = dict(self.timestamp, **{field: value})
-                with self.assertRaisesRegex(ValueError, "TSA chain validation"):
+                with self.assertRaisesRegex(ValueError, r"(TSA chain validation|timestamp TSA chain)"):
                     build_report(self.gen_time, self.crl, self.crl_file_hash,
                                  timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
 
@@ -187,7 +187,7 @@ class TsaValidationReportTests(unittest.TestCase):
     def test_fractional_gen_time_requires_ceiling_evaluation_bound(self):
         gen_time = "2026-11-19T12:00:00.000001Z"
         crl = dict(self.crl, at_time=gen_time, effective_at_time="2026-11-19T12:00:01Z")
-        timestamp = dict(self.timestamp, gen_time=gen_time)
+        timestamp = dict(self.timestamp, gen_time=gen_time, tsa_chain_validation_time=gen_time)
         report = build_report(gen_time, crl, self.crl_file_hash,
             timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash)
         self.assertEqual(report["historical_revocation_assessment"]["evaluation_time_upper_bound"],
