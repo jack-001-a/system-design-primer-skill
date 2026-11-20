@@ -51,6 +51,71 @@ def parse_utc(value: Any, field: str) -> datetime:
     return result
 
 
+def parse_utc_parts(value: Any, field: str) -> tuple[datetime, str]:
+    """Parse UTC GeneralizedTime while retaining arbitrary-precision fractional digits."""
+    match = re.fullmatch(
+        r"(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))?Z",
+        value if isinstance(value, str) else "",
+    )
+    if not match:
+        raise ValueError(field + " must be an RFC3339 UTC timestamp ending in Z")
+    try:
+        whole_second = datetime.fromisoformat(match.group(1) + "+00:00")
+    except ValueError as exc:
+        raise ValueError("invalid " + field + " timestamp") from exc
+    return whole_second, match.group(2) or ""
+
+
+def compare_utc_values(left: str, right: str, field: str = "UTC timestamp") -> int:
+    """Compare UTC instants without truncating arbitrary fractional precision."""
+    left_second, left_fraction = parse_utc_parts(left, field + " left value")
+    right_second, right_fraction = parse_utc_parts(right, field + " right value")
+    if left_second < right_second:
+        return -1
+    if left_second > right_second:
+        return 1
+    width = max(len(left_fraction), len(right_fraction))
+    left_digits = left_fraction.ljust(width, "0")
+    right_digits = right_fraction.ljust(width, "0")
+    return (left_digits > right_digits) - (left_digits < right_digits)
+
+
+def format_utc_datetime(value: datetime) -> str:
+    return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
+
+
+def calculate_accuracy_bounds(
+    gen_time: str, accuracy: dict[str, int]
+) -> tuple[str, str]:
+    """Add/subtract RFC 3161 Accuracy exactly, preserving arbitrary genTime precision."""
+    whole_second, fraction = parse_utc_parts(gen_time, "timestamp gen_time")
+    width = max(6, len(fraction))
+    scale = 10 ** width
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    delta = whole_second - epoch
+    whole_epoch_seconds = delta.days * 86400 + delta.seconds
+    instant_ticks = whole_epoch_seconds * scale + int(fraction.ljust(width, "0") or "0")
+    uncertainty_ticks = (
+        accuracy.get("seconds", 0) * scale
+        + accuracy.get("millis", 0) * (scale // 1000)
+        + accuracy.get("micros", 0) * (scale // 1_000_000)
+    )
+
+    def render(ticks: int) -> str:
+        epoch_seconds, fractional_ticks = divmod(ticks, scale)
+        try:
+            value = epoch + timedelta(seconds=epoch_seconds)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("RFC 3161 timestamp accuracy exceeds the supported datetime range") from exc
+        prefix = value.strftime("%Y-%m-%dT%H:%M:%S")
+        return prefix + "." + f"{fractional_ticks:0{width}d}" + "Z"
+
+    try:
+        return render(instant_ticks - uncertainty_ticks), render(instant_ticks + uncertainty_ticks)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError("RFC 3161 timestamp accuracy exceeds the supported datetime range") from exc
+
+
 def require_sha256(value: Any, field: str) -> str:
     if not isinstance(value, str) or not HEX256.fullmatch(value):
         raise ValueError(field + " must be a lowercase SHA-256 digest")
@@ -64,7 +129,7 @@ def validate_crl_issuer_validity(value: Any, field: str, gen_time: str) -> dict[
     times = {name: parse_utc(value.get(name), field + "." + name) for name in required}
     if not (times["not_before"] <= times["crl_this_update"] <= times["not_after"]):
         raise ValueError(field + " does not establish issuer validity at CRL thisUpdate")
-    if times["crl_this_update"] > parse_utc(gen_time, "gen_time"):
+    if compare_utc_values(value.get("crl_this_update"), gen_time, field + " CRL thisUpdate vs gen_time") > 0:
         raise ValueError(field + " CRL thisUpdate is later than the historical target time")
     for flag in ("valid_at_this_update", "basic_constraints_ca", "key_cert_sign", "crl_sign"):
         if value.get(flag) is not True:
@@ -82,7 +147,7 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("unsupported TSA validation report schema or type")
     if missing:
         raise ValueError("TSA report missing required attestation fields: " + ", ".join(missing))
-    parse_utc(report["gen_time"], "gen_time")
+    parse_utc_parts(report["gen_time"], "gen_time")
     require_sha256(report["tsa_certificate_sha256"], "tsa_certificate_sha256")
     require_sha256(report["timestamp_result_sha256"], "timestamp_result_sha256")
     if report["result_digest_policy"] != "caller_supplied_sha256_pins_checked_for_byte_equality_only":
@@ -112,10 +177,9 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("historical CRL assessment must explicitly report verified non-revocation")
     if historical.get("validation_time") != report["gen_time"]:
         raise ValueError("historical CRL validation_time must exactly match report gen_time")
-    gen_dt = parse_utc(report["gen_time"], "gen_time")
-    effective_second = gen_dt.replace(microsecond=0)
-    if gen_dt.microsecond:
-        from datetime import timedelta
+    gen_whole_second, gen_fraction = parse_utc_parts(report["gen_time"], "gen_time")
+    effective_second = gen_whole_second
+    if any(digit != "0" for digit in gen_fraction):
         effective_second += timedelta(seconds=1)
     expected_effective_at_time = effective_second.isoformat(timespec="seconds").replace("+00:00", "Z")
     if historical.get("evaluation_time_upper_bound") != expected_effective_at_time:
@@ -174,10 +238,14 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         if next_update < this_update or validation < this_update or validation > next_update:
             raise ValueError("OCSP assessment contains inconsistent signed validity times")
         if scope == historical_scope:
-            gen_dt = parse_utc(report["gen_time"], "gen_time")
-            if current.get("historical_at_time") != report["gen_time"] or validation != gen_dt:
+            gen_whole_second, gen_fraction = parse_utc_parts(report["gen_time"], "gen_time")
+            if len(gen_fraction) > 6:
+                raise ValueError("historical OCSP cannot represent genTime with more than six fractional digits")
+            if (current.get("historical_at_time") != report["gen_time"]
+                    or compare_utc_values(current.get("validation_time"), report["gen_time"], "historical OCSP validation_time") != 0):
                 raise ValueError("historical OCSP assessment must exactly match report gen_time")
-            if produced > gen_dt or next_update < gen_dt:
+            if (compare_utc_values(current.get("produced_at"), report["gen_time"], "historical OCSP producedAt") > 0
+                    or compare_utc_values(current.get("next_update"), report["gen_time"], "historical OCSP nextUpdate") < 0):
                 raise ValueError("historical OCSP assessment is not valid at report gen_time")
 
     responder = report["historical_ocsp_responder_revocation_assessment"]
@@ -376,7 +444,8 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
                 or trusted_timestamp.get("tsa_signer_valid_at_gen_time") is not True):
             raise ValueError("RFC 3161 timestamp did not establish a verified, valid TSA signer")
         validate_timestamp_verification_scope(trusted_timestamp)
-        timestamp_gen_time = parse_utc(trusted_timestamp.get("gen_time"), "timestamp gen_time")
+        timestamp_gen_time = trusted_timestamp.get("gen_time")
+        parse_utc_parts(timestamp_gen_time, "timestamp gen_time")
         require_sha256(trusted_timestamp.get("tsa_signer_certificate_sha256"), "TSA signer certificate SHA-256")
         expected_signature_digest = hashlib.sha256(signature_bytes).hexdigest()
         if trusted_timestamp.get("signature_sha256") != expected_signature_digest:
@@ -398,16 +467,9 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
                 raise ValueError("RFC 3161 timestamp accuracy components must be non-negative integers")
             if field in {"millis", "micros"} and not 1 <= value <= 999:
                 raise ValueError("RFC 3161 timestamp millis and micros must be between 1 and 999")
-        try:
-            uncertainty = timedelta(
-                seconds=accuracy.get("seconds", 0),
-                milliseconds=accuracy.get("millis", 0),
-                microseconds=accuracy.get("micros", 0),
-            )
-            timestamp_lower_bound = timestamp_gen_time - uncertainty
-            timestamp_upper_bound = timestamp_gen_time + uncertainty
-        except (OverflowError, ValueError) as exc:
-            raise ValueError("RFC 3161 timestamp accuracy exceeds the supported datetime range") from exc
+        timestamp_lower_bound, timestamp_upper_bound = calculate_accuracy_bounds(
+            timestamp_gen_time, accuracy
+        )
         timestamp_accuracy_assessed = True
 
     now = datetime.now(timezone.utc)
@@ -415,10 +477,11 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
                             and (revoked_at is None or now < revoked_at))
     signature_existed_before_revocation = (
         timestamp_upper_bound is not None and revoked_at is not None
-        and timestamp_upper_bound < revoked_at
+        and compare_utc_values(timestamp_upper_bound, format_utc_datetime(revoked_at)) < 0
     )
     signature_existed_before_key_validity = (
-        timestamp_upper_bound is not None and timestamp_upper_bound < not_before
+        timestamp_upper_bound is not None
+        and compare_utc_values(timestamp_upper_bound, format_utc_datetime(not_before)) < 0
     )
     # This enum is a compact evidence classification, not a historical-validity
     # verdict. The independent booleans above retain simultaneous boundary facts.
@@ -446,14 +509,8 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
             "signature_existed_before_revocation": bool(signature_existed_before_revocation),
             "signature_existence_proven_before_key_not_before": bool(signature_existed_before_key_validity),
             "trusted_signature_timestamp": trusted_timestamp,
-            "trusted_timestamp_lower_bound": (
-                timestamp_lower_bound.isoformat(timespec="microseconds").replace("+00:00", "Z")
-                if timestamp_lower_bound is not None else None
-            ),
-            "trusted_timestamp_upper_bound": (
-                timestamp_upper_bound.isoformat(timespec="microseconds").replace("+00:00", "Z")
-                if timestamp_upper_bound is not None else None
-            ),
+            "trusted_timestamp_lower_bound": timestamp_lower_bound,
+            "trusted_timestamp_upper_bound": timestamp_upper_bound,
             "timestamp_accuracy_assessed": timestamp_accuracy_assessed,
             "currently_authorized": currently_authorized, "key_id": key_id,
             "attested_at": envelope["attested_at"], "report_sha256": report_digest,
