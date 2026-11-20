@@ -131,10 +131,22 @@ def _validate_crl_time_der(tag: int, encoded: bytes, field: str) -> None:
         raise ValueError(
             f"{field} must use UTC time with seconds and a trailing Z; GeneralizedTime must not use fractional seconds"
         )
-    try:
-        datetime.strptime(value.decode("ascii"), "%Y%m%d%H%M%S")
-    except ValueError as exc:
-        raise ValueError(f"{field} must contain a valid calendar date and time") from exc
+    # datetime.strptime() rejects year 0000, while OpenSSL's ASN1_TIME
+    # representation supports GeneralizedTime years 0000 through 9999.
+    digits = value.decode("ascii")
+    year, month, day = int(digits[0:4]), int(digits[4:6]), int(digits[6:8])
+    hour, minute, second = int(digits[8:10]), int(digits[10:12]), int(digits[12:14])
+    leap_year = year % 4 == 0 and (year % 100 != 0 or year % 400 == 0)
+    month_days = (31, 29 if leap_year else 28, 31, 30, 31, 30,
+                  31, 31, 30, 31, 30, 31)
+    if not (
+        1 <= month <= 12
+        and 1 <= day <= month_days[month - 1]
+        and 0 <= hour <= 23
+        and 0 <= minute <= 59
+        and 0 <= second <= 59
+    ):
+        raise ValueError(f"{field} must contain a valid calendar date and time")
 
 
 def validate_invalidity_date_der_encoding(raw: bytes, tbs_start: int, tbs_end: int) -> None:
