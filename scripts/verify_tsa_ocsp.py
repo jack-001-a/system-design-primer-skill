@@ -271,8 +271,132 @@ def _validate_generalized_time_tree(data: bytes | memoryview) -> None:
                 pending.append((tag, value, depth + 1))
 
 
+def _validate_ocsp_explicit_value(tag, value, expected_tag, field):
+    if tag not in (0xA0, 0xA1, 0xA2) or tag & 0x1F != expected_tag:
+        raise ValueError(field + " incorrect explicit tag")
+    return _require_single_der_value(value, expected_tag, field)
+
+def _validate_ocsp_algorithm_identifier(value, field):
+    fields = list(_der_children(value))
+    if not (len(fields) in (1, 2) and fields[0][0] == 0x06):
+        raise ValueError(field + " invalid AlgorithmIdentifier")
+    _validate_der_primitive(fields[0][0], fields[0][1])
+
+def _validate_ocsp_cert_id(value):
+    fields = list(_der_children(value))
+    if not (len(fields) == 4 and fields[0][0] == 0x30 and
+            fields[1][0] == 0x04 and fields[2][0] == 0x04 and
+            fields[3][0] == 0x02):
+        raise ValueError("OCSP CertID structure invalid")
+    _validate_ocsp_algorithm_identifier(fields[0][1], "OCSP hashAlgorithm")
+    _validate_der_primitive(fields[3][0], fields[3][1])
+
+def _validate_ocsp_extensions(tag, value, field):
+    sequence = _validate_ocsp_explicit_value(tag, value, 0x30, field)
+    extensions = list(_der_children(sequence))
+    if not extensions:
+        raise ValueError(field + " must contain at least one Extension")
+    seen = set()
+    for ext_tag, ext_value in extensions:
+        if ext_tag != 0x30:
+            raise ValueError(field + " contains non-SEQUENCE Extension")
+        parts = list(_der_children(ext_value))
+        if not ((len(parts) == 2 and parts[0][0] == 0x06 and parts[1][0] == 0x04) or
+                (len(parts) == 3 and parts[0][0] == 0x06 and
+                 parts[1][0] == 0x01 and parts[2][0] == 0x04)):
+            raise ValueError(field + " contains invalid Extension structure")
+        _validate_der_primitive(parts[0][0], parts[0][1])
+        oid = bytes(parts[0][1])
+        if oid in seen:
+            raise ValueError(field + " contains duplicate extension OID")
+        seen.add(oid)
+        if len(parts) == 3:
+            _validate_der_primitive(parts[1][0], parts[1][1])
+            if parts[1][1][0] == 0:
+                raise ValueError(field + " explicitly encodes DEFAULT critical FALSE")
+        _validate_der_primitive(parts[-1][0], parts[-1][1])
+
+def _validate_ocsp_revoked_info(value):
+    fields = list(_der_children(value))
+    if not fields or len(fields) > 2 or fields[0][0] != 0x18:
+        raise ValueError("OCSP revoked CertStatus has invalid implicit RevokedInfo")
+    _validate_generalized_time_value(fields[0][1])
+    if len(fields) == 2:
+        reason = _validate_ocsp_explicit_value(fields[1][0], fields[1][1],
+                                                0x0A, "OCSP revocationReason")
+        _validate_der_primitive(0x0A, reason)
+
+def _validate_ocsp_single_response(value):
+    fields = list(_der_children(value))
+    if not (len(fields) >= 3 and fields[0][0] == 0x30 and fields[2][0] == 0x18):
+        raise ValueError("OCSP SingleResponse has invalid field structure")
+    _validate_ocsp_cert_id(fields[0][1])
+    status_tag, status_value = fields[1]
+    if status_tag in (0x80, 0x82):
+        if status_value:
+            label = "good" if status_tag == 0x80 else "unknown"
+            raise ValueError("OCSP " + label + " CertStatus IMPLICIT NULL must be empty")
+    elif status_tag == 0xA1:
+        _validate_ocsp_revoked_info(status_value)
+    else:
+        raise ValueError("OCSP SingleResponse has invalid CertStatus CHOICE tag")
+    _validate_generalized_time_value(fields[2][1])
+    index = 3
+    if index < len(fields) and fields[index][0] == 0xA0:
+        next_update = _validate_ocsp_explicit_value(fields[index][0], fields[index][1],
+                                                     0x18, "OCSP nextUpdate")
+        _validate_generalized_time_value(next_update)
+        index += 1
+    if index < len(fields) and fields[index][0] == 0xA1:
+        _validate_ocsp_extensions(fields[index][0], fields[index][1],
+                                  "OCSP singleExtensions")
+        index += 1
+    if index != len(fields):
+        raise ValueError("OCSP SingleResponse has duplicate or unexpected fields")
+
+def _validate_ocsp_response_data(value):
+    fields = list(_der_children(value))
+    index = 0
+    if index < len(fields) and fields[index][0] == 0xA0:
+        version = _validate_ocsp_explicit_value(fields[index][0], fields[index][1],
+                                                0x02, "OCSP ResponseData version")
+        _validate_der_primitive(0x02, version)
+        if bytes(version) == b"\x00":
+            raise ValueError("OCSP DEFAULT v1 version must be omitted in DER")
+        raise ValueError("OCSP ResponseData contains unsupported version")
+    if index >= len(fields):
+        raise ValueError("OCSP ResponseData missing ResponderID")
+    responder_tag, responder_value = fields[index]
+    if responder_tag == 0xA1:
+        _validate_ocsp_explicit_value(responder_tag, responder_value, 0x30,
+                                      "OCSP ResponderID byName")
+    elif responder_tag == 0xA2:
+        _validate_ocsp_explicit_value(responder_tag, responder_value, 0x04,
+                                      "OCSP ResponderID byKey")
+    else:
+        raise ValueError("OCSP ResponseData has invalid ResponderID CHOICE tag")
+    index += 1
+    if index >= len(fields) or fields[index][0] != 0x18:
+        raise ValueError("OCSP producedAt missing or malformed")
+    _validate_generalized_time_value(fields[index][1])
+    index += 1
+    if index >= len(fields) or fields[index][0] != 0x30:
+        raise ValueError("OCSP responses missing SEQUENCE OF wrapper")
+    for tag, response in _der_children(fields[index][1]):
+        if tag != 0x30:
+            raise ValueError("OCSP responses contains non-SEQUENCE SingleResponse")
+        _validate_ocsp_single_response(response)
+    index += 1
+    if index < len(fields) and fields[index][0] == 0xA1:
+        _validate_ocsp_extensions(fields[index][0], fields[index][1],
+                                  "OCSP responseExtensions")
+        index += 1
+    if index != len(fields):
+        raise ValueError("OCSP ResponseData has duplicate or unexpected fields")
+
+
 def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
-    """Enforce bounded RFC 5280 time syntax for BasicOCSPResponse fields."""
+    """Enforce bounded DER and RFC 6960 structure/time rules for OCSP responses."""
     if len(response_der) > MAX_OCSP_RESPONSE_BYTES:
         raise ValueError(
             "OCSP response exceeds the maximum supported size of "
@@ -324,6 +448,17 @@ def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
         and (len(basic_fields) == 3 or basic_fields[3][0] == 0xA0)
     ):
         raise ValueError("BasicOCSPResponse has an invalid structure")
+    _validate_ocsp_algorithm_identifier(
+        basic_fields[1][1], "BasicOCSPResponse signatureAlgorithm"
+    )
+    if len(basic_fields) == 4:
+        certificates = _validate_ocsp_explicit_value(
+            basic_fields[3][0], basic_fields[3][1], 0x30,
+            "BasicOCSPResponse certs"
+        )
+        if any(tag != 0x30 for tag, _ in _der_children(certificates)):
+            raise ValueError("BasicOCSPResponse certs contains non-SEQUENCE Certificate")
+    _validate_ocsp_response_data(basic_fields[0][1])
     _validate_generalized_time_tree(basic_response)
 
 
