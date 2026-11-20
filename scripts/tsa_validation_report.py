@@ -288,6 +288,14 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             raise ValueError("OCSP response time ordering is invalid")
         if validation_dt < this_dt or validation_dt > next_dt:
             raise ValueError("OCSP response validity interval does not cover its validation_time")
+        responder_chain_policy = (
+            "OpenSSL ocsp uses the SHA-256-pinned -CAfile, empty -CApath/-CAstore, -x509_strict, and -auth_level 2"
+        )
+        if ocsp_result.get("responder_chain_validation_policy") != responder_chain_policy:
+            raise ValueError("OCSP responder-chain validation policy is missing or unsupported")
+        responder_chain_times = ocsp_result.get("responder_chain_validation_times")
+        if not isinstance(responder_chain_times, list) or any(type(value) is not int for value in responder_chain_times):
+            raise ValueError("OCSP responder-chain validation times must be a list of Unix-second integers")
         historical_at_time = ocsp_result.get("historical_at_time")
         if scope == historical_scope:
             gen_dt = parse_utc(gen_time, "gen_time")
@@ -299,6 +307,25 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                 raise ValueError("historical OCSP producedAt is later than RFC 3161 genTime")
             if this_dt > gen_dt or next_dt < gen_dt:
                 raise ValueError("historical OCSP signed validity interval does not cover RFC 3161 genTime")
+            epoch = datetime(1970, 1, 1, tzinfo=validation_dt.tzinfo)
+            delta = validation_dt - epoch
+            floor_second = delta.days * 86400 + delta.seconds
+            expected_chain_times = (
+                [floor_second, floor_second + 1] if delta.microseconds else [floor_second]
+            )
+            if responder_chain_validation_times != expected_chain_times:
+                raise ValueError("historical OCSP responder path must be checked at floor/ceiling Unix-second bounds")
+            if ocsp_result.get("responder_chain_validation_scope") != (
+                "OpenSSL responder PKIX path validation at both floor and ceiling Unix-second bounds of historical validation_time"
+            ):
+                raise ValueError("historical OCSP responder-chain validation scope is missing or unsupported")
+        else:
+            if responder_chain_validation_times:
+                raise ValueError("current-time OCSP result must not claim explicit historical responder-path timestamps")
+            if ocsp_result.get("responder_chain_validation_scope") != (
+                "OpenSSL responder PKIX path validation at the host wall-clock time"
+            ):
+                raise ValueError("current-time OCSP responder-chain validation scope is missing or unsupported")
         responder_digest = ocsp_result.get("responder_certificate_sha256")
         if responder_digest is not None:
             responder_digest = require_digest(responder_digest, "OCSP responder_certificate_sha256")
@@ -317,7 +344,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             raise ValueError("OCSP trust-anchor/intermediate separation policy is missing or unsupported")
         if ocsp_result.get("verification") != (
             "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, "
-            "-x509_strict, and -auth_level 2; Python verifies exact target CertID, status, and freshness"
+            "empty -CApath/-CAstore, -x509_strict, and -auth_level 2; historical validation repeats "
+            "path verification at floor/ceiling Unix-second bounds; Python verifies exact target CertID, status, and freshness"
         ):
             raise ValueError("OCSP verification method provenance is missing or unsupported")
         ocsp_section = {
@@ -327,6 +355,9 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "validation_time": validation_time,
             "historical_at_time": historical_at_time,
             "scope": scope,
+            "responder_chain_validation_scope": ocsp_result["responder_chain_validation_scope"],
+            "responder_chain_validation_times": responder_chain_validation_times,
+            "responder_chain_validation_policy": responder_chain_policy,
             "produced_at": produced_at,
             "this_update": this_update,
             "next_update": next_update,
