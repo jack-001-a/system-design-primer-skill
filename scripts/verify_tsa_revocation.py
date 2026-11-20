@@ -642,7 +642,7 @@ def _verify_crl_status_with_snapshot(
     openssl_version = _require_supported_openssl(executable)
     command = [
         executable, "verify", "-verbose", "-attime", str(epoch), "-crl_check",
-        "-CRLfile", str(crl), "-CAfile", str(issuer_roots), "-no-CApath", "-no-CAstore", "-x509_strict",
+        "-CRLfile", str(crl), "-CAfile", str(issuer_roots), "-no-CApath", "-no-CAstore", "-auth_level", "2", "-x509_strict",
     ]
     if intermediates is not None:
         command.extend(["-untrusted", str(intermediates)])
@@ -672,7 +672,7 @@ def _verify_crl_status_with_snapshot(
         "crl_signature_algorithm_oid": parsed_crl.signature_algorithm_oid.dotted_string,
         "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
         "revocation_entry": entry_assessment,
-        "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+        "verification": "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
     }
 
 
