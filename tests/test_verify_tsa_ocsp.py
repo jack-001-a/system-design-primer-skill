@@ -17,6 +17,7 @@ from scripts.verify_tsa_ocsp import bind_responder_certificate
 from scripts.verify_tsa_ocsp import (
     verify_ocsp_response, validate_trust_anchor_bundle, verification_time_bounds,
     parse_historical_at_time, validate_ocsp_generalized_time_profile,
+    MAX_OCSP_RESPONSE_BYTES, MAX_DER_DEPTH, MAX_DER_CHILDREN, MAX_DER_NODES,
 )
 
 
@@ -37,6 +38,7 @@ def synthetic_ocsp_response(
     next_update: bytes,
     extension: bytes | None = None,
     revocation_time: bytes | None = None,
+    extra_certs: bytes = b"",
 ) -> bytes:
     """Build a minimal BasicOCSPResponse envelope for GeneralizedTime profile tests."""
     single_response_extensions = (
@@ -61,7 +63,8 @@ def synthetic_ocsp_response(
         0x30,
         response_data
         + der_value(0x30, der_value(0x06, bytes.fromhex("2b0e03021a")))
-        + der_value(0x03, b"\x00signature"),
+        + der_value(0x03, b"\x00signature")
+        + extra_certs,
     )
     response_bytes = der_value(
         0x30,
@@ -69,6 +72,12 @@ def synthetic_ocsp_response(
         + der_value(0x04, basic),
     )
     return der_value(0x30, der_value(0x0A, b"\x00") + der_value(0xA0, response_bytes))
+
+def nested_der_sequences(depth: int) -> bytes:
+    value = der_value(0x05, b"")
+    for _ in range(depth):
+        value = der_value(0x30, value)
+    return value
 
 class TsaOcspTests(unittest.TestCase):
     def setUp(self):
@@ -221,6 +230,62 @@ Next Update: Nov 19 12:05:00 2026 GMT
         malformed = der_value(0x30, der_value(0x0A, b"\x00"))
         with self.assertRaisesRegex(ValueError, "successful OCSPResponse is missing responseBytes"):
             validate_ocsp_generalized_time_profile(malformed)
+
+    def test_rejects_ocsp_response_above_configured_size_limit(self):
+        oversized = b"x" * (MAX_OCSP_RESPONSE_BYTES + 1)
+        with self.assertRaisesRegex(ValueError, "maximum supported size"):
+            validate_ocsp_generalized_time_profile(oversized)
+
+        self.response.write_bytes(oversized)
+        with patch(
+            "scripts.verify_tsa_ocsp.shutil.which",
+            side_effect=AssertionError("OpenSSL must not receive oversized OCSP responses"),
+        ):
+            with self.assertRaisesRegex(ValueError, "maximum supported size"):
+                verify_ocsp_response(
+                    self.cert, self.issuer, self.roots, self.response, self.pin(), now=self.now
+                )
+
+    def test_rejects_excessive_constructed_der_nesting(self):
+        response = synthetic_ocsp_response(
+            b"20261120120000Z",
+            b"20261120115800Z",
+            b"20261120120500Z",
+            extra_certs=der_value(
+                0xA0,
+                der_value(0x30, nested_der_sequences(MAX_DER_DEPTH + 1)),
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "nesting-depth limit"):
+            validate_ocsp_generalized_time_profile(response)
+
+    def test_rejects_constructed_der_value_with_too_many_children(self):
+        many_children = b"".join(
+            der_value(0x05, b"") for _ in range(MAX_DER_CHILDREN + 1)
+        )
+        response = synthetic_ocsp_response(
+            b"20261120120000Z",
+            b"20261120115800Z",
+            b"20261120120500Z",
+            extra_certs=der_value(0xA0, der_value(0x30, many_children)),
+        )
+        with self.assertRaisesRegex(ValueError, "child-count limit"):
+            validate_ocsp_generalized_time_profile(response)
+
+    def test_rejects_der_tree_over_total_node_budget(self):
+        leaf_group = der_value(
+            0x30,
+            b"".join(der_value(0x05, b"") for _ in range(450)),
+        )
+        many_groups = b"".join(leaf_group for _ in range(450))
+        response = synthetic_ocsp_response(
+            b"20261120120000Z",
+            b"20261120115800Z",
+            b"20261120120500Z",
+            extra_certs=der_value(0xA0, der_value(0x30, many_groups)),
+        )
+        with self.assertRaisesRegex(ValueError, "node-count limit"):
+            validate_ocsp_generalized_time_profile(response)
 
     def test_rejects_fractional_ocsp_time_before_invoking_openssl(self):
         self.response.write_bytes(synthetic_ocsp_response(
