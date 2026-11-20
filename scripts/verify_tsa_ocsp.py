@@ -57,7 +57,9 @@ def verification_time_bounds(value: datetime) -> tuple[int, ...]:
 
 
 def load_certificate(path: Path, description: str) -> x509.Certificate:
-    raw = path.read_bytes()
+    raw = _read_stable_ocsp_input(
+        path, description, MAX_OCSP_INPUT_BYTES
+    )
     try:
         return x509.load_pem_x509_certificate(raw)
     except ValueError:
@@ -636,7 +638,9 @@ def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
 
 def validate_trust_anchor_bundle(path: Path) -> None:
     """Restrict the OCSP trust store to unique, explicitly self-issued anchors."""
-    raw = path.read_bytes()
+    raw = _read_stable_ocsp_input(
+        path, "OCSP issuer-root bundle", MAX_OCSP_INPUT_BYTES
+    )
     blocks = re.findall(rb"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", raw, re.DOTALL)
     try:
         certificates = ([x509.load_pem_x509_certificate(block) for block in blocks]
@@ -671,7 +675,9 @@ def bind_responder_certificate(response_path: Path, certificate_path: Path,
                                expected_sha256: str) -> tuple[x509.Certificate, str]:
     if not isinstance(expected_sha256, str) or not HEX256.fullmatch(expected_sha256):
         raise ValueError("expected responder-certificate SHA-256 must be 64 lowercase hex characters")
-    certificate_bytes = certificate_path.read_bytes()
+    certificate_bytes = _read_stable_ocsp_input(
+        certificate_path, "OCSP responder certificate", MAX_OCSP_INPUT_BYTES
+    )
     digest = hashlib.sha256(certificate_bytes).hexdigest()
     if digest != expected_sha256:
         raise ValueError("OCSP responder-certificate SHA-256 pin mismatch")
