@@ -229,7 +229,7 @@ def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[s
 
 def parse_ordering(details: str) -> bool:
     """Parse RFC 3161 ordering; an absent DEFAULT FALSE field is false."""
-    matches = re.findall(r"^Ordering:[ \\t]*(.*?)[ \\t]*$", details, re.I | re.M)
+    matches = re.findall(r"^Ordering:[ \t]*(.*?)[ \t]*$", details, re.I | re.M)
     if not matches:
         return False
     if len(matches) != 1 or matches[0].lower() not in {"yes", "no"}:
