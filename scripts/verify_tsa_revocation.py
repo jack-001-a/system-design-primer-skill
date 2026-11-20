@@ -196,6 +196,8 @@ def validate_direct_crl_scope(
                     continue
                 if aki.key_identifier == ski.digest:
                     matched.append(item)
+            if not matched:
+                raise ValueError("CRL AuthorityKeyIdentifier does not match any supplied issuer SubjectKeyIdentifier")
             candidates = matched
         issuer_names = aki.authority_cert_issuer
         serial = aki.authority_cert_serial_number
