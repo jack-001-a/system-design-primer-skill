@@ -162,8 +162,6 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
         raise ValueError("OCSP response is stale: nextUpdate has passed")
     if next_update < this_update:
         raise ValueError("OCSP nextUpdate precedes thisUpdate")
-    if produced + skew < this_update:
-        raise ValueError("OCSP producedAt precedes thisUpdate beyond allowed clock skew")
     return {
         "verified": True,
         "status": status,
