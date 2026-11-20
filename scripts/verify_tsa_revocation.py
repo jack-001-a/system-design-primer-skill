@@ -142,7 +142,7 @@ def validate_direct_crl_scope(
     issuer_certificates: list[x509.Certificate],
     crl: x509.CertificateRevocationList,
     at_time: datetime,
-) -> str:
+) -> tuple[str, dict[str, Any]]:
     """Validate supported CRL applicability; OpenSSL subsequently verifies signatures/path."""
     if certificate.issuer != crl.issuer:
         raise ValueError("CRL issuer does not match certificate issuer")
@@ -185,11 +185,33 @@ def validate_direct_crl_scope(
     signer = candidates[0]
 
     try:
+        constraints_ext = signer.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS)
+    except x509.ExtensionNotFound as exc:
+        raise ValueError("CRL issuer certificate lacks basicConstraints CA authorization") from exc
+    if not constraints_ext.critical or not constraints_ext.value.ca:
+        raise ValueError("CRL issuer certificate must have critical basicConstraints with CA=true")
+    try:
         key_usage = signer.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
     except x509.ExtensionNotFound as exc:
         raise ValueError("CRL issuer certificate lacks explicit keyUsage with cRLSign") from exc
     if not key_usage.crl_sign:
         raise ValueError("CRL issuer certificate is not authorized for cRLSign")
+    if not key_usage.key_cert_sign:
+        raise ValueError("CRL issuer certificate is not authorized for keyCertSign")
+
+    crl_issued_at = crl.last_update_utc
+    issuer_not_before = signer.not_valid_before_utc
+    issuer_not_after = signer.not_valid_after_utc
+    if not issuer_not_before <= crl_issued_at <= issuer_not_after:
+        raise ValueError("CRL issuer certificate was not valid at CRL thisUpdate")
+    issuer_validity = {
+        "crl_this_update": crl_issued_at.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "not_before": issuer_not_before.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "not_after": issuer_not_after.isoformat(timespec="seconds").replace("+00:00", "Z"),
+        "valid_at_this_update": True, "basic_constraints_ca": True,
+        "key_cert_sign": True, "crl_sign": True,
+        "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
+    }
 
     try:
         aki = crl.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER).value
@@ -218,7 +240,7 @@ def validate_direct_crl_scope(
         raise ValueError("CRL nextUpdate does not cover the historical validation time")
 
     validate_crl_signature_policy(crl, signer)
-    return hashlib.sha256(signer.public_bytes(serialization.Encoding.DER)).hexdigest()
+    return hashlib.sha256(signer.public_bytes(serialization.Encoding.DER)).hexdigest(), issuer_validity
 
 
 def verify_crl_status(
@@ -259,7 +281,7 @@ def verify_crl_status(
         if intermediates is not None:
             issuer_certs.extend(load_certificates(intermediates))
         parsed_crl = load_crl(crl)
-        signer_digest = validate_direct_crl_scope(cert, issuer_certs, parsed_crl, instant)
+        signer_digest, issuer_validity = validate_direct_crl_scope(cert, issuer_certs, parsed_crl, instant)
         entry_assessment = assess_crl_entry(cert, parsed_crl, instant)
         if entry_assessment["status_at_time"] == "revoked":
             raise ValueError("target certificate is revoked at the historical validation time")
@@ -293,11 +315,12 @@ def verify_crl_status(
         "issuer_roots_sha256": roots_digest,
         "crl_sha256": crl_digest,
         "crl_issuer_certificate_sha256": signer_digest,
+        "crl_issuer_certificate_validity": issuer_validity,
         "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
         "crl_signature_algorithm_oid": parsed_crl.signature_algorithm_oid.dotted_string,
         "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
         "revocation_entry": entry_assessment,
-        "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+        "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
     }
 
 

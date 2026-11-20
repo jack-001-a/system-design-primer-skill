@@ -17,15 +17,15 @@ NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
 
 
-def make_material(*, crl_sign=True, future=False, delta=False, indirect=False, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
+def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_before=None, issuer_not_after=None, future=False, delta=False, indirect=False, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
     key = rsa.generate_private_key(public_exponent=65537, key_size=key_size)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "CRL issuer")])
     issuer = (
         x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
-        .serial_number(1).not_valid_before(NOW-timedelta(days=30)).not_valid_after(NOW+timedelta(days=365))
-        .add_extension(x509.BasicConstraints(ca=True, path_length=None), True)
+        .serial_number(1).not_valid_before(issuer_not_before or NOW-timedelta(days=30)).not_valid_after(issuer_not_after or NOW+timedelta(days=365))
+        .add_extension(x509.BasicConstraints(ca=ca, path_length=None), True)
         .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=False,
-            data_encipherment=False, key_agreement=False, key_cert_sign=True, crl_sign=crl_sign,
+            data_encipherment=False, key_agreement=False, key_cert_sign=key_cert_sign, crl_sign=crl_sign,
             encipher_only=None, decipher_only=None), True)
         .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), False)
         .sign(key, hashes.SHA256())
@@ -113,10 +113,44 @@ class TsaRevocationTests(unittest.TestCase):
         self.assertEqual(result["crl_sha256"], self.crl_pin())
         self.assertEqual(result["effective_at_time"], AT_TIME)
         self.assertEqual(result["time_rounding"], "ceil_to_next_whole_second_for_conservative_historical_evaluation")
+        self.assertTrue(result["crl_issuer_certificate_validity"]["valid_at_this_update"])
         self.assertIn("-attime", run.call_args.args[0])
         self.assertIn("-crl_check", run.call_args.args[0])
         self.assertIn("-CRLfile", run.call_args.args[0])
 
+    def test_rejects_crl_issuer_not_yet_valid_at_this_update(self):
+        self.issuer, self.leaf, self.listing = make_material(issuer_not_before=NOW-timedelta(hours=12))
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "not valid at CRL thisUpdate"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_rejects_crl_issuer_expired_at_this_update(self):
+        self.issuer, self.leaf, self.listing = make_material(issuer_not_after=NOW-timedelta(days=2))
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "not valid at CRL thisUpdate"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_crl_issuer_validity_interval_includes_exact_this_update_boundaries(self):
+        crl_time = NOW-timedelta(days=1)
+        for kwargs in ({"issuer_not_before": crl_time}, {"issuer_not_after": crl_time}):
+            self.issuer, self.leaf, self.listing = make_material(**kwargs)
+            self.write_material()
+            with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+                run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
+                result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+            self.assertTrue(result["crl_issuer_certificate_validity"]["valid_at_this_update"])
+
+    def test_rejects_crl_issuer_without_key_cert_sign(self):
+        self.issuer, self.leaf, self.listing = make_material(key_cert_sign=False)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "not authorized for keyCertSign"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_rejects_non_ca_crl_issuer(self):
+        self.issuer, self.leaf, self.listing = make_material(ca=False)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "CA=true"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
     def test_rejects_mismatched_crl_issuer(self):
         other = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "other issuer")])
         other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
