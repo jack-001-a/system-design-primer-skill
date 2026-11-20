@@ -96,6 +96,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
         result, _, _ = self.run_valid(output)
         self.assertEqual(result["status"], "revoked")
     def test_selects_target_certid_when_response_contains_multiple_certificates(self):
+        from types import SimpleNamespace
         other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         other_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Other certificate")])
         other_certificate = (x509.CertificateBuilder().subject_name(other_name)
@@ -104,23 +105,30 @@ Next Update: Nov 19 12:05:00 2026 GMT
             .not_valid_after(self.now + timedelta(days=30))
             .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
             .sign(self.root_key, hashes.SHA256()))
-        multi = (ocsp.OCSPResponseBuilder()
+        other_response = (ocsp.OCSPResponseBuilder()
             .add_response(other_certificate, self.root_certificate, hashes.SHA1(),
                 ocsp.OCSPCertStatus.REVOKED, self.now - timedelta(minutes=4),
                 self.now + timedelta(minutes=5), self.now - timedelta(hours=1),
                 x509.ReasonFlags.key_compromise)
-            .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
-                ocsp.OCSPCertStatus.GOOD, self.now - timedelta(minutes=2),
-                self.now + timedelta(minutes=5), None, None)
             .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
             .sign(self.root_key, hashes.SHA256()))
-        self.response.write_bytes(multi.public_bytes(Encoding.DER))
-        misleading_text = self.output.replace("Cert Status: good", "Cert Status: revoked")
-        result, _, _ = self.run_valid(misleading_text)
+        target_response = ocsp.load_der_ocsp_response(self.response.read_bytes())
+        other_single = next(iter(ocsp.load_der_ocsp_response(
+            other_response.public_bytes(Encoding.DER)).responses))
+        target_single = next(iter(target_response.responses))
+        combined = SimpleNamespace(
+            response_status=ocsp.OCSPResponseStatus.SUCCESSFUL,
+            responses=[other_single, target_single],
+            produced_at=target_response.produced_at,
+        )
+        with patch("scripts.verify_tsa_ocsp.ocsp.load_der_ocsp_response", return_value=combined):
+            misleading_text = self.output.replace("Cert Status: good", "Cert Status: revoked")
+            result, _, _ = self.run_valid(misleading_text)
         self.assertEqual(result["status"], "good")
         self.assertEqual(result["this_update"], (self.now - timedelta(minutes=2)).isoformat().replace("+00:00", "Z"))
 
     def test_rejects_response_without_target_certid(self):
+        from types import SimpleNamespace
         other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         other_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Unrelated certificate")])
         other_certificate = (x509.CertificateBuilder().subject_name(other_name)
@@ -135,9 +143,15 @@ Next Update: Nov 19 12:05:00 2026 GMT
                 self.now + timedelta(minutes=5), None, None)
             .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
             .sign(self.root_key, hashes.SHA256()))
-        self.response.write_bytes(unrelated.public_bytes(Encoding.DER))
-        with self.assertRaisesRegex(ValueError, "exactly one unambiguous CertID match"):
-            self.run_valid()
+        unrelated_response = ocsp.load_der_ocsp_response(unrelated.public_bytes(Encoding.DER))
+        parsed = SimpleNamespace(
+            response_status=ocsp.OCSPResponseStatus.SUCCESSFUL,
+            responses=list(unrelated_response.responses),
+            produced_at=unrelated_response.produced_at,
+        )
+        with patch("scripts.verify_tsa_ocsp.ocsp.load_der_ocsp_response", return_value=parsed):
+            with self.assertRaisesRegex(ValueError, "exactly one unambiguous CertID match"):
+                self.run_valid()
 
     def test_accepts_preproduced_response_before_this_update(self):
         from types import SimpleNamespace
@@ -298,7 +312,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
     def make_responder_response(self, responder_encoding):
         key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "OCSP test responder")])
-        now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
+        now = self.now
         cert = (x509.CertificateBuilder().subject_name(name).issuer_name(self.root_name)
                 .public_key(key.public_key()).serial_number(x509.random_serial_number())
                 .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=30))
