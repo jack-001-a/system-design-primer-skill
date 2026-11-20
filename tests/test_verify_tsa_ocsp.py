@@ -88,6 +88,9 @@ Next Update: Nov 19 12:05:00 2026 GMT
         self.assertIn("-x509_strict", command)
         self.assertIn("-auth_level", command)
         self.assertEqual(command[command.index("-auth_level") + 1], "2")
+        self.assertIsNone(result["issuer_intermediates_sha256"])
+        self.assertIn("-auth_level 2", result["verification"])
+        self.assertIn("-verify_other", result["trust_anchor_policy"])
 
     def test_openssl_ocsp_cli_exposes_auth_level_option(self):
         import subprocess
