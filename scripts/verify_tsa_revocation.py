@@ -120,17 +120,21 @@ def _read_der_tlv(data: bytes, offset: int) -> tuple[int, int, int, int]:
 
 
 def _validate_crl_time_der(tag: int, encoded: bytes, field: str) -> None:
-    """Require the RFC 5280 UTC time syntax for CRL Time values."""
-    if tag == 0x17:
-        valid = re.fullmatch(rb"[0-9]{12}Z", encoded) is not None
-    elif tag == 0x18:
-        valid = re.fullmatch(rb"[0-9]{14}Z", encoded) is not None
+    """Require canonical RFC 5280 UTC syntax and a valid calendar date."""
+    if tag == 0x17 and re.fullmatch(rb"[0-9]{12}Z", encoded):
+        year = int(encoded[:2])
+        year += 2000 if year <= 49 else 1900
+        value = f"{year:04d}".encode("ascii") + encoded[2:-1]
+    elif tag == 0x18 and re.fullmatch(rb"[0-9]{14}Z", encoded):
+        value = encoded[:-1]
     else:
-        valid = False
-    if not valid:
         raise ValueError(
             f"{field} must use UTC time with seconds and a trailing Z; GeneralizedTime must not use fractional seconds"
         )
+    try:
+        datetime.strptime(value.decode("ascii"), "%Y%m%d%H%M%S")
+    except ValueError as exc:
+        raise ValueError(f"{field} must contain a valid calendar date and time") from exc
 
 
 def validate_invalidity_date_der_encoding(raw: bytes, tbs_start: int, tbs_end: int) -> None:
