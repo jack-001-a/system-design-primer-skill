@@ -224,17 +224,17 @@ class EvidenceTimestampTests(unittest.TestCase):
 
     def test_parse_ordering_applies_default_and_accepts_explicit_values(self):
         from scripts.evidence_timestamp import parse_ordering
-        self.assertFalse(parse_ordering("Policy OID: 1.2.3\\n"))
-        self.assertFalse(parse_ordering("Ordering: no\\n"))
-        self.assertTrue(parse_ordering("Ordering: yes\\n"))
-        self.assertTrue(parse_ordering("ordering: YES\\n"))
+        self.assertFalse(parse_ordering("Policy OID: 1.2.3\n"))
+        self.assertFalse(parse_ordering("Ordering: no\n"))
+        self.assertTrue(parse_ordering("Ordering: yes\n"))
+        self.assertTrue(parse_ordering("ordering: YES\n"))
 
     def test_parse_ordering_rejects_malformed_or_duplicate_fields(self):
         from scripts.evidence_timestamp import parse_ordering
         for details in (
-            "Ordering: maybe\\n",
-            "Ordering: yes trailing\\n",
-            "Ordering: yes\\nOrdering: no\\n",
+            "Ordering: maybe\n",
+            "Ordering: yes trailing\n",
+            "Ordering: yes\nOrdering: no\n",
         ):
             with self.subTest(details=details):
                 with self.assertRaisesRegex(ValueError, "ordering field is malformed"):
