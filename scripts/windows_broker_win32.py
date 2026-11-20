@@ -209,6 +209,7 @@ class NamedPipeConnection:
     """Track server-side connection state independently from one I/O operation."""
 
     CONNECTED = "connected"
+    CONNECTING = "connecting"
     DISCONNECTED = "disconnected"
     CLOSING = "closing"
     CLOSED = "closed"
@@ -299,6 +300,78 @@ class NamedPipeConnection:
                     "operation resources must be closed before unregistering"
                 )
             self._operations.remove(operation)
+
+    def start_connect(
+        self,
+        bindings: "Kernel32Bindings",
+        operation: "OverlappedOperation",
+        *,
+        get_last_error: Callable[[], int] = last_error,
+    ) -> tuple[str, int | None]:
+        """Start a new overlapped connection as one serialized lifecycle step.
+
+        The connect operation is registered before the native call and remains
+        registered until its event/buffer/OVERLAPPED resources are closed.
+        A pending connect must be finalized with complete_connect after its
+        operation reaches COMPLETED.
+        """
+        with self._lock:
+            if self._state != self.DISCONNECTED:
+                raise OverlappedLifecycleError(
+                    f"cannot start pipe connect in state {self._state}"
+                )
+            if self._operations:
+                raise OverlappedLifecycleError(
+                    "cannot connect while previous operation resources remain registered"
+                )
+            if operation.file_handle != self.file_handle:
+                raise OverlappedLifecycleError(
+                    "connect operation handle does not belong to this pipe"
+                )
+            if operation.state != operation.CREATED:
+                raise OverlappedLifecycleError(
+                    f"cannot start connect in operation state {operation.state}"
+                )
+            self._operations.add(operation)
+            self._state = self.CONNECTING
+            try:
+                result, error = start_overlapped_connect(
+                    bindings, operation, get_last_error=get_last_error
+                )
+            except BaseException:
+                # Submission may have reached the kernel. Keep CONNECTING and
+                # retain the registered operation until its outcome is drained.
+                raise
+            if result == "connected":
+                self._state = self.CONNECTED
+            elif result == "failed":
+                self._state = self.DISCONNECTED
+            return result, error
+
+    def complete_connect(
+        self, operation: "OverlappedOperation", *, connected: bool
+    ) -> None:
+        """Commit a pending ConnectNamedPipe result after I/O completion."""
+        if type(connected) is not bool:
+            raise TypeError("connected must be a bool")
+        with self._lock:
+            if self._state != self.CONNECTING:
+                raise OverlappedLifecycleError(
+                    f"cannot complete pipe connect in state {self._state}"
+                )
+            if operation not in self._operations:
+                raise OverlappedLifecycleError(
+                    "connect operation is not registered with this pipe"
+                )
+            if operation.file_handle != self.file_handle:
+                raise OverlappedLifecycleError(
+                    "connect operation handle does not belong to this pipe"
+                )
+            if operation.state != operation.COMPLETED:
+                raise OverlappedLifecycleError(
+                    "connect operation must be completed before committing its result"
+                )
+            self._state = self.CONNECTED if connected else self.DISCONNECTED
 
     def mark_connected(self) -> None:
         """Record a successful ConnectNamedPipe completion before reuse."""
