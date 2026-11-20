@@ -37,6 +37,12 @@ def parse_utc_epoch(value: str) -> int:
 
 def load_certificates(path: Path) -> list[x509.Certificate]:
     raw = path.read_bytes()
+    # OpenSSL -CAfile also accepts PEM trusted-certificate blocks with auxiliary
+    # trust attributes. cryptography's ordinary PEM loader does not expose those
+    # attributes, so accepting such blocks would make the preflight's certificate
+    # set differ from the trust store OpenSSL actually uses.
+    if b"-----BEGIN TRUSTED CERTIFICATE-----" in raw:
+        raise ValueError("trust-anchor bundle must not contain TRUSTED CERTIFICATE PEM blocks")
     blocks = re.findall(rb"-----BEGIN CERTIFICATE-----.*?-----END CERTIFICATE-----", raw, re.DOTALL)
     if blocks:
         return [x509.load_pem_x509_certificate(block) for block in blocks]
