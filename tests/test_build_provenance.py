@@ -221,6 +221,11 @@ class BuildProvenanceTests(unittest.TestCase):
         run.assert_not_called()
 
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_repository_id_without_bundle_is_rejected_before_cli(self, which):
+        with self.assertRaisesRegex(ValueError, "only be used with an offline bundle"):
+            verify_build_provenance(self.artifact, **self.policy, repository_id=1462786926)
+
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_trusted_root_without_bundle_is_rejected_before_cli(self, which):
         root = Path(self.temp.name) / "trusted-root.jsonl"
         root.write_text("{}\n", encoding="utf-8")

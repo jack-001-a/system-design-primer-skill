@@ -123,6 +123,8 @@ def verify_build_provenance(
             raise ValueError("offline bundle verification requires --trusted-root")
     if repository_id is not None and repository_id <= 0:
         raise ValueError("repository_id must be a positive integer")
+    if repository_id is not None and bundle is None:
+        raise ValueError("repository_id can only be used with an offline bundle")
     if trusted_root is not None:
         if bundle is None:
             raise ValueError("trusted_root can only be used with an offline bundle")
