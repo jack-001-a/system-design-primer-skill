@@ -11,6 +11,29 @@ from scripts.tsa_attestation import (
 )
 from scripts.tsa_validation_report import _build_limitations
 
+
+def add_timestamp_chain_provenance(result, digest=None):
+    result.update({
+        "tsa_chain_sha256": digest,
+        "tsa_chain_valid_at_gen_time": True,
+        "tsa_chain_validation_time": result["gen_time"],
+        "tsa_chain_validation_scope": (
+            "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; "
+            "RFC 3161 Accuracy is reported separately and does not widen the -attime interval"
+        ),
+        "tsa_chain_validation_policy": (
+            "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, "
+            "-auth_level 2, -purpose timestampsign, and -x509_strict at the exact floor/ceiling "
+            "Unix-second bound(s) of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL"
+        ),
+        "verification": (
+            "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), "
+            "and TSA chain verification at genTime"
+        ),
+    })
+    return result
+
+
 class TsaAttestationTests(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -412,6 +435,63 @@ class TsaAttestationTests(unittest.TestCase):
 
 
     @patch("scripts.tsa_attestation.verify_timestamp")
+    @patch("scripts.tsa_attestation.verify_timestamp")
+    def test_reverification_requires_consistent_optional_intermediate_chain_digest(self, timestamp):
+        import base64
+        signature = base64.b64decode(json.loads(self.attestation.read_text(encoding="utf-8"))["signature"])
+        timestamp.return_value = {
+            "verified": True,
+            "verification_scope": {
+                "cms_signature": "verified",
+                "request_imprint": "verified",
+                "response_imprint": "verified",
+                "request_response_binding": "verified",
+                "nonce_binding": "not_requested",
+                "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified",
+                "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "gen_time": "2026-11-19T12:00:00Z",
+            "accuracy": None,
+            "tsa_signer_valid_at_gen_time": True,
+            "tsa_signer_certificate_sha256": "a" * 64,
+        }
+        add_timestamp_chain_provenance(timestamp.return_value)
+        request = self.root / "request.tsq"
+        response = self.root / "response.tsr"
+        ca = self.root / "tsa-ca.pem"
+        chain = self.root / "tsa-chain.pem"
+        for path in (request, response, ca):
+            path.write_bytes(b"fixture")
+        chain_bytes = b"intermediate chain snapshot"
+        chain.write_bytes(chain_bytes)
+        ca_pin = hashlib.sha256(b"fixture").hexdigest()
+        with self.assertRaisesRegex(ValueError, "intermediate-chain SHA-256"):
+            verify_attestation(
+                self.report, self.attestation, self.store, digest_file(self.store),
+                request, response, ca, ca_pin, chain,
+            )
+
+        expected_chain_digest = hashlib.sha256(chain_bytes).hexdigest()
+        timestamp.return_value["tsa_chain_sha256"] = expected_chain_digest
+        verified = verify_attestation(
+            self.report, self.attestation, self.store, digest_file(self.store),
+            request, response, ca, ca_pin, chain,
+        )
+        self.assertEqual(
+            verified["trusted_signature_timestamp"]["tsa_chain_sha256"],
+            expected_chain_digest,
+        )
+
+        with self.assertRaisesRegex(ValueError, "no chain input was supplied"):
+            verify_attestation(
+                self.report, self.attestation, self.store, digest_file(self.store),
+                request, response, ca, ca_pin,
+            )
+
     def test_rfc3161_timestamp_binds_exact_signature_and_proves_pre_revocation_existence(self, timestamp):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
@@ -429,6 +509,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -473,6 +554,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -505,6 +587,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (
             self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem"
         )
@@ -543,6 +626,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -589,6 +673,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (
             self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem"
         )
@@ -642,6 +727,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -667,6 +753,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -692,6 +779,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -722,6 +810,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -755,6 +844,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -797,6 +887,7 @@ class TsaAttestationTests(unittest.TestCase):
             "gen_time": "not-a-time", "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
@@ -822,6 +913,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         timestamp.return_value["verification_scope"] = None
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
@@ -855,6 +947,7 @@ class TsaAttestationTests(unittest.TestCase):
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
         }
+        timestamp.return_value.update(add_timestamp_chain_provenance(timestamp.return_value))
         request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
