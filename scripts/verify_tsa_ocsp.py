@@ -159,6 +159,23 @@ def _der_children(data: bytes | memoryview):
         raise ValueError("DER constructed value has trailing bytes")
 
 
+def _der_encoded_children(data: bytes | memoryview):
+    """Yield each DER child together with its complete original TLV encoding."""
+    offset = 0
+    child_count = 0
+    view = memoryview(data)
+    while offset < len(view):
+        if child_count >= MAX_DER_CHILDREN:
+            raise ValueError("DER constructed value exceeds the child-count limit")
+        start = offset
+        tag, value, end = _der_tlv(view, offset)
+        yield tag, value, view[start:end]
+        offset = end
+        child_count += 1
+    if offset != len(view):
+        raise ValueError("DER constructed value has trailing bytes")
+
+
 def _require_single_der_value(
     data: bytes | memoryview, expected_tag: int, field: str
 ) -> memoryview:
@@ -307,6 +324,106 @@ def _validate_generalized_time_tree(data: bytes | memoryview) -> None:
                 pending.append((tag, value, depth + 1))
 
 
+def _compare_der_set_of_encodings(left, right):
+    """Compare DER SET OF component encodings using X.690 11.6 zero-padding."""
+    width = max(len(left), len(right))
+    left_padded = bytes(left) + b"\x00" * (width - len(left))
+    right_padded = bytes(right) + b"\x00" * (width - len(right))
+    return (left_padded > right_padded) - (left_padded < right_padded)
+
+
+def _validate_x509_name(name_value, field, require_nonempty=False):
+    """Validate Name/RDNSequence and canonical ordering of each RDN SET OF."""
+    previous_rdn_count = 0
+    for rdn_tag, rdn_value in _der_children(name_value):
+        previous_rdn_count += 1
+        if rdn_tag != 0x31:
+            raise ValueError(field + " RDNSequence contains a non-SET RDN")
+        attribute_count = 0
+        previous_encoding = None
+        for attribute_tag, attribute_value, encoded in _der_encoded_children(rdn_value):
+            attribute_count += 1
+            if attribute_tag != 0x30:
+                raise ValueError(field + " RDN contains a non-SEQUENCE AttributeTypeAndValue")
+            parts = list(_der_children(attribute_value))
+            if len(parts) != 2 or parts[0][0] != 0x06:
+                raise ValueError(field + " AttributeTypeAndValue has an invalid structure")
+            _validate_der_primitive(parts[0][0], parts[0][1])
+            _validate_der_primitive(parts[1][0], parts[1][1])
+            if (previous_encoding is not None
+                    and _compare_der_set_of_encodings(previous_encoding, encoded) > 0):
+                raise ValueError(field + " RDN SET OF components are not in DER sort order")
+            previous_encoding = encoded
+        if attribute_count == 0:
+            raise ValueError(field + " RelativeDistinguishedName must not be empty")
+    if require_nonempty and previous_rdn_count == 0:
+        raise ValueError(field + " must not be an empty distinguished name")
+
+
+def _validate_x509_certificate_names(certificate_value):
+    """Validate the Certificate/TBSCertificate field path needed to locate both Names."""
+    certificate_fields = list(_der_children(certificate_value))
+    if not (
+        len(certificate_fields) == 3
+        and certificate_fields[0][0] == 0x30
+        and certificate_fields[1][0] == 0x30
+        and certificate_fields[2][0] == 0x03
+    ):
+        raise ValueError("OCSP embedded Certificate has an invalid outer structure")
+    _validate_ocsp_algorithm_identifier(
+        certificate_fields[1][1], "embedded Certificate signatureAlgorithm"
+    )
+    _validate_der_primitive(certificate_fields[2][0], certificate_fields[2][1])
+
+    tbs_fields = list(_der_children(certificate_fields[0][1]))
+    index = 0
+    version_number = 0
+    if tbs_fields and tbs_fields[0][0] == 0xA0:
+        version_value = _require_single_der_value(
+            tbs_fields[0][1], 0x02, "embedded TBSCertificate version"
+        )
+        _validate_der_primitive(0x02, version_value)
+        if len(version_value) != 1 or version_value[0] not in (1, 2):
+            raise ValueError("embedded TBSCertificate has an explicit DEFAULT or unsupported version")
+        version_number = version_value[0]
+        index = 1
+
+    mandatory_tags = (0x02, 0x30, 0x30, 0x30, 0x30, 0x30)
+    if len(tbs_fields) < index + len(mandatory_tags) or any(
+        tbs_fields[index + offset][0] != expected
+        for offset, expected in enumerate(mandatory_tags)
+    ):
+        raise ValueError("embedded TBSCertificate has an invalid mandatory field structure")
+
+    issuer_index = index + 2
+    subject_index = index + 4
+    _validate_x509_name(
+        tbs_fields[issuer_index][1], "embedded TBSCertificate issuer", require_nonempty=True
+    )
+    _validate_x509_name(
+        tbs_fields[subject_index][1], "embedded TBSCertificate subject"
+    )
+
+    optional_tags = [tag for tag, _ in tbs_fields[index + len(mandatory_tags):]]
+    allowed_order = {0x81: 1, 0x82: 2, 0xA3: 3}
+    last_optional = 0
+    for tag in optional_tags:
+        order = allowed_order.get(tag)
+        if order is None or order <= last_optional:
+            raise ValueError("embedded TBSCertificate has duplicate or misplaced optional fields")
+        last_optional = order
+        if tag == 0xA3:
+            extensions = _require_single_der_value(
+                next(value for candidate, value in tbs_fields if candidate == tag),
+                0x30,
+                "embedded TBSCertificate extensions",
+            )
+            if not list(_der_children(extensions)):
+                raise ValueError("embedded TBSCertificate extensions must not be empty")
+    if optional_tags and version_number != 2:
+        raise ValueError("embedded TBSCertificate optional fields require v3")
+
+
 def _validate_ocsp_explicit_value(tag, value, expected_tag, field):
     if tag not in (0xA0, 0xA1, 0xA2):
         raise ValueError(field + " incorrect explicit context-specific tag")
@@ -406,8 +523,10 @@ def _validate_ocsp_response_data(value):
         raise ValueError("OCSP ResponseData missing ResponderID")
     responder_tag, responder_value = fields[index]
     if responder_tag == 0xA1:
-        _validate_ocsp_explicit_value(responder_tag, responder_value, 0x30,
-                                      "OCSP ResponderID byName")
+        responder_name = _validate_ocsp_explicit_value(
+            responder_tag, responder_value, 0x30, "OCSP ResponderID byName"
+        )
+        _validate_x509_name(responder_name, "OCSP ResponderID byName")
     elif responder_tag == 0xA2:
         _validate_ocsp_explicit_value(responder_tag, responder_value, 0x04,
                                       "OCSP ResponderID byKey")
@@ -489,6 +608,7 @@ def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
     _validate_ocsp_algorithm_identifier(
         basic_fields[1][1], "BasicOCSPResponse signatureAlgorithm"
     )
+    certificate_entries = []
     if len(basic_fields) == 4:
         certificates = _validate_ocsp_explicit_value(
             basic_fields[3][0], basic_fields[3][1], 0x30,
@@ -502,6 +622,8 @@ def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
     # more detailed field parser allocates and processes its nested structures.
     _validate_generalized_time_tree(basic_response)
     _validate_ocsp_response_data(basic_fields[0][1])
+    for _, certificate_value in certificate_entries:
+        _validate_x509_certificate_names(certificate_value)
 
 
 
