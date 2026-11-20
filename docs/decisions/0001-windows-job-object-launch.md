@@ -291,3 +291,57 @@ Relevant Windows contracts: [named-pipe security and access rights](https://lear
 | ACK received | none of target process/Job handles after broker closes originals | local process + Job handles | host owns supervision; host death closes final Job handle |
 
 This table describes the intended protocol, not a claim that the implementation has been proven. Integration tests must kill either process between every adjacent state and assert handle-count/resource cleanup as well as target/descendant termination.
+
+
+### Named Pipe IPC transport contract (Mode B prototype)
+
+The per-launch broker prototype uses one dedicated local named-pipe instance for the host/broker handshake. This section defines the transport boundary; it does not authorize replacing the current production launcher.
+
+#### Server creation and namespace ownership
+
+- The host creates the pipe before starting the broker, using a per-launch name under `\\\\.\\pipe\\` with at least 256 bits of cryptographically secure randomness. The name is an identifier, not an authentication credential.
+- Create exactly one instance (`nMaxInstances=1`) with `PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE`.
+- Use byte-stream mode with the existing length-prefixed protocol. Set `PIPE_REJECT_REMOTE_CLIENTS`; do not use `PIPE_NOWAIT` as an asynchronous-I/O substitute.
+- Supply an explicit, non-inheritable `SECURITY_ATTRIBUTES` and a protected DACL. The DACL must grant access only to SYSTEM and the current logon SID; do not use the default pipe DACL, which also grants read access to Everyone and anonymous users.
+- Obtain the logon SID from the current process token's groups by selecting the group with `SE_GROUP_LOGON_ID`. Do not substitute the account user SID: the logon SID scopes access to the current logon session.
+- Build and validate the security descriptor with supported Windows security APIs, keep its backing storage alive through `CreateNamedPipeW`, then release it on every path. Do not hand-roll SID parsing or native structure layouts.
+- Use a restrictive pipe-object access mask rather than blindly granting `GENERIC_WRITE`: Microsoft documents that generic write includes `FILE_CREATE_PIPE_INSTANCE`. Determine the exact rights needed by the server creator and broker client, and cover them with Windows ACL integration tests.
+
+#### Mutual process identity checks
+
+- The host starts the broker with handle inheritance disabled and retains its stable process handle and PID.
+- After `ConnectNamedPipe` completes, the host calls `GetNamedPipeClientProcessId` on the server handle and requires an exact match with the broker PID returned by process creation. A missing API result or mismatch is a hard authentication failure; no protocol bytes may be consumed first.
+- Before sending any protocol message, the broker calls `GetNamedPipeServerProcessId` on its client handle and requires an exact match with the host PID supplied at launch. The broker must also hold a synchronization handle to the host process, opened before relying on the PID, and treat host-process termination as cancellation.
+- Keep the host's broker process handle and the broker's host process handle open while the connection is active. Check process liveness through those handles rather than reopening a PID after a connection has been authenticated.
+- Reject a connection on any identity-query failure. Do not fall back to pipe-name secrecy, session ID alone, or a successful protocol handshake as identity proof.
+- The random name, protected DACL, remote-client rejection, first-instance flag, and PID checks are complementary controls. None is a substitute for the others.
+
+#### Connection and I/O lifecycle
+
+- The host creates the server instance first, then starts the broker with the pipe name and expected host PID. The broker opens the existing pipe with duplex access and `FILE_FLAG_OVERLAPPED`.
+- Use overlapped `ConnectNamedPipe`, `ReadFile`, and `WriteFile` operations with a distinct manual-reset event and `OVERLAPPED` structure for each in-flight operation. A pending operation is indicated by `ERROR_IO_PENDING`; treat `ERROR_PIPE_CONNECTED` from the connect race as an already-established connection, then perform the same PID authentication.
+- Every connect/read/write receives an absolute monotonic deadline. Wait only for the remaining deadline; never rely on `PIPE_NOWAIT`, default pipe timeouts, or an unbounded synchronous read.
+- On timeout or cancellation, call `CancelIoEx` for the exact handle/OVERLAPPED pair and then observe/drain completion with `GetOverlappedResult` before releasing the event, OVERLAPPED storage, or buffers. Handle `ERROR_NOT_FOUND` as a possible completion race, not proof that the operation's storage is safe to free.
+- Enforce the existing maximum frame size before allocating a body buffer. Keep the protocol's exact-read/exact-write semantics over the byte stream; partial completions are normal.
+- A transport error, timeout, malformed frame, PID mismatch, or broker/host process exit closes the connection and fails the request. Do not retry a partially transmitted frame on a new connection.
+
+#### Ownership, cancellation, and cleanup
+
+- The host owns the server pipe handle and closes it on every exit path. The broker owns its client pipe handle. Neither pipe handle is inheritable.
+- The host owns the broker process handle; the broker owns the host synchronization handle. Each process closes only handles in its own handle table.
+- A single request owns one pipe instance. No shared multi-request multiplexing is introduced in this prototype.
+- Host cancellation sends the protocol cancel message only while the authenticated connection is usable, then cancels pending I/O, disconnects/closes the pipe, and terminates/reaps the broker if it does not exit within the bounded shutdown interval.
+- Broker cancellation or host death must stop launch setup and close any temporary duplicated handles and any created target/Job handles according to the launch ownership state. A transport disconnect is not by itself evidence that handle transfer completed.
+- Cleanup is idempotent. Preserve the primary failure and report cleanup failures as secondary diagnostics.
+
+#### Required Windows integration tests
+
+1. Assert the created pipe has the intended protected DACL, denies an unrelated logon SID, rejects remote clients, and cannot be pre-created under the chosen name before the host's first-instance creation.
+2. Connect the expected broker and an impostor process in separate tests; accept only the expected broker PID. Verify the broker independently rejects a server PID other than the host PID.
+3. Exercise `ERROR_PIPE_CONNECTED`, pending connect, pending short reads/writes, peer disconnect, and PID-query failures.
+4. Force connect/read/write deadlines to expire; verify `CancelIoEx` completion is drained before event/OVERLAPPED/buffer release and that no worker or handle remains blocked.
+5. Kill the host and broker at every handshake/handle-transfer phase; verify the surviving side closes only resources it owns and no target or Job is orphaned.
+6. Verify malformed/oversized frames and partial-frame disconnects fail closed without protocol resynchronization.
+7. Run the tests on the declared minimum supported Windows desktop version as well as the hosted Windows CI image.
+
+The transport remains a prototype until these real Windows tests pass. Platform-neutral protocol tests and mocked Win32 calls are useful but are not evidence of DACL enforcement, process identity, overlapped cancellation, or kernel handle cleanup.
