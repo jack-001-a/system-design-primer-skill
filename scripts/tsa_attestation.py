@@ -101,8 +101,13 @@ def int_to_fixed_decimal(value: int, width: int) -> str:
     base = 10 ** 9
     while value:
         value, remainder = divmod(value, base)
-        chunks.append(f"{remainder:09d}")
-    rendered = "".join(reversed(chunks)) if chunks else "0"
+        chunks.append(remainder)
+    if chunks:
+        rendered = str(chunks[-1]) + "".join(
+            f"{chunk:09d}" for chunk in reversed(chunks[:-1])
+        )
+    else:
+        rendered = "0"
     return rendered.zfill(width)
 
 
