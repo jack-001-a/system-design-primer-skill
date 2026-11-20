@@ -30,7 +30,8 @@ class FakeClock:
 class WindowsBrokerTransportTests(unittest.TestCase):
     def test_pipe_name_uses_exactly_256_bits_and_canonical_namespace(self):
         name = new_pipe_name(lambda count: b"\xab" * count)
-        self.assertEqual(name, PIPE_PREFIX + "broker-" + "ab" * 32)
+        self.assertEqual(PIPE_PREFIX, "\\\\.\\pipe\\")
+        self.assertEqual(name, "\\\\.\\pipe\\broker-" + "ab" * 32)
         self.assertEqual(validate_pipe_name(name), name)
 
     def test_pipe_name_rejects_noncanonical_or_remote_names(self):

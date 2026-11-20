@@ -11,9 +11,8 @@ import re
 import secrets
 import time
 from collections.abc import Callable
-from typing import Protocol
 
-PIPE_PREFIX = r"\\.\pipe\\"
+PIPE_PREFIX = "\\\\.\\pipe\\"
 _PIPE_BASENAME = re.compile(r"^broker-[0-9a-f]{64}$")
 MAX_PIPE_NAME_LENGTH = 256
 
@@ -32,14 +31,6 @@ class PipePeerClosed(PipeTransportError, EOFError):
 
 class PipeNoProgress(PipeTransportError):
     """An I/O callback completed without making forward progress."""
-
-
-class PipeIO(Protocol):
-    """Minimal callback contract implemented by a native overlapped adapter."""
-
-    def read(self, maximum: int, timeout: float) -> bytes: ...
-
-    def write(self, data: memoryview, timeout: float) -> int: ...
 
 
 class Deadline:
