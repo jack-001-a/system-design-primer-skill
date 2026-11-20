@@ -150,11 +150,23 @@ def verify_build_provenance(
     # Verify a private snapshot so the file cannot change between hashing and
     # the CLI reading it (TOCTOU). The CLI itself computes and checks its digest.
     with tempfile.TemporaryDirectory(prefix="slsa-verify-") as temp_dir:
-        snapshot = Path(temp_dir) / artifact.name
-        shutil.copyfile(artifact, snapshot)
-        artifact_sha256 = hashlib.sha256(snapshot.read_bytes()).hexdigest()
+        snapshot_dir = Path(temp_dir)
+        artifact_snapshot = snapshot_dir / "artifact" / artifact.name
+        artifact_snapshot.parent.mkdir()
+        shutil.copyfile(artifact, artifact_snapshot)
+        artifact_sha256 = hashlib.sha256(artifact_snapshot.read_bytes()).hexdigest()
+        bundle_snapshot = None
+        if bundle is not None:
+            bundle_snapshot = snapshot_dir / "bundle" / bundle.name
+            bundle_snapshot.parent.mkdir()
+            shutil.copyfile(bundle, bundle_snapshot)
+        trusted_root_snapshot = None
+        if trusted_root is not None:
+            trusted_root_snapshot = snapshot_dir / "trusted-root" / trusted_root.name
+            trusted_root_snapshot.parent.mkdir()
+            shutil.copyfile(trusted_root, trusted_root_snapshot)
         command = [
-            executable, "attestation", "verify", str(snapshot),
+            executable, "attestation", "verify", str(artifact_snapshot),
             "--repo", repository,
             "--signer-workflow", signer_workflow,
             "--source-ref", source_ref,
@@ -165,9 +177,9 @@ def verify_build_provenance(
             "--format", "json",
         ]
         if bundle is not None:
-            command.extend(["--bundle", str(bundle)])
+            command.extend(["--bundle", str(bundle_snapshot)])
         if trusted_root is not None:
-            command.extend(["--custom-trusted-root", str(trusted_root)])
+            command.extend(["--custom-trusted-root", str(trusted_root_snapshot)])
         completed = subprocess.run(command, capture_output=True, text=True, check=False)
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "no diagnostic output").strip()

@@ -185,8 +185,14 @@ class BuildProvenanceTests(unittest.TestCase):
         self._mock_cli(run)
         verify_build_provenance(self.artifact, **self.policy, bundle=bundle, trusted_root=root, repository_id=1462786926)
         command = run.call_args_list[1].args[0]
-        self.assertEqual(command[command.index("--bundle") + 1], str(bundle))
-        self.assertEqual(command[command.index("--custom-trusted-root") + 1], str(root))
+        bundle_snapshot = Path(command[command.index("--bundle") + 1])
+        root_snapshot = Path(command[command.index("--custom-trusted-root") + 1])
+        self.assertNotEqual(bundle_snapshot, bundle)
+        self.assertNotEqual(root_snapshot, root)
+        self.assertEqual(bundle_snapshot.read_bytes(), bundle.read_bytes())
+        self.assertEqual(root_snapshot.read_bytes(), root.read_bytes())
+        self.assertTrue(bundle_snapshot.is_file())
+        self.assertTrue(root_snapshot.is_file())
 
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_offline_bundle_requires_trusted_root(self, which):
