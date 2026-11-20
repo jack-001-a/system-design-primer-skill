@@ -73,6 +73,14 @@ def verification_time_bounds(value: datetime) -> tuple[int, ...]:
     return (floor_second, floor_second + 1) if delta.microseconds else (floor_second,)
 
 
+def verification_time_within_validity(value: datetime, not_before: datetime, not_after: datetime) -> bool:
+    """Require both integer-second verification bounds to lie within certificate validity."""
+    bounds = verification_time_bounds(value)
+    start = verification_time_bounds(not_before)[0]
+    end = verification_time_bounds(not_after)[0]
+    return all(start <= instant <= end for instant in bounds)
+
+
 def parse_openssl_gen_time(value: str) -> str:
     value = value.strip()
     for pattern in ("%b %d %H:%M:%S %Y GMT", "%b %d %H:%M:%S.%f %Y GMT"):
@@ -174,7 +182,9 @@ def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[s
     # them over the deprecated naive-UTC accessors to avoid implicit timezone relabeling.
     not_before = certificate.not_valid_before_utc
     not_after = certificate.not_valid_after_utc
-    if target < not_before or target > not_after:
+    if not_before.tzinfo is None or not_after.tzinfo is None:
+        raise ValueError("TSA signer certificate validity must be timezone-aware")
+    if not verification_time_within_validity(target, not_before, not_after):
         raise ValueError("TSA signer certificate is not valid at RFC 3161 genTime")
     return {
         "tsa_signer_certificate_sha256": certificate.fingerprint(hashes.SHA256()).hex(),

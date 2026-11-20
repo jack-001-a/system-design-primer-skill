@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
-from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verification_time_bounds, parse_openssl_gen_time, verify_timestamp
+from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verification_time_bounds, verification_time_within_validity, parse_openssl_gen_time, verify_timestamp
 
 class EvidenceTimestampTests(unittest.TestCase):
     def setUp(self):
@@ -59,6 +59,20 @@ class EvidenceTimestampTests(unittest.TestCase):
         for value in invalid:
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, "GeneralizedTime"):
                 parse_openssl_gen_time(value)
+
+    def test_signer_validity_uses_same_floor_and_ceiling_bounds_as_chain(self):
+        start = datetime(2026, 11, 19, 12, 0, 0, tzinfo=timezone.utc)
+        end = datetime(2026, 11, 19, 12, 0, 10, tzinfo=timezone.utc)
+        self.assertTrue(verification_time_within_validity(
+            start.replace(microsecond=1), start, end))
+        self.assertTrue(verification_time_within_validity(
+            end.replace(microsecond=0) - __import__("datetime").timedelta(microseconds=1), start, end))
+        self.assertFalse(verification_time_within_validity(
+            start - __import__("datetime").timedelta(microseconds=1), start, end))
+        self.assertFalse(verification_time_within_validity(
+            end + __import__("datetime").timedelta(microseconds=1), start, end))
+        self.assertTrue(verification_time_within_validity(start, start, end))
+        self.assertTrue(verification_time_within_validity(end, start, end))
 
     def test_verification_time_bounds_reject_naive_datetime(self):
         with self.assertRaisesRegex(ValueError, "timezone-aware"):
