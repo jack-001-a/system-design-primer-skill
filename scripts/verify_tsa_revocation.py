@@ -180,9 +180,37 @@ def validate_direct_crl_scope(
     else:
         raise ValueError("certificate CRLDistributionPoints matching is unsupported")
 
+    try:
+        aki = crl.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER).value
+    except x509.ExtensionNotFound:
+        aki = None
+
     candidates = [item for item in issuer_certificates if item.subject == crl.issuer]
+    if aki is not None:
+        if aki.key_identifier is not None:
+            matched = []
+            for item in candidates:
+                try:
+                    ski = item.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER).value
+                except x509.ExtensionNotFound:
+                    continue
+                if aki.key_identifier == ski.digest:
+                    matched.append(item)
+            candidates = matched
+        issuer_names = aki.authority_cert_issuer
+        serial = aki.authority_cert_serial_number
+        if (issuer_names is None) != (serial is None):
+            raise ValueError("CRL AKI authorityCertIssuer and authorityCertSerialNumber must appear together")
+        if issuer_names is not None:
+            directory_names = [name.value for name in issuer_names if isinstance(name, x509.DirectoryName)]
+            if len(directory_names) != 1:
+                raise ValueError("CRL AKI authorityCertIssuer must contain exactly one DirectoryName")
+            candidates = [
+                item for item in candidates
+                if item.issuer == directory_names[0] and item.serial_number == serial
+            ]
     if len(candidates) != 1:
-        raise ValueError("CRL issuer certificate must resolve to exactly one supplied certificate")
+        raise ValueError("CRL issuer certificate must resolve to exactly one supplied certificate after AKI matching")
     signer = candidates[0]
 
     try:
@@ -213,27 +241,6 @@ def validate_direct_crl_scope(
         "key_cert_sign": True, "crl_sign": True,
         "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
     }
-
-    try:
-        aki = crl.extensions.get_extension_for_oid(ExtensionOID.AUTHORITY_KEY_IDENTIFIER).value
-    except x509.ExtensionNotFound:
-        aki = None
-    if aki is not None:
-        if aki.key_identifier is not None:
-            try:
-                ski = signer.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER).value
-            except x509.ExtensionNotFound as exc:
-                raise ValueError("CRL AKI keyIdentifier cannot be matched: issuer SKI is absent") from exc
-            if aki.key_identifier != ski.digest:
-                raise ValueError("CRL AuthorityKeyIdentifier does not match issuer SubjectKeyIdentifier")
-        issuer_names = aki.authority_cert_issuer
-        serial = aki.authority_cert_serial_number
-        if (issuer_names is None) != (serial is None):
-            raise ValueError("CRL AKI authorityCertIssuer and authorityCertSerialNumber must appear together")
-        if issuer_names is not None:
-            directory_names = [name.value for name in issuer_names if isinstance(name, x509.DirectoryName)]
-            if len(directory_names) != 1 or directory_names[0] != signer.issuer or serial != signer.serial_number:
-                raise ValueError("CRL AKI authority certificate identity does not match issuer certificate")
 
     if crl.last_update_utc > target_time:
         raise ValueError("CRL thisUpdate is later than the historical validation time")
