@@ -168,11 +168,17 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         raise ValueError("CRL result does not declare the supported strict direct-CRL scope")
     if not isinstance(crl_result.get("crl_signature_algorithm_oid"), str) or not crl_result.get("crl_signature_algorithm_oid"):
         raise ValueError("CRL signature algorithm identity is missing")
-    if not isinstance(crl_result.get("crl_signature_policy"), str) or not crl_result.get("crl_signature_policy"):
-        raise ValueError("CRL signature policy evidence is missing")
+    if crl_result.get("crl_signature_policy") != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
+        raise ValueError("CRL signature policy evidence is missing or unsupported")
+    if crl_result.get("verification") != "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight":
+        raise ValueError("CRL verification provenance is missing or unsupported")
     entry = crl_result.get("revocation_entry")
     if not isinstance(entry, dict) or entry.get("status_at_time") not in ("not_listed", "not_yet_revoked"):
         raise ValueError("CRL entry evidence does not establish a non-revoked status at genTime")
+    if entry.get("present") is True and entry.get("status_at_time") != "not_yet_revoked":
+        raise ValueError("CRL entry presence contradicts the non-revoked assessment")
+    if entry.get("present") is False and entry.get("status_at_time") != "not_listed":
+        raise ValueError("CRL entry absence contradicts the not-listed assessment")
     ocsp_section: dict[str, Any] = {
         "provided": False,
         "assessment": "not_provided",
@@ -305,6 +311,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "issuer_roots_sha256": crl_roots_digest,
             "crl_issuer_certificate_sha256": crl_signer_digest,
             "crl_signature_algorithm_oid": crl_result["crl_signature_algorithm_oid"],
+            "crl_signature_policy": crl_result["crl_signature_policy"],
+            "verification": crl_result["verification"],
             "revocation_entry": entry,
             "result_file_sha256": crl_result_sha256,
         },

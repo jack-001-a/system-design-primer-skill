@@ -86,9 +86,17 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         require_sha256(historical.get(field), "historical_revocation_assessment." + field)
     if not isinstance(historical.get("crl_signature_algorithm_oid"), str) or not historical["crl_signature_algorithm_oid"].strip():
         raise ValueError("historical_revocation_assessment.crl_signature_algorithm_oid must be non-empty")
+    if historical.get("crl_signature_policy") != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
+        raise ValueError("historical CRL signature policy is missing or unsupported")
+    if historical.get("verification") != "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight":
+        raise ValueError("historical CRL verification provenance is missing or unsupported")
     entry = historical.get("revocation_entry")
     if not isinstance(entry, dict) or entry.get("status_at_time") not in ("not_listed", "not_yet_revoked"):
         raise ValueError("historical CRL revocation_entry does not establish non-revocation")
+    if entry.get("present") is True and entry.get("status_at_time") != "not_yet_revoked":
+        raise ValueError("historical CRL entry presence contradicts non-revocation")
+    if entry.get("present") is False and entry.get("status_at_time") != "not_listed":
+        raise ValueError("historical CRL entry absence contradicts not-listed status")
 
     current = report["current_ocsp_assessment"]
     if not isinstance(current, dict) or type(current.get("provided")) is not bool:

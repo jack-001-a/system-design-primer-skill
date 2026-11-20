@@ -26,6 +26,7 @@ class TsaAttestationTests(unittest.TestCase):
                 "validation_time": "2026-11-19T12:00:00Z", "crl_sha256": h(b"crl"),
                 "issuer_roots_sha256": h(b"roots"), "crl_issuer_certificate_sha256": h(b"issuer"),
                 "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
+                "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed", "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
                 "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": h(b"crl-result")
             },
             "current_ocsp_assessment": {"provided": False, "assessment": "not_provided", "historical_status_claim": False},

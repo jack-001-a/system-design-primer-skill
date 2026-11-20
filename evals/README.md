@@ -953,3 +953,8 @@ than silently collapsed into a single pass/fail value.
 ### OCSP responder historical CRL evidence binding
 
 When a separate CRL is used to assess the OCSP responder at RFC 3161 genTime, the report preserves the CRL issuer-certificate fingerprint, signature algorithm OID, enforced signature policy, revocation-entry-at-time evidence, and verifier provenance. Report construction and attestation validation both require these fields; a responder non-revocation claim without the same strict direct-CRL signature-policy and entry evidence is rejected. This strengthens the evidence binding but does not expand supported CRL distribution-point coverage or prove completeness of revocation sources.
+
+
+### TSA signer and OCSP responder CRL evidence parity
+
+The unified report and detached attestation apply the same strict direct-CRL evidence contract to the TSA signer and the OCSP responder: issuer-certificate SHA-256 identity, CRL signature algorithm OID, the exact supported key-strength/signature policy, verifier provenance, and serial-specific entry status at the target instant. Report construction and attestation both reject missing or unsupported policy/provenance and contradictory entry-presence/status combinations. The TSA signer CRL's historical assessment remains bound to RFC 3161 `genTime`; this does not broaden direct-CRL scope, prove CRL-source completeness, or independently authenticate the verifier output.
