@@ -269,12 +269,12 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
         self.temp.cleanup()
 
     def _issue(self, subject, issuer, public_key, issuer_key, serial, *, ca,
-               path_length=None, extensions=()):
+               path_length=None, extensions=(), not_after=None):
         x509 = self.x509
         builder = (x509.CertificateBuilder().subject_name(subject).issuer_name(issuer)
             .public_key(public_key).serial_number(serial)
             .not_valid_before(self.now - self.timedelta(days=30))
-            .not_valid_after(self.now + self.timedelta(days=365))
+            .not_valid_after(not_after or self.now + self.timedelta(days=365))
             .add_extension(x509.BasicConstraints(ca=ca, path_length=path_length), critical=True))
         if ca:
             builder = builder.add_extension(x509.KeyUsage(
@@ -292,7 +292,7 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
         return builder.sign(issuer_key, self.hashes.SHA256())
 
     def _make_chain(self, *, intermediate_path_length=1, constraints=None, leaf_dns="tsa.example.test",
-                    add_subordinate=False):
+                    add_subordinate=False, intermediate_not_after=None):
         x509 = self.x509
         name = lambda value: x509.Name([x509.NameAttribute(self.NameOID.COMMON_NAME, value)])
         root_key = self.rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -304,7 +304,7 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
             extra.append((x509.NameConstraints(permitted_subtrees=constraints, excluded_subtrees=None), True))
         intermediate = self._issue(name("Policy Intermediate"), root_name,
             intermediate_key.public_key(), root_key, 2, ca=True,
-            path_length=intermediate_path_length, extensions=extra)
+            path_length=intermediate_path_length, extensions=extra, not_after=intermediate_not_after)
         chain = [intermediate]
         issuer_name, issuer_key, serial = intermediate.subject, intermediate_key, 3
         if add_subordinate:
@@ -335,6 +335,12 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
         result = self._verify()
         self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertRegex(result.stderr.lower(), r"path length|pathlen")
+
+    def test_openssl_rejects_intermediate_expired_at_historical_gen_time(self):
+        self._make_chain(intermediate_not_after=self.now - self.timedelta(seconds=1))
+        result = self._verify()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stderr.lower(), r"expired|certificate has expired")
 
     def test_openssl_rejects_name_constraints_violation(self):
         self._make_chain(constraints=[self.x509.DNSName(".example.test")],
