@@ -11,7 +11,7 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from scripts.verify_tsa_revocation import parse_utc_epoch, verify_crl_status, validate_crl_signature_policy
+from scripts.verify_tsa_revocation import (parse_utc_epoch, verify_crl_status, validate_crl_signature_policy,\n    validate_crl_number_value, validate_direct_crl_scope)
 
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
@@ -251,17 +251,10 @@ class TsaRevocationTests(unittest.TestCase):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_negative_crl_number(self):
-        self.listing = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
-            .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
-            .add_extension(x509.AuthorityKeyIdentifier(
-                key_identifier=x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()).digest,
-                authority_cert_issuer=[x509.DirectoryName(self.issuer.issuer)],
-                authority_cert_serial_number=self.issuer.serial_number), False)
-            .add_extension(x509.CRLNumber(-1), False).sign(
-                rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256()))
-        self.write_material()
+        # cryptography's CRL builder rejects negative ASN.1 INTEGERs before
+        # encoding; test the verifier's policy boundary directly.
         with self.assertRaisesRegex(ValueError, "CRLNumber must be a non-negative integer"):
-            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+            validate_crl_number_value(-1)
 
     def test_rejects_crl_without_crl_number(self):
         builder = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
@@ -309,9 +302,8 @@ class TsaRevocationTests(unittest.TestCase):
 
     def test_rejects_v1_certificate_in_user_only_crl_scope(self):
         self.issuer, self.leaf, self.listing = make_material(only_user_idp=True, legacy_leaf=True)
-        self.write_material()
         with self.assertRaisesRegex(ValueError, "cannot cover X.509 v1/v2"):
-            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+            validate_direct_crl_scope(self.leaf, [self.issuer], self.listing, NOW, NOW)
 
     def test_rejects_empty_issuing_distribution_point(self):
         self.issuer, self.leaf, self.listing = make_material(empty_idp=True)
