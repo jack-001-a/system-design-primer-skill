@@ -1633,11 +1633,16 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
             ),
             (False, 109),
         )
-        self.assertEqual(connection.state, connection.CONNECTED)
+        self.assertEqual(connection.state, connection.DISCONNECTING)
         self.assertEqual(connection.file_handle, 10)
         self.assertIn(operation, connection._operations)
-        with self.assertRaises(win32.OverlappedLifecycleError):
-            connection.mark_connected()
+        with self.assertRaisesRegex(win32.OverlappedLifecycleError, "cannot register I/O"):
+            extra_operation, _ = self.make_operation()
+            connection.register_operation(extra_operation)
+        with self.assertRaisesRegex(win32.OverlappedLifecycleError, "cannot submit I/O"):
+            connection.start_operation(
+                bindings, operation, buffer=operation.buffer, length=len(operation.buffer)
+            )
 
         self.assertEqual(
             win32.disconnect_named_pipe(bindings, connection, operation),
