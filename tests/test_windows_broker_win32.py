@@ -18,7 +18,7 @@ class FakeKernel32:
         for name in (
             "CreateEventW", "CloseHandle", "WaitForSingleObject",
             "CancelIoEx", "GetOverlappedResult", "GetOverlappedResultEx",
-            "ReadFile", "WriteFile", "ConnectNamedPipe", "SetEvent",
+            "ReadFile", "WriteFile", "ConnectNamedPipe", "SetEvent", "DisconnectNamedPipe",
         ):
             setattr(self, name, FakeFunction())
 
@@ -75,7 +75,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         fake.CreateEventW = lambda *args: calls.append(args) or None
         bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
             fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
-            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent)
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
         handle, error = win32.create_manual_reset_event(bindings, get_last_error=lambda: 123)
         self.assertIsNone(handle)
         self.assertEqual(error, 123)
@@ -110,6 +110,38 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         )
         self.assertFalse(ok)
         self.assertEqual((count, error), (9, 996))
+
+    def test_loader_binds_disconnect_named_pipe_signature(self):
+        fake = FakeKernel32()
+        with patch.object(win32.os, "name", "nt"):
+            win32.load_kernel32(loader=lambda *args, **kwargs: fake)
+        self.assertEqual(fake.DisconnectNamedPipe.argtypes, [win32.HANDLE])
+
+    def test_disconnect_rejects_pending_operation(self):
+        fake = FakeKernel32()
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+        operation, _ = self.make_operation()
+        operation.mark_pending()
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            win32.disconnect_named_pipe(bindings, operation)
+
+    def test_disconnect_captures_api_failure(self):
+        fake = FakeKernel32()
+        seen = []
+        fake.DisconnectNamedPipe = lambda handle: seen.append(handle) or 0
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+        operation, _ = self.make_operation()
+        operation.mark_pending()
+        operation.mark_completed()
+        self.assertEqual(win32.disconnect_named_pipe(bindings, operation,
+            get_last_error=lambda: 109), (False, 109))
+        self.assertEqual(seen, [10])
 
     def test_loader_binds_connect_named_pipe_signature(self):
         fake = FakeKernel32()

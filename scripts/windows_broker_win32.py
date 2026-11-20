@@ -83,6 +83,7 @@ class Kernel32Bindings:
     WriteFile: Any = None
     ConnectNamedPipe: Any = None
     SetEvent: Any = None
+    DisconnectNamedPipe: Any = None
 
 
 def _set_signature(function: Any, argtypes: list[Any], restype: Any) -> Any:
@@ -115,6 +116,7 @@ def load_kernel32(*, loader: Any = None) -> Kernel32Bindings:
         write_file = _set_signature(library.WriteFile, [HANDLE, LPVOID, DWORD, ctypes.POINTER(DWORD), ctypes.POINTER(OVERLAPPED)], BOOL)
         connect_named_pipe = _set_signature(library.ConnectNamedPipe, [HANDLE, ctypes.POINTER(OVERLAPPED)], BOOL)
         set_event = _set_signature(library.SetEvent, [HANDLE], BOOL)
+        disconnect_named_pipe = _set_signature(library.DisconnectNamedPipe, [HANDLE], BOOL)
         get_result_ex = _set_signature(
             library.GetOverlappedResultEx,
             [
@@ -131,7 +133,7 @@ def load_kernel32(*, loader: Any = None) -> Kernel32Bindings:
             "kernel32 is missing a required overlapped-I/O API"
         ) from exc
     return Kernel32Bindings(
-        library, create_event, close_handle, wait, cancel, get_result, get_result_ex, read_file, write_file, connect_named_pipe, set_event
+        library, create_event, close_handle, wait, cancel, get_result, get_result_ex, read_file, write_file, connect_named_pipe, set_event, disconnect_named_pipe
     )
 
 
@@ -183,6 +185,25 @@ def get_overlapped_result_wait(
     ))
     error = None if succeeded else int(get_last_error())
     return succeeded, int(transferred.value), error
+
+
+def disconnect_named_pipe(
+    bindings: Kernel32Bindings,
+    operation: "OverlappedOperation",
+    *,
+    get_last_error: Callable[[], int] = last_error,
+) -> tuple[bool, int | None]:
+    """Disconnect a completed pipe operation; never tear down pending I/O."""
+    if operation.state == operation.PENDING:
+        raise OverlappedLifecycleError(
+            "cannot disconnect a pipe while overlapped I/O is pending"
+        )
+    if operation.state != operation.COMPLETED or not operation.file_handle:
+        raise OverlappedLifecycleError(
+            "disconnect requires a completed operation with a live pipe handle"
+        )
+    succeeded = bool(bindings.DisconnectNamedPipe(operation.file_handle))
+    return (True, None) if succeeded else (False, int(get_last_error()))
 
 
 def start_overlapped_connect(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, get_last_error: Callable[[], int] = last_error) -> tuple[str, int | None]:
