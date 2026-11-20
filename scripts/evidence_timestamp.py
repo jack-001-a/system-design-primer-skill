@@ -201,8 +201,8 @@ def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[s
     except x509.ExtensionNotFound:
         key_usage_ext = None
     if key_usage_ext is not None:
-        if not key_usage_ext.critical:
-            raise ValueError("TSA signer KeyUsage must be critical when present")
+        # RFC 5280 §4.2.1.3 says KeyUsage SHOULD be critical when present;
+        # non-critical is still valid and must be processed by relying parties.
         key_usage = key_usage_ext.value
         permitted = key_usage.digital_signature or key_usage.content_commitment
         prohibited = any((key_usage.key_encipherment, key_usage.data_encipherment,
