@@ -12,13 +12,42 @@ from typing import Any
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
 UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
-def parse_utc(value: str, field: str) -> datetime:
-    if not isinstance(value, str) or not UTC.fullmatch(value):
+def parse_utc_parts(value: str, field: str) -> tuple[datetime, str]:
+    """Parse UTC seconds separately from the arbitrary-precision GeneralizedTime fraction."""
+    match = re.fullmatch(
+        r"(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))?Z",
+        value if isinstance(value, str) else "",
+    )
+    if not match:
         raise ValueError(field + " must be an RFC 3339 UTC timestamp ending in Z")
     try:
-        return datetime.fromisoformat(value[:-1] + "+00:00")
+        whole_second = datetime.fromisoformat(match.group(1) + "+00:00")
     except ValueError as exc:
         raise ValueError(field + " is not a valid UTC timestamp") from exc
+    return whole_second, match.group(2) or ""
+
+
+def compare_utc_values(left: str, right: str, field: str = "UTC timestamp") -> int:
+    """Compare two UTC timestamps without truncating or rounding fractional digits."""
+    left_second, left_fraction = parse_utc_parts(left, field + " left value")
+    right_second, right_fraction = parse_utc_parts(right, field + " right value")
+    if left_second < right_second:
+        return -1
+    if left_second > right_second:
+        return 1
+    width = max(len(left_fraction), len(right_fraction))
+    left_digits = left_fraction.ljust(width, "0")
+    right_digits = right_fraction.ljust(width, "0")
+    return (left_digits > right_digits) - (left_digits < right_digits)
+
+
+def parse_utc(value: str, field: str) -> datetime:
+    """Parse values that fit datetime's microsecond precision; reject silent truncation."""
+    whole_second, fraction = parse_utc_parts(value, field)
+    if len(fraction) > 6:
+        raise ValueError(field + " exceeds the supported six fractional digits")
+    microseconds = int((fraction + "000000")[:6]) if fraction else 0
+    return whole_second.replace(microsecond=microseconds)
 
 def validate_crl_issuer_validity(value: Any, field: str, gen_time: str) -> dict[str, Any]:
     if not isinstance(value, dict):
@@ -27,7 +56,9 @@ def validate_crl_issuer_validity(value: Any, field: str, gen_time: str) -> dict[
     times = {name: parse_utc(value.get(name), field + "." + name) for name in required}
     if not (times["not_before"] <= times["crl_this_update"] <= times["not_after"]):
         raise ValueError(field + " does not establish issuer validity at CRL thisUpdate")
-    if times["crl_this_update"] > parse_utc(gen_time, "gen_time"):
+    if compare_utc_values(
+        value.get("crl_this_update"), gen_time, field + " CRL thisUpdate vs genTime"
+    ) > 0:
         raise ValueError(field + " CRL thisUpdate is later than the historical target time")
     for flag in ("valid_at_this_update", "basic_constraints_ca", "key_cert_sign", "crl_sign"):
         if value.get(flag) is not True:
@@ -152,9 +183,9 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                             responder_revocation_result_sha256: str | None = None,
                             timestamp_result: dict[str, Any] | None = None,
                             timestamp_result_sha256: str | None = None) -> dict[str, Any]:
-    gen_dt = parse_utc(gen_time, "gen_time")
-    effective_second = gen_dt.replace(microsecond=0)
-    if gen_dt.microsecond:
+    gen_whole_second, gen_fraction = parse_utc_parts(gen_time, "gen_time")
+    effective_second = gen_whole_second
+    if any(digit != "0" for digit in gen_fraction):
         from datetime import timedelta
         effective_second += timedelta(seconds=1)
     expected_effective_at_time = effective_second.isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -298,20 +329,26 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             raise ValueError("OCSP responder-chain validation times must be a list of Unix-second integers")
         historical_at_time = ocsp_result.get("historical_at_time")
         if scope == historical_scope:
-            gen_dt = parse_utc(gen_time, "gen_time")
-            if historical_at_time != gen_time:
+            gen_whole_second, gen_fraction = parse_utc_parts(gen_time, "gen_time")
+            if len(gen_fraction) > 6:
+                raise ValueError(
+                    "historical OCSP cannot represent genTime with more than six fractional digits"
+                )
+            if compare_utc_values(historical_at_time, gen_time, "historical OCSP target time") != 0:
                 raise ValueError("historical OCSP target time does not exactly match RFC 3161 genTime")
-            if validation_dt != gen_dt:
+            if compare_utc_values(validation_time, gen_time, "historical OCSP validation_time") != 0:
                 raise ValueError("historical OCSP validation_time must exactly match RFC 3161 genTime")
-            if produced_dt > gen_dt:
+            if compare_utc_values(produced_at, gen_time, "historical OCSP producedAt") > 0:
                 raise ValueError("historical OCSP producedAt is later than RFC 3161 genTime")
-            if this_dt > gen_dt or next_dt < gen_dt:
+            if (compare_utc_values(this_update, gen_time, "historical OCSP thisUpdate") > 0
+                    or compare_utc_values(next_update, gen_time, "historical OCSP nextUpdate") < 0):
                 raise ValueError("historical OCSP signed validity interval does not cover RFC 3161 genTime")
             epoch = datetime(1970, 1, 1, tzinfo=validation_dt.tzinfo)
             delta = validation_dt - epoch
             floor_second = delta.days * 86400 + delta.seconds
+            has_fraction = any(digit != "0" for digit in gen_fraction)
             expected_chain_times = (
-                [floor_second, floor_second + 1] if delta.microseconds else [floor_second]
+                [floor_second, floor_second + 1] if has_fraction else [floor_second]
             )
             if responder_chain_validation_times != expected_chain_times:
                 raise ValueError("historical OCSP responder path must be checked at floor/ceiling Unix-second bounds")
