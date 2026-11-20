@@ -166,10 +166,18 @@ def validate_direct_crl_scope(
         raise ValueError("delta CRLs are unsupported")
 
     try:
-        idp = crl.extensions.get_extension_for_oid(ExtensionOID.ISSUING_DISTRIBUTION_POINT).value
+        idp_ext = crl.extensions.get_extension_for_oid(ExtensionOID.ISSUING_DISTRIBUTION_POINT)
     except x509.ExtensionNotFound:
-        idp = None
+        idp_ext = None
+    idp = idp_ext.value if idp_ext is not None else None
     if idp is not None:
+        if not idp_ext.critical:
+            raise ValueError("IssuingDistributionPoint must be critical")
+        if not any((idp.full_name is not None, idp.relative_name is not None,
+                    idp.only_contains_user_certs, idp.only_contains_ca_certs,
+                    idp.only_some_reasons is not None, idp.indirect_crl,
+                    idp.only_contains_attribute_certs)):
+            raise ValueError("IssuingDistributionPoint must not be an empty scope")
         if idp.indirect_crl:
             raise ValueError("indirect CRLs are unsupported")
         if idp.full_name is not None or idp.relative_name is not None:
