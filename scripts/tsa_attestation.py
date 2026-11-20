@@ -24,6 +24,19 @@ DOMAIN = b"system-design-primer-tsa-validation-attestation-v1\0"
 KEY_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
 UTC_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
+TSA_CHAIN_VALIDATION_SCOPE = (
+    "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; "
+    "RFC 3161 Accuracy is reported separately and does not widen the -attime interval"
+)
+TSA_CHAIN_VALIDATION_POLICY = (
+    "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, "
+    "-auth_level 2, -purpose timestampsign, and -x509_strict at the exact floor/ceiling "
+    "Unix-second bound(s) of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL"
+)
+TSA_TIMESTAMP_VERIFICATION_METHOD = (
+    "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), "
+    "and TSA chain verification at genTime"
+)
 ENVELOPE_FIELDS = {"schema_version", "algorithm", "key_id", "attested_at",
                    "report_sha256", "verifier_bundle_sha256", "verifier_identity",
                    "claims_sha256", "signature"}
@@ -398,7 +411,9 @@ def create_attestation(report_path: Path, private_key_path: Path, key_id: str,
     return envelope
 
 
-def validate_timestamp_verification_scope(result: dict[str, Any]) -> None:
+def validate_timestamp_verification_scope(
+    result: dict[str, Any], *, chain_supplied: bool
+) -> None:
     scope = result.get("verification_scope")
     required = {"cms_signature", "request_imprint", "response_imprint",
                 "request_response_binding", "nonce_binding",
@@ -417,6 +432,26 @@ def validate_timestamp_verification_scope(result: dict[str, Any]) -> None:
     limits = result.get("not_established")
     if not isinstance(limits, list) or not limits or any(not isinstance(x, str) or not x.strip() for x in limits):
         raise ValueError("RFC 3161 timestamp limitations must be a non-empty list of descriptions")
+
+    if result.get("tsa_chain_valid_at_gen_time") is not True:
+        raise ValueError("RFC 3161 TSA chain is not explicitly verified at genTime")
+    gen_time = result.get("gen_time")
+    parse_rfc3161_gen_time_parts(gen_time, "timestamp gen_time")
+    if result.get("tsa_chain_validation_time") != gen_time:
+        raise ValueError("RFC 3161 TSA chain validation time does not match genTime")
+    if result.get("tsa_chain_validation_scope") != TSA_CHAIN_VALIDATION_SCOPE:
+        raise ValueError("RFC 3161 TSA chain validation scope is missing or unsupported")
+    if result.get("tsa_chain_validation_policy") != TSA_CHAIN_VALIDATION_POLICY:
+        raise ValueError("RFC 3161 TSA chain validation policy is missing or unsupported")
+    if result.get("verification") != TSA_TIMESTAMP_VERIFICATION_METHOD:
+        raise ValueError("RFC 3161 timestamp verification-method provenance is missing or unsupported")
+    if "tsa_chain_sha256" not in result:
+        raise ValueError("RFC 3161 TSA intermediate-chain digest must be explicitly present")
+    chain_digest = result.get("tsa_chain_sha256")
+    if chain_supplied:
+        require_sha256(chain_digest, "RFC 3161 TSA intermediate-chain SHA-256")
+    elif chain_digest is not None:
+        raise ValueError("RFC 3161 TSA intermediate-chain digest is present but no chain input was supplied")
 
 def verify_attestation(report_path: Path, attestation_path: Path, trust_store_path: Path,
                        expected_trust_store_sha256: str,
@@ -505,9 +540,11 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
         if (trusted_timestamp.get("verified") is not True
                 or trusted_timestamp.get("tsa_signer_valid_at_gen_time") is not True):
             raise ValueError("RFC 3161 timestamp did not establish a verified, valid TSA signer")
-        validate_timestamp_verification_scope(trusted_timestamp)
         timestamp_gen_time = trusted_timestamp.get("gen_time")
         parse_rfc3161_gen_time_parts(timestamp_gen_time, "timestamp gen_time")
+        validate_timestamp_verification_scope(
+            trusted_timestamp, chain_supplied=tsa_chain_path is not None
+        )
         require_sha256(trusted_timestamp.get("tsa_signer_certificate_sha256"), "TSA signer certificate SHA-256")
         expected_signature_digest = hashlib.sha256(signature_bytes).hexdigest()
         if trusted_timestamp.get("signature_sha256") != expected_signature_digest:
