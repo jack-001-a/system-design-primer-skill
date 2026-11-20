@@ -213,10 +213,14 @@ class EvidenceTimestampTests(unittest.TestCase):
     def test_parse_accuracy_accepts_optional_rfc3161_components_and_boundaries(self):
         from scripts.evidence_timestamp import parse_accuracy
         self.assertIsNone(parse_accuracy("Policy OID: 1.2.3\n"))
-        self.assertEqual(parse_accuracy("Accuracy: 0 seconds"), {"seconds": 0})
+        self.assertEqual(parse_accuracy("Accuracy: 0 seconds"),
+                         {"seconds": 0, "millis": 0, "micros": 0})
         self.assertEqual(parse_accuracy("Accuracy: 999999 seconds, 1 millis, 999 micros"),
                          {"seconds": 999999, "millis": 1, "micros": 999})
-        self.assertEqual(parse_accuracy("Accuracy: 999 micros"), {"micros": 999})
+        self.assertEqual(parse_accuracy("Accuracy: 999 micros"),
+                         {"seconds": 0, "millis": 0, "micros": 999})
+        self.assertEqual(parse_accuracy("Accuracy: 2 millis"),
+                         {"seconds": 0, "millis": 2, "micros": 0})
 
     def test_parse_accuracy_rejects_partial_or_malformed_components(self):
         from scripts.evidence_timestamp import parse_accuracy

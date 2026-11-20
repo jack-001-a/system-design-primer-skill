@@ -156,7 +156,8 @@ def parse_accuracy(details: str) -> dict[str, int] | None:
             raise ValueError("timestamp token millis and micros accuracy must be between 1 and 999")
         result[key] = value
         previous = order[key]
-    return result
+    # RFC 3161 assigns zero to omitted components within a present Accuracy field.
+    return {component: result.get(component, 0) for component in ("seconds", "millis", "micros")}
 
 
 def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[str, str]:
