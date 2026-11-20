@@ -54,6 +54,10 @@ class TsaValidationReportTests(unittest.TestCase):
         self.timestamp = {
             "verified": True, "signature_sha256": hashlib.sha256(b"signature").hexdigest(),
             "gen_time": self.gen_time, "policy_oid": "1.2.3", "serial_number": "1234",
+            "tsa_chain_valid_at_gen_time": True,
+            "tsa_chain_validation_time": self.gen_time,
+            "tsa_chain_validation_scope": "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; RFC 3161 Accuracy is reported separately and does not widen the -attime interval",
+            "tsa_chain_validation_policy": "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, -auth_level 2, -purpose timestampsign, and -x509_strict at both floor and ceiling seconds of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL",
             "accuracy": None, "ordering": False, "nonce_present": True,
             "verification_scope": {
                 "cms_signature": "verified", "request_imprint": "verified",
@@ -101,6 +105,34 @@ class TsaValidationReportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not explicitly verified"):
             build_report(self.gen_time, self.crl, self.crl_file_hash,
                          timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_preserves_tsa_chain_policy_and_validation_time_in_report(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        chain = report["timestamp_chain_validation"]
+        self.assertEqual(chain["status"], "verified")
+        self.assertEqual(chain["validation_time"], self.gen_time)
+        self.assertEqual(chain["scope"], self.timestamp["tsa_chain_validation_scope"])
+        self.assertEqual(chain["policy"], self.timestamp["tsa_chain_validation_policy"])
+        self.assertIn("empty -CApath/-CAstore", chain["policy"])
+        self.assertIn("-auth_level 2", chain["policy"])
+
+    def test_rejects_timestamp_chain_validation_time_mismatch(self):
+        bad = dict(self.timestamp, tsa_chain_validation_time="2026-11-19T12:00:01Z")
+        with self.assertRaisesRegex(ValueError, "does not exactly match genTime"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_missing_or_unsupported_timestamp_chain_policy(self):
+        for field, value in (
+            ("tsa_chain_validation_policy", "OpenSSL default policy"),
+            ("tsa_chain_validation_scope", "only checks signer certificate validity"),
+        ):
+            with self.subTest(field=field):
+                bad = dict(self.timestamp, **{field: value})
+                with self.assertRaisesRegex(ValueError, "TSA chain validation (policy|scope)"):
+                    build_report(self.gen_time, self.crl, self.crl_file_hash,
+                                 timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
 
     def test_preserves_timestamp_scope_and_limitations_in_report(self):
         report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
