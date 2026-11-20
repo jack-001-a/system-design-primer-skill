@@ -384,6 +384,7 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
 
     # RFC 3161 Accuracy is an uncertainty bound, not an exact-time assertion.
     # Only use a conservative upper bound when the token explicitly supplies it.
+    timestamp_lower_bound = None
     timestamp_upper_bound = None
     timestamp_accuracy_assessed = False
     if trusted_timestamp is not None and trusted_timestamp.get("accuracy") is not None:
@@ -403,6 +404,7 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
                 milliseconds=accuracy.get("millis", 0),
                 microseconds=accuracy.get("micros", 0),
             )
+            timestamp_lower_bound = timestamp_gen_time - uncertainty
             timestamp_upper_bound = timestamp_gen_time + uncertainty
         except (OverflowError, ValueError) as exc:
             raise ValueError("RFC 3161 timestamp accuracy exceeds the supported datetime range") from exc
@@ -430,12 +432,20 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
         historical_assessment = "timestamped_existence_only"
     return {"verified": True, "signature_valid": True, "historically_valid": False,
             "historical_assessment": historical_assessment,
-            "historical_validity_basis": "signature_creation_time_not_proven; RFC3161 proves existence no later than genTime only" if trusted_timestamp else "attester_asserted_attested_at_is_not_trusted_time",
+            "historical_validity_basis": (
+                "signature_creation_time_not_proven; RFC 3161 token establishes existence by the "
+                "trusted timestamp upper bound (genTime plus explicit Accuracy when supplied); "
+                "this is not proof that the signature was created during the key-validity interval"
+            ) if trusted_timestamp else "attester_asserted_attested_at_is_not_trusted_time",
             "historical_time_cryptographically_proven": trusted_timestamp is not None,
             "signature_existence_proven_by_trusted_timestamp": trusted_timestamp is not None,
             "signature_existed_before_revocation": bool(signature_existed_before_revocation),
             "signature_existence_proven_before_key_not_before": bool(signature_existed_before_key_validity),
             "trusted_signature_timestamp": trusted_timestamp,
+            "trusted_timestamp_lower_bound": (
+                timestamp_lower_bound.isoformat(timespec="microseconds").replace("+00:00", "Z")
+                if timestamp_lower_bound is not None else None
+            ),
             "trusted_timestamp_upper_bound": (
                 timestamp_upper_bound.isoformat(timespec="microseconds").replace("+00:00", "Z")
                 if timestamp_upper_bound is not None else None
