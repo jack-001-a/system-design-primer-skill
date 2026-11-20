@@ -16,8 +16,47 @@ from cryptography.x509 import ocsp
 from scripts.verify_tsa_ocsp import bind_responder_certificate
 from scripts.verify_tsa_ocsp import (
     verify_ocsp_response, validate_trust_anchor_bundle, verification_time_bounds,
-    parse_historical_at_time,
+    parse_historical_at_time, validate_ocsp_generalized_time_profile,
 )
+
+
+def der_value(tag: int, content: bytes) -> bytes:
+    """Encode a short DER TLV for focused OCSP time-profile fixtures."""
+    length = len(content)
+    if length < 128:
+        encoded_length = bytes([length])
+    else:
+        raw_length = length.to_bytes((length.bit_length() + 7) // 8, "big")
+        encoded_length = bytes([0x80 | len(raw_length)]) + raw_length
+    return bytes([tag]) + encoded_length + content
+
+
+def synthetic_ocsp_response(produced_at: bytes, this_update: bytes, next_update: bytes) -> bytes:
+    """Build a minimal BasicOCSPResponse envelope for GeneralizedTime profile tests."""
+    response_data = der_value(
+        0x30,
+        der_value(0x18, produced_at)
+        + der_value(
+            0x30,
+            der_value(
+                0x30,
+                der_value(0x18, this_update)
+                + der_value(0xA0, der_value(0x18, next_update)),
+            ),
+        ),
+    )
+    basic = der_value(
+        0x30,
+        response_data
+        + der_value(0x30, der_value(0x06, bytes.fromhex("2b0e03021a")))
+        + der_value(0x03, b"\\x00signature"),
+    )
+    response_bytes = der_value(
+        0x30,
+        der_value(0x06, bytes.fromhex("2b0601050507300101"))
+        + der_value(0x04, basic),
+    )
+    return der_value(0x30, der_value(0x0A, b"\\x00") + der_value(0xA0, response_bytes))
 
 class TsaOcspTests(unittest.TestCase):
     def setUp(self):
@@ -76,6 +115,40 @@ Next Update: Nov 19 12:05:00 2026 GMT
             run.side_effect = [request_result, response_result]
             result = verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,self.pin(),now=self.now)
             return result, run.call_args_list[0].args[0], run.call_args_list[1].args[0]
+
+    def test_ocsp_generalized_time_profile_accepts_whole_second_utc_values(self):
+        response = synthetic_ocsp_response(
+            b"20261120120000Z",
+            b"20261120115800Z",
+            b"20261120120500Z",
+        )
+        validate_ocsp_generalized_time_profile(response)
+
+    def test_ocsp_generalized_time_profile_rejects_fractional_fields(self):
+        valid = b"20261120120000Z"
+        invalid = b"20261120120000.000001Z"
+        for field_index in range(3):
+            values = [valid, valid, valid]
+            values[field_index] = invalid
+            with self.subTest(field_index=field_index):
+                response = synthetic_ocsp_response(*values)
+                with self.assertRaisesRegex(ValueError, "no fractional seconds"):
+                    validate_ocsp_generalized_time_profile(response)
+
+    def test_rejects_fractional_ocsp_time_before_invoking_openssl(self):
+        self.response.write_bytes(synthetic_ocsp_response(
+            b"20261120120000.1Z",
+            b"20261120115800Z",
+            b"20261120120500Z",
+        ))
+        with patch(
+            "scripts.verify_tsa_ocsp.shutil.which",
+            side_effect=AssertionError("OpenSSL must not receive non-profile OCSP time values"),
+        ):
+            with self.assertRaisesRegex(ValueError, "no fractional seconds"):
+                verify_ocsp_response(
+                    self.cert, self.issuer, self.roots, self.response, self.pin(), now=self.now
+                )
 
     def test_accepts_fresh_signed_good_response(self):
         result, request_command, command = self.run_valid()
