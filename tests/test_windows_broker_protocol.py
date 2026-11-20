@@ -46,16 +46,30 @@ class ShortWriteStream:
 
 class WindowsBrokerProtocolTests(unittest.TestCase):
     def test_round_trip_unicode_payload(self):
-        original = message({"argv": ["tool.exe", "", "路径", "a b"], "cwd": "C:\\工作"})
+        original = message({
+            "application": "C:\\工具\\worker.exe",
+            "argv": ["worker.exe", "", "路径", "a b"],
+            "cwd": "C:\\工作",
+            "environment": {"LANG": "zh_CN.UTF-8"},
+            "stdin_handle": 10, "stdout_handle": 11, "stderr_handle": 12,
+        })
         self.assertEqual(read_message(io.BytesIO(encode_message(original))), original)
 
     def test_reader_handles_short_reads(self):
-        original = message({"value": "x" * 100})
+        original = message({
+            "application": "worker.exe", "argv": ["worker.exe", "x" * 100],
+            "cwd": None, "environment": {},
+            "stdin_handle": 10, "stdout_handle": 11, "stderr_handle": 12,
+        })
         self.assertEqual(read_message(ShortReadStream(encode_message(original))), original)
 
     def test_writer_handles_short_writes_and_flushes(self):
         stream = ShortWriteStream()
-        original = message({"value": "short writes"})
+        original = message({
+            "application": "worker.exe", "argv": ["worker.exe", "short writes"],
+            "cwd": None, "environment": {},
+            "stdin_handle": 10, "stdout_handle": 11, "stderr_handle": 12,
+        })
         write_message(stream, original)
         self.assertEqual(read_message(io.BytesIO(stream.data)), original)
         self.assertEqual(stream.flush_count, 1)
@@ -113,7 +127,10 @@ class WindowsBrokerProtocolTests(unittest.TestCase):
                 read_message(io.BytesIO(raw))
 
     def test_validate_message_returns_original_mapping(self):
-        candidate = message()
+        candidate = message({
+            "application": "worker.exe", "argv": ["worker.exe"], "cwd": None,
+            "environment": {}, "stdin_handle": 10, "stdout_handle": 11, "stderr_handle": 12,
+        })
         self.assertIs(validate_message(candidate), candidate)
 
     def _launch_payload(self):
