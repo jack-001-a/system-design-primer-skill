@@ -211,6 +211,7 @@ class NamedPipeConnection:
     CONNECTED = "connected"
     CONNECTING = "connecting"
     DISCONNECTED = "disconnected"
+    DISCONNECTING = "disconnecting"
     CLOSING = "closing"
     CLOSED = "closed"
 
@@ -425,7 +426,7 @@ def disconnect_named_pipe(
     closes its event/buffer/OVERLAPPED resources and is explicitly unregistered.
     """
     with connection._lock:
-        if connection._state != connection.CONNECTED:
+        if connection._state not in (connection.CONNECTED, connection.DISCONNECTING):
             raise OverlappedLifecycleError(
                 f"cannot disconnect pipe in state {connection._state}"
             )
@@ -453,6 +454,9 @@ def disconnect_named_pipe(
             raise OverlappedLifecycleError(
                 "cannot disconnect while registered pipe I/O is not completed"
             )
+        # Failure does not establish whether the instance remains connected.
+        # Block I/O and reconnect until a retry confirms disconnection.
+        connection._state = connection.DISCONNECTING
         succeeded = bool(bindings.DisconnectNamedPipe(connection.file_handle))
         if not succeeded:
             return False, int(get_last_error())
