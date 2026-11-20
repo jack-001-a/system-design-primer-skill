@@ -54,7 +54,7 @@ def parse_utc(value: Any, field: str) -> datetime:
 def parse_utc_parts(value: Any, field: str) -> tuple[datetime, str]:
     """Parse UTC GeneralizedTime while retaining arbitrary-precision fractional digits."""
     match = re.fullmatch(
-        r"(\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2})(?:\\.(\\d+))?Z",
+        r"(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z",
         value if isinstance(value, str) else "",
     )
     if not match:
