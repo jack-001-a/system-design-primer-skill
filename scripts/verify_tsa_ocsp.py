@@ -70,7 +70,11 @@ def _der_tlv(data: bytes, offset: int = 0) -> tuple[int, bytes, int]:
         count = first & 0x7f
         if count == 0 or count > 4 or offset + count > len(data):
             raise ValueError("invalid DER length")
+        if data[offset] == 0:
+            raise ValueError("non-minimal DER length")
         length = int.from_bytes(data[offset:offset + count], "big")
+        if length < 128:
+            raise ValueError("non-minimal DER long-form length")
         offset += count
     else:
         length = first
@@ -78,6 +82,68 @@ def _der_tlv(data: bytes, offset: int = 0) -> tuple[int, bytes, int]:
     if end > len(data):
         raise ValueError("truncated DER value")
     return tag, data[offset:end], end
+
+
+def _der_children(data: bytes):
+    """Yield one complete DER value at a time from a constructed value."""
+    offset = 0
+    while offset < len(data):
+        tag, value, end = _der_tlv(data, offset)
+        yield tag, value
+        offset = end
+    if offset != len(data):
+        raise ValueError("DER constructed value has trailing bytes")
+
+
+def _require_single_der_value(data: bytes, expected_tag: int, field: str) -> bytes:
+    tag, value, end = _der_tlv(data)
+    if tag != expected_tag or end != len(data):
+        raise ValueError(field + " is not one complete DER value")
+    return value
+
+
+def _validate_generalized_time_tree(data: bytes) -> None:
+    """Reject fractional, non-Z, or malformed GeneralizedTime values in DER structures."""
+    for tag, value in _der_children(data):
+        if tag == 0x18:
+            if not re.fullmatch(rb"[0-9]{14}Z", value):
+                raise ValueError(
+                    "OCSP GeneralizedTime values must be UTC seconds with no fractional seconds"
+                )
+            try:
+                datetime.strptime(value.decode("ascii"), "%Y%m%d%H%M%SZ")
+            except (UnicodeDecodeError, ValueError) as exc:
+                raise ValueError("OCSP GeneralizedTime contains an invalid calendar time") from exc
+        elif tag & 0x20:
+            _validate_generalized_time_tree(value)
+
+
+def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
+    """Enforce RFC 5280 time syntax for GeneralizedTime values in BasicOCSPResponse."""
+    response_content = _require_single_der_value(
+        response_der, 0x30, "OCSPResponse"
+    )
+    response_fields = list(_der_children(response_content))
+    if len(response_fields) < 2 or response_fields[0][0] != 0x0A:
+        raise ValueError("OCSPResponse has an invalid responseStatus envelope")
+    response_bytes_fields = [field for field in response_fields[1:] if field[0] == 0xA0]
+    if not response_bytes_fields:
+        return
+    if len(response_bytes_fields) != 1:
+        raise ValueError("OCSPResponse contains duplicate responseBytes")
+    response_bytes_content = _require_single_der_value(
+        response_bytes_fields[0][1], 0x30, "OCSP responseBytes"
+    )
+    fields = list(_der_children(response_bytes_content))
+    if len(fields) != 2 or fields[0][0] != 0x06 or fields[1][0] != 0x04:
+        raise ValueError("OCSP responseBytes has an invalid structure")
+    # id-pkix-ocsp-basic = 1.3.6.1.5.5.7.48.1.1
+    if fields[0][1] != bytes.fromhex("2b0601050507300101"):
+        return
+    basic_response = _require_single_der_value(
+        fields[1][1], 0x30, "BasicOCSPResponse"
+    )
+    _validate_generalized_time_tree(basic_response)
 
 
 
@@ -196,6 +262,9 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
     if roots_digest != expected_roots_sha256:
         raise ValueError("issuer-root bundle SHA-256 pin mismatch")
     validate_trust_anchor_bundle(roots)
+    # RFC 6960 §4.2.2.1 delegates OCSP GeneralizedTime syntax to RFC 5280
+    # §4.1.2.5.2, which requires whole-second UTC values without fractions.
+    validate_ocsp_generalized_time_profile(response.read_bytes())
     executable = shutil.which("openssl")
     if not executable:
         raise ValueError("OpenSSL CLI is required for OCSP response verification")
