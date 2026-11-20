@@ -135,7 +135,7 @@ class OverlappedIO:
         except (TransportCancelled, TransportTimeout):
             raise
         except BaseException:
-            if not cancellation_attempted:
+            if not safe_to_close and not cancellation_attempted:
                 cancellation_attempted = True
                 self._cancel_and_drain(token)
                 safe_to_close = True
@@ -145,21 +145,19 @@ class OverlappedIO:
                 self._backend.close(token)
 
     def _cancel_and_drain(self, token: Any) -> None:
-        cancel_error: BaseException | None = None
         try:
             self._backend.cancel(token)
-        except BaseException as exc:
-            cancel_error = exc
+        except BaseException:
+            # Cancellation can race with natural completion (for example,
+            # ERROR_NOT_FOUND). A successful drain is the authoritative proof
+            # that native storage is no longer in use.
+            pass
         try:
             self._backend.drain(token)
         except BaseException as exc:
             raise TransportCleanupError(
                 "could not drain cancelled overlapped operation; native storage retained"
             ) from exc
-        if cancel_error is not None:
-            raise TransportCleanupError(
-                "cancellation request failed although completion was drained"
-            ) from cancel_error
 
     @staticmethod
     def _validate_count(count: Any, capacity: int, operation: str) -> int:
