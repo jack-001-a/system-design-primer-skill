@@ -17,7 +17,7 @@ NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
 
 
-def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_before=None, issuer_not_after=None, future=False, delta=False, indirect=False, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
+def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_before=None, issuer_not_after=None, last_update=None, future=False, delta=False, indirect=False, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
     key = rsa.generate_private_key(public_exponent=65537, key_size=key_size)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "CRL issuer")])
     issuer = (
@@ -41,7 +41,7 @@ def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_befo
     aki_key = rsa.generate_private_key(public_exponent=65537, key_size=2048) if wrong_aki else key
     builder = (
         x509.CertificateRevocationListBuilder().issuer_name(name)
-        .last_update(NOW+timedelta(days=1) if future else NOW-timedelta(days=1))
+        .last_update(last_update or (NOW+timedelta(days=1) if future else NOW-timedelta(days=1)))
         .next_update(NOW+timedelta(days=30))
         .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(aki_key.public_key()), False)
     )
@@ -166,6 +166,11 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not authorized for cRLSign"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
+    def test_fractional_gen_time_rejects_crl_issued_at_ceil_second(self):
+        self.issuer, self.leaf, self.listing = make_material(last_update=NOW+timedelta(seconds=1))
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "CRL thisUpdate is later than the historical validation time"):
+            verify_crl_status(self.cert, self.roots, self.crl, "2026-11-19T12:00:00.000001Z", self.roots_pin())
     def test_rejects_crl_future_this_update(self):
         self.issuer, self.leaf, self.listing = make_material(future=True)
         self.write_material()
