@@ -65,6 +65,24 @@ def validate_trust_anchor_bundle(certificates: list[x509.Certificate]) -> None:
         seen.add(fingerprint)
         if certificate.subject != certificate.issuer:
             raise ValueError("trust-anchor bundle may contain only self-issued certificates; place intermediates in --intermediates")
+        try:
+            constraints = certificate.extensions.get_extension_for_oid(ExtensionOID.BASIC_CONSTRAINTS)
+        except x509.ExtensionNotFound as exc:
+            raise ValueError("trust-anchor certificate lacks basicConstraints CA authorization") from exc
+        if not constraints.critical or not constraints.value.ca:
+            raise ValueError("trust-anchor certificate must have critical basicConstraints with CA=true")
+        try:
+            usage = certificate.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE)
+        except x509.ExtensionNotFound as exc:
+            raise ValueError("trust-anchor certificate lacks explicit keyUsage with keyCertSign") from exc
+        if not usage.critical or not usage.value.key_cert_sign:
+            raise ValueError("trust-anchor certificate must have critical keyUsage with keyCertSign")
+        try:
+            ski = certificate.extensions.get_extension_for_oid(ExtensionOID.SUBJECT_KEY_IDENTIFIER)
+        except x509.ExtensionNotFound as exc:
+            raise ValueError("trust-anchor CA certificate lacks subjectKeyIdentifier") from exc
+        if ski.critical:
+            raise ValueError("trust-anchor subjectKeyIdentifier must be non-critical")
 
 def validate_crl_number_value(value: int) -> None:
     """Enforce the ASN.1 CRLNumber INTEGER lower bound independently of parsing."""
