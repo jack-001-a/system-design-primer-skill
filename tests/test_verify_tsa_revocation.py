@@ -11,7 +11,8 @@ from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
-from scripts.verify_tsa_revocation import (parse_utc_epoch, verify_crl_status, validate_crl_signature_policy,\n    validate_crl_number_value, validate_direct_crl_scope)
+from scripts.verify_tsa_revocation import (parse_utc_epoch, verify_crl_status, validate_crl_signature_policy,
+    validate_crl_number_value, validate_direct_crl_scope)
 
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
