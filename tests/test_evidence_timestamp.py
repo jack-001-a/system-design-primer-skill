@@ -71,6 +71,7 @@ class EvidenceTimestampTests(unittest.TestCase):
                 "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\n",
                 "Time stamp: Nov 19 12:00:00.000001 2026 GMT\nPolicy OID: 1.2.3\nSerial number: 01\nHash Algorithm: sha256\nMessage data: 0x" + digest + "\nAccuracy: 1 seconds, 2 millis, 3 micros\nOrdering: no\nNonce: 0x1234\n",
                 "",
+                "",
             ]
             import hashlib as h
             result = verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
@@ -87,7 +88,9 @@ class EvidenceTimestampTests(unittest.TestCase):
         historical = run.call_args_list[2].args[0]
         self.assertEqual(historical[:2], ["ts", "-verify"])
         self.assertIn("-attime", historical)
-        self.assertEqual(historical[historical.index("-attime") + 1], str(int(datetime(2026, 11, 19, 12, 0, 1, tzinfo=timezone.utc).timestamp())))
+        self.assertEqual(historical[historical.index("-attime") + 1], str(int(datetime(2026, 11, 19, 12, 0, 0, tzinfo=timezone.utc).timestamp())))
+        upper_bound = run.call_args_list[3].args[0]
+        self.assertEqual(upper_bound[upper_bound.index("-attime") + 1], str(int(datetime(2026, 11, 19, 12, 0, 1, tzinfo=timezone.utc).timestamp())))
         self.assertIn("-purpose", historical)
         self.assertIn("timestampsign", historical)
         self.assertTrue(result["tsa_chain_valid_at_gen_time"])
