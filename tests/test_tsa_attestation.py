@@ -185,16 +185,22 @@ class TsaAttestationTests(unittest.TestCase):
         cases = (
             ("missing", None),
             ("invalid_digest", "not-a-sha256-digest"),
+            ("wrong_validation_time", "2026-11-19T12:00:01Z"),
+            ("unsupported_scope", "signer certificate only"),
         )
-        for name, digest in cases:
+        for name, value in cases:
             report = json.loads(json.dumps(original))
             if name == "missing":
                 report.pop("timestamp_chain_validation")
+            elif name == "invalid_digest":
+                report["timestamp_chain_validation"]["intermediates_sha256"] = value
+            elif name == "wrong_validation_time":
+                report["timestamp_chain_validation"]["validation_time"] = value
             else:
-                report["timestamp_chain_validation"]["intermediates_sha256"] = digest
+                report["timestamp_chain_validation"]["scope"] = value
             self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
             with self.subTest(name=name), self.assertRaisesRegex(
-                ValueError, "timestamp_chain_validation"
+                ValueError, "timestamp_chain_validation|timestamp chain validation"
             ):
                 create_attestation(
                     self.report, self.private, "tsa-attester",
