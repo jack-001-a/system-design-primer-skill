@@ -65,15 +65,74 @@ def validate_crl_number_value(value: int) -> None:
         raise ValueError("CRLNumber must be a non-negative integer")
 
 
+def _read_der_tlv(data: bytes, offset: int) -> tuple[int, int, int, int]:
+    """Return tag, value start, value end, and next offset for one definite-length DER TLV."""
+    if offset >= len(data):
+        raise ValueError("truncated DER value")
+    tag = data[offset]
+    cursor = offset + 1
+    if cursor >= len(data):
+        raise ValueError("truncated DER length")
+    first_length = data[cursor]
+    cursor += 1
+    if first_length < 0x80:
+        length = first_length
+    else:
+        count = first_length & 0x7F
+        if count == 0 or count > 4 or cursor + count > len(data):
+            raise ValueError("invalid DER length")
+        if data[cursor] == 0:
+            raise ValueError("non-minimal DER length")
+        length = int.from_bytes(data[cursor:cursor + count], "big")
+        if length < 0x80:
+            raise ValueError("non-minimal DER length")
+        cursor += count
+    end = cursor + length
+    if end > len(data):
+        raise ValueError("truncated DER value")
+    return tag, cursor, end, end
+
+
+def validate_crl_der_profile(raw: bytes, crl: x509.CertificateRevocationList) -> None:
+    """Enforce RFC 5280 CRL version and inner/outer signature AlgorithmIdentifier equality."""
+    tag, outer_start, outer_end, outer_next = _read_der_tlv(raw, 0)
+    if tag != 0x30 or outer_next != len(raw):
+        raise ValueError("CRL DER must be one complete SEQUENCE")
+    tbs_tag, tbs_start, tbs_end, tbs_next = _read_der_tlv(raw, outer_start)
+    if tbs_tag != 0x30:
+        raise ValueError("CRL DER lacks TBSCertList SEQUENCE")
+    cursor = tbs_start
+    first_tag, first_start, first_end, first_next = _read_der_tlv(raw, cursor)
+    version_present = first_tag == 0x02
+    if version_present:
+        if raw[first_start:first_end] != b"\\x01":
+            raise ValueError("CRL version must be v2")
+        cursor = first_next
+    inner_tag, inner_start, inner_end, inner_next = _read_der_tlv(raw, cursor)
+    if inner_tag != 0x30:
+        raise ValueError("TBSCertList lacks signature AlgorithmIdentifier")
+    outer_alg_tag, outer_alg_start, outer_alg_end, outer_alg_next = _read_der_tlv(raw, tbs_next)
+    if outer_alg_tag != 0x30:
+        raise ValueError("CertificateList lacks signatureAlgorithm")
+    if raw[cursor:inner_next] != raw[tbs_next:outer_alg_next]:
+        raise ValueError("CRL inner and outer signature AlgorithmIdentifiers must match exactly")
+    has_extensions = bool(crl.extensions) or any(bool(entry.extensions) for entry in crl)
+    if has_extensions and not version_present:
+        raise ValueError("CRL extensions require an explicit v2 version")
+
+
 def load_crl(path: Path) -> x509.CertificateRevocationList:
     raw = path.read_bytes()
     try:
-        return x509.load_pem_x509_crl(raw)
+        crl = x509.load_pem_x509_crl(raw)
     except ValueError:
         try:
-            return x509.load_der_x509_crl(raw)
+            crl = x509.load_der_x509_crl(raw)
         except ValueError as exc:
             raise ValueError("CRL must be a parseable PEM or DER X.509 CRL") from exc
+    der = crl.public_bytes(serialization.Encoding.DER)
+    validate_crl_der_profile(der, crl)
+    return crl
 
 
 
