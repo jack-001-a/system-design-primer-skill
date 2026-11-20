@@ -62,6 +62,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
         self.assertIn("-CAfile", command)
         self.assertIn("-no-CApath", command)
         self.assertIn("-no-CAstore", command)
+        self.assertIn("-x509_strict", command)
     def test_reports_revoked_status_without_calling_it_good(self):
         output = self.output.replace("Cert Status: good", "Cert Status: revoked")
         result, _, _ = self.run_valid(output)
