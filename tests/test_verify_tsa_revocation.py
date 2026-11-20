@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from cryptography import x509
@@ -649,6 +651,29 @@ class TsaRevocationTests(unittest.TestCase):
         self.write_material()
         with self.assertRaisesRegex(ValueError, "target certificate is revoked"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_rejects_input_mutation_during_snapshot_read(self):
+        real_fstat = os.fstat
+        calls = 0
+
+        def report_changed_file(fd):
+            nonlocal calls
+            result = real_fstat(fd)
+            calls += 1
+            if calls == 2:
+                return SimpleNamespace(
+                    st_mode=result.st_mode,
+                    st_dev=result.st_dev,
+                    st_ino=result.st_ino,
+                    st_size=result.st_size,
+                    st_mtime_ns=result.st_mtime_ns + 1,
+                    st_ctime_ns=result.st_ctime_ns,
+                )
+            return result
+
+        with patch("scripts.verify_tsa_revocation.os.fstat", side_effect=report_changed_file):
+            with self.assertRaisesRegex(ValueError, "changed while being snapshotted"):
+                verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_input_snapshots_are_removed_when_openssl_spawn_raises(self):
         captured_command = []
