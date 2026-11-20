@@ -133,6 +133,7 @@ class TsaRevocationTests(unittest.TestCase):
                                        expected_crl_sha256=self.crl_pin())
         self.assertTrue(result["verified"])
         self.assertEqual(result["crl_sha256"], self.crl_pin())
+        self.assertEqual(result["trust_anchor_policy"], "issuer-roots bundle contains only self-issued trust-anchor certificates; CRL issuer CA/keyCertSign/cRLSign are checked independently; intermediates are supplied separately via -untrusted")
         self.assertEqual(result["effective_at_time"], AT_TIME)
         self.assertEqual(result["time_rounding"], "ceil_to_next_whole_second_for_conservative_historical_evaluation")
         self.assertTrue(result["crl_issuer_certificate_validity"]["valid_at_this_update"])
