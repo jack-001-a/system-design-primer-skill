@@ -149,6 +149,74 @@ def _validate_generalized_time_value(value: bytes | memoryview) -> None:
         raise ValueError("OCSP GeneralizedTime contains an invalid calendar time") from exc
 
 
+def _validate_oid_content(value: bytes | memoryview) -> None:
+    """Reject empty, unterminated, or non-minimal base-128 OID subidentifiers."""
+    if not value:
+        raise ValueError("DER OBJECT IDENTIFIER must contain at least one subidentifier")
+    component_start = True
+    for octet in value:
+        if component_start and octet == 0x80:
+            raise ValueError("DER OBJECT IDENTIFIER contains a non-minimal subidentifier")
+        component_start = not bool(octet & 0x80)
+    if not component_start:
+        raise ValueError("DER OBJECT IDENTIFIER has an unterminated subidentifier")
+
+
+def _validate_der_primitive(tag: int, value: bytes | memoryview) -> None:
+    """Enforce canonical DER forms for primitive universal ASN.1 types used by OCSP."""
+    if tag & 0xC0:
+        return
+    number = tag & 0x1F
+    constructed = bool(tag & 0x20)
+
+    if number == 0:
+        raise ValueError("DER must not contain end-of-contents values")
+    if number in (16, 17):
+        if not constructed:
+            raise ValueError("DER SEQUENCE and SET values must use constructed encoding")
+        return
+
+    # DER uses primitive encoding for the universal string/value types below.
+    primitive_numbers = {
+        1, 2, 3, 4, 5, 6, 9, 10, 12, 13, 14, 18, 19, 20, 21, 22, 23, 24,
+        25, 26, 27, 28, 30,
+    }
+    if number in primitive_numbers and constructed:
+        raise ValueError("DER universal primitive value uses constructed encoding")
+
+    if number == 1:  # BOOLEAN: DER TRUE is all one bits; FALSE is all zero bits.
+        if len(value) != 1 or value[0] not in (0x00, 0xFF):
+            raise ValueError("DER BOOLEAN must be one octet encoded as 00 or FF")
+    elif number in (2, 10):  # INTEGER and ENUMERATED use minimal two's-complement form.
+        if not value:
+            raise ValueError("DER INTEGER/ENUMERATED must contain at least one octet")
+        if len(value) > 1:
+            first, second = value[0], value[1]
+            if (first == 0x00 and not second & 0x80) or (
+                first == 0xFF and second & 0x80
+            ):
+                raise ValueError("DER INTEGER/ENUMERATED has redundant sign octets")
+    elif number == 3:  # BIT STRING: first content octet counts unused trailing bits.
+        if not value:
+            raise ValueError("DER BIT STRING is missing its unused-bit count")
+        unused = value[0]
+        if unused > 7:
+            raise ValueError("DER BIT STRING unused-bit count must be between 0 and 7")
+        if len(value) == 1 and unused:
+            raise ValueError("DER empty BIT STRING must have zero unused bits")
+        if unused and value[-1] & ((1 << unused) - 1):
+            raise ValueError("DER BIT STRING has non-zero padding bits")
+    elif number == 4:  # OCTET STRING must be primitive in DER; content remains opaque.
+        return
+    elif number == 5:  # NULL has no content octets.
+        if value:
+            raise ValueError("DER NULL must have empty contents")
+    elif number == 6:
+        _validate_oid_content(value)
+    elif number == 24:
+        _validate_generalized_time_value(value)
+
+
 def _validate_generalized_time_tree(data: bytes | memoryview) -> None:
     """Validate OCSP times with explicit depth and total-node budgets."""
     archive_cutoff_oid = bytes.fromhex("2b0601050507300106")  # id-pkix-ocsp-archive-cutoff
@@ -198,9 +266,8 @@ def _validate_generalized_time_tree(data: bytes | memoryview) -> None:
             visited_nodes += 1
             if visited_nodes > MAX_DER_NODES:
                 raise ValueError("OCSP DER structure exceeds the node-count limit")
-            if tag == 0x18:
-                _validate_generalized_time_value(value)
-            elif tag & 0x20:
+            _validate_der_primitive(tag, value)
+            if tag & 0x20:
                 pending.append((tag, value, depth + 1))
 
 
@@ -219,6 +286,7 @@ def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
         raise ValueError("OCSPResponse has an invalid responseStatus envelope")
 
     status_bytes = response_fields[0][1]
+    _validate_der_primitive(0x0A, status_bytes)
     if len(status_bytes) != 1 or status_bytes[0] not in (0, 1, 2, 3, 5, 6):
         raise ValueError("OCSPResponse has an invalid responseStatus value")
     response_status = status_bytes[0]
@@ -240,6 +308,7 @@ def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
     fields = list(_der_children(response_bytes_content))
     if len(fields) != 2 or fields[0][0] != 0x06 or fields[1][0] != 0x04:
         raise ValueError("OCSP responseBytes has an invalid structure")
+    _validate_der_primitive(fields[0][0], fields[0][1])
     # id-pkix-ocsp-basic = 1.3.6.1.5.5.7.48.1.1
     if fields[0][1] != bytes.fromhex("2b0601050507300101"):
         return
