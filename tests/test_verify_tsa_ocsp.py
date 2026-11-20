@@ -24,9 +24,18 @@ class TsaOcspTests(unittest.TestCase):
         self.roots = self.root / "roots.pem"
         self.response = self.root / "response.der"
         self.responder = self.root / "responder.pem"
-        for path, data in ((self.cert,b"cert"),(self.issuer,b"issuer"),(self.roots,b"roots"),(self.response,b"response"),(self.responder,b"responder")):
+        for path, data in ((self.cert,b"cert"),(self.issuer,b"issuer"),(self.response,b"response"),(self.responder,b"responder")):
             path.write_bytes(data)
         self.now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
+        self.root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        self.root_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "OCSP test trust anchor")])
+        self.root_certificate = (x509.CertificateBuilder().subject_name(self.root_name)
+            .issuer_name(self.root_name).public_key(self.root_key.public_key())
+            .serial_number(100).not_valid_before(self.now - timedelta(days=30))
+            .not_valid_after(self.now + timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=2), critical=True)
+            .sign(self.root_key, hashes.SHA256()))
+        self.roots.write_bytes(self.root_certificate.public_bytes(Encoding.PEM))
         self.output = """Response verify OK
 Cert Status: good
 Produced At: Nov 19 11:59:00 2026 GMT
@@ -78,6 +87,34 @@ Next Update: Nov 19 12:05:00 2026 GMT
         output = self.output.replace("Nov 19 11:59:00 2026 GMT", "Nov 19 12:10:00 2026 GMT")
         with self.assertRaisesRegex(ValueError, "future"):
             self.run_valid(output)
+
+    def test_rejects_non_self_issued_intermediate_in_root_bundle(self):
+        intermediate = (x509.CertificateBuilder()
+            .subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Unexpected intermediate")]))
+            .issuer_name(self.root_name).public_key(self.root_key.public_key())
+            .serial_number(101).not_valid_before(self.now - timedelta(days=10))
+            .not_valid_after(self.now + timedelta(days=30))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+            .sign(self.root_key, hashes.SHA256()))
+        self.roots.write_bytes(self.root_certificate.public_bytes(Encoding.PEM)
+                               + intermediate.public_bytes(Encoding.PEM))
+        with self.assertRaisesRegex(ValueError, "only self-issued trust anchors"):
+            verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
+                                 self.pin(), now=self.now)
+
+    def test_rejects_duplicate_certificate_in_root_bundle(self):
+        pem = self.root_certificate.public_bytes(Encoding.PEM)
+        self.roots.write_bytes(pem + pem)
+        with self.assertRaisesRegex(ValueError, "duplicate certificate"):
+            verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
+                                 self.pin(), now=self.now)
+
+    def test_rejects_unparseable_root_bundle(self):
+        self.roots.write_bytes(b"not a certificate")
+        with self.assertRaisesRegex(ValueError, "parseable PEM or DER"):
+            verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
+                                 self.pin(), now=self.now)
+
     def test_rejects_root_pin_mismatch(self):
         with self.assertRaisesRegex(ValueError, "pin mismatch"):
             verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,"0"*64,now=self.now)
