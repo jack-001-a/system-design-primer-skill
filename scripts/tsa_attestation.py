@@ -276,7 +276,7 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         if next_update < this_update or validation < this_update or validation > next_update:
             raise ValueError("OCSP assessment contains inconsistent signed validity times")
         if scope == historical_scope:
-            gen_whole_second, gen_fraction = parse_utc_parts(report["gen_time"], "gen_time")
+            gen_whole_second, gen_fraction = parse_rfc3161_gen_time_parts(report["gen_time"], "gen_time")
             if len(gen_fraction) > 6:
                 raise ValueError("historical OCSP cannot represent genTime with more than six fractional digits")
             if (current.get("historical_at_time") != report["gen_time"]
