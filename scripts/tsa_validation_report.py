@@ -194,6 +194,18 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), and TSA chain verification"
     ):
         raise ValueError("timestamp verification method provenance is missing or unsupported")
+    if timestamp_result.get("tsa_chain_valid_at_gen_time") is not True:
+        raise ValueError("timestamp TSA chain is not explicitly verified at genTime")
+    if timestamp_result.get("tsa_chain_validation_time") != gen_time:
+        raise ValueError("timestamp TSA chain validation time does not exactly match genTime")
+    if timestamp_result.get("tsa_chain_validation_scope") != (
+        "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; RFC 3161 Accuracy is reported separately and does not widen the -attime interval"
+    ):
+        raise ValueError("timestamp TSA chain validation scope is missing or unsupported")
+    if timestamp_result.get("tsa_chain_validation_policy") != (
+        "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, -auth_level 2, -purpose timestampsign, and -x509_strict at both floor and ceiling seconds of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL"
+    ):
+        raise ValueError("timestamp TSA chain validation policy is missing or unsupported")
     if type(timestamp_result.get("ordering")) is not bool or type(timestamp_result.get("nonce_present")) is not bool:
         raise ValueError("timestamp ordering and nonce_present must be explicit booleans")
     accuracy = timestamp_result.get("accuracy")
@@ -393,6 +405,12 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "tsa_certificate_sha256": certificate_digest,
         "timestamp_result_sha256": timestamp_result_sha256,
         "timestamp_verification_scope": timestamp_verification_scope,
+        "timestamp_chain_validation": {
+            "status": "verified",
+            "validation_time": timestamp_result["tsa_chain_validation_time"],
+            "scope": timestamp_result["tsa_chain_validation_scope"],
+            "policy": timestamp_result["tsa_chain_validation_policy"],
+        },
         "timestamp_not_established": timestamp_not_established,
         "result_digest_policy": "caller_supplied_sha256_pins_checked_for_byte_equality_only",
         "result_digest_pin_provenance": {
