@@ -119,18 +119,18 @@ class TsaValidationReportTests(unittest.TestCase):
     def test_rejects_timestamp_chain_validation_time_mismatch(self):
         bad = dict(self.timestamp, tsa_chain_validation_time="2026-11-19T12:00:01Z")
         with self.assertRaisesRegex(ValueError, "does not exactly match genTime"):
-            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
             build_report(self.gen_time, self.crl, self.crl_file_hash,
                          timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
 
     def test_rejects_missing_or_unsupported_timestamp_chain_policy(self):
         for field, value in (
+            ("tsa_chain_valid_at_gen_time", False),
             ("tsa_chain_validation_policy", "OpenSSL default policy"),
             ("tsa_chain_validation_scope", "only checks signer certificate validity"),
         ):
             with self.subTest(field=field):
                 bad = dict(self.timestamp, **{field: value})
-                with self.assertRaisesRegex(ValueError, "TSA chain validation (policy|scope)"):
+                with self.assertRaisesRegex(ValueError, "TSA chain validation"):
                     build_report(self.gen_time, self.crl, self.crl_file_hash,
                                  timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
 
