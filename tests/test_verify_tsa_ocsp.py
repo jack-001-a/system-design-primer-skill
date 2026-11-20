@@ -127,7 +127,12 @@ def synthetic_x509_attribute(oid_content: bytes, value: bytes) -> bytes:
     )
 
 
-def synthetic_x509_certificate(issuer_name: bytes, subject_name: bytes) -> bytes:
+def synthetic_x509_certificate(
+    issuer_name: bytes,
+    subject_name: bytes,
+    version: int | None = None,
+    optional_fields: bytes = b"",
+) -> bytes:
     signature_algorithm = der_value(
         0x30,
         der_value(0x06, bytes.fromhex("2a864886f70d01010b")) + der_value(0x05, b""),
@@ -141,21 +146,28 @@ def synthetic_x509_certificate(issuer_name: bytes, subject_name: bytes) -> bytes
         der_value(0x17, b"261120000000Z") + der_value(0x17, b"271120000000Z"),
     )
     subject_public_key_info = der_value(
-        0x30, public_key_algorithm + der_value(0x03, b"\\x00public-key")
+        0x30, public_key_algorithm + der_value(0x03, b"\x00public-key")
+    )
+    encoded_version = (
+        der_value(0xA0, der_value(0x02, bytes([version])))
+        if version is not None else b""
     )
     tbs_certificate = der_value(
         0x30,
-        der_value(0x02, b"\\x01")
+        encoded_version
+        + der_value(0x02, b"\x01")
         + signature_algorithm
         + issuer_name
         + validity
         + subject_name
-        + subject_public_key_info,
+        + subject_public_key_info
+        + optional_fields,
     )
     return der_value(
         0x30,
-        tbs_certificate + signature_algorithm + der_value(0x03, b"\\x00signature"),
+        tbs_certificate + signature_algorithm + der_value(0x03, b"\x00signature"),
     )
+
 
 class TsaOcspTests(unittest.TestCase):
     def setUp(self):
@@ -304,6 +316,56 @@ Next Update: Nov 19 12:05:00 2026 GMT
         )
         with self.assertRaisesRegex(ValueError, "RDN SET OF components are not in DER sort order"):
             validate_ocsp_generalized_time_profile(malformed_response)
+
+    def test_embedded_x509_certificate_optional_fields_obey_version_constraints(self):
+        name = synthetic_x509_name((
+            synthetic_x509_attribute(bytes.fromhex("550403"), b"TSA"),
+        ))
+        valid_time = b"20261120120000Z"
+
+        # issuerUniqueID and subjectUniqueID are permitted starting with v2.
+        v2_certificate = synthetic_x509_certificate(
+            name, name, version=1, optional_fields=der_value(0x81, b"\x00\x80")
+        )
+        v2_response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            extra_certs=der_value(0xA0, der_value(0x30, v2_certificate)),
+        )
+        validate_ocsp_generalized_time_profile(v2_response)
+
+        # The same IMPLICIT field is not permitted when the default v1 is in force.
+        v1_certificate = synthetic_x509_certificate(
+            name, name, optional_fields=der_value(0x81, b"\x00\x80")
+        )
+        v1_response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            extra_certs=der_value(0xA0, der_value(0x30, v1_certificate)),
+        )
+        with self.assertRaisesRegex(ValueError, "optional field requires a later version"):
+            validate_ocsp_generalized_time_profile(v1_response)
+
+        extension = der_value(
+            0x30,
+            der_value(0x06, bytes.fromhex("551d13")) + der_value(0x04, b"\x30\x00"),
+        )
+        v3_certificate = synthetic_x509_certificate(
+            name, name, version=2, optional_fields=der_value(0xA3, der_value(0x30, extension))
+        )
+        v3_response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            extra_certs=der_value(0xA0, der_value(0x30, v3_certificate)),
+        )
+        validate_ocsp_generalized_time_profile(v3_response)
+
+        v2_with_extensions = synthetic_x509_certificate(
+            name, name, version=1, optional_fields=der_value(0xA3, der_value(0x30, extension))
+        )
+        v2_response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            extra_certs=der_value(0xA0, der_value(0x30, v2_with_extensions)),
+        )
+        with self.assertRaisesRegex(ValueError, "optional field requires a later version"):
+            validate_ocsp_generalized_time_profile(v2_response)
 
     def test_x509_name_rejects_empty_relative_distinguished_name(self):
         empty_rdn_name = der_value(0x30, der_value(0x31, b""))
