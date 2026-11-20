@@ -44,6 +44,7 @@ def synthetic_ocsp_response(
     cert_status: bytes | None = None,
     version: bytes = b"",
     response_extensions: bytes = b"",
+    next_update_field: bytes | None = None,
 ) -> bytes:
     """Build a structurally valid minimal BasicOCSPResponse for DER profile tests."""
     single_response_extensions = (
@@ -69,7 +70,11 @@ def synthetic_ocsp_response(
         cert_id
         + selected_status
         + der_value(0x18, this_update)
-        + der_value(0xA0, der_value(0x18, next_update))
+        + (
+            next_update_field
+            if next_update_field is not None
+            else der_value(0xA0, der_value(0x18, next_update))
+        )
         + single_response_extensions,
     )
     selected_responder = (
@@ -287,54 +292,40 @@ Next Update: Nov 19 12:05:00 2026 GMT
 
     def test_ocsp_profile_enforces_explicit_optional_field_wrappers(self):
         valid_time = b"20261120120000Z"
-        wrong_next_update = der_value(0x80, der_value(0x18, valid_time))
-        response = synthetic_ocsp_response(
+        empty_extensions = synthetic_ocsp_response(
             valid_time, valid_time, valid_time,
             response_extensions=der_value(0xA1, der_value(0x30, b"")),
         )
-        with self.assertRaisesRegex(ValueError, "must contain at least one Extension"):
-            validate_ocsp_generalized_time_profile(response)
+        with self.assertRaisesRegex(ValueError, "at least one Extension"):
+            validate_ocsp_generalized_time_profile(empty_extensions)
 
-        # A context-specific tag cannot replace the explicitly wrapped universal time.
-        wrong_single_response = der_value(
-            0x30,
-            # Reuse the builder's canonical CertID and good status.
-            der_value(0x30,
-                der_value(0x30, der_value(0x06, bytes.fromhex("2b0e03021a"))
-                          + der_value(0x05, b""))
-                + der_value(0x04, b"\x00" * 20)
-                + der_value(0x04, b"\x00" * 20)
-                + der_value(0x02, b"\x01"))
-            + der_value(0x80, b"")
-            + der_value(0x18, valid_time)
-            + wrong_next_update,
-        )
-        response = synthetic_ocsp_response(
+        implicit_next_update = synthetic_ocsp_response(
             valid_time, valid_time, valid_time,
-            cert_status=der_value(0x80, b""),
+            next_update_field=der_value(0x80, der_value(0x18, valid_time)),
         )
-        # Replace the one canonical SingleResponse with the malformed one.
-        outer_content = _require_single_der_value(response, 0x30, "OCSPResponse")
-        outer = list(_der_children(outer_content))
-        response_bytes = _require_single_der_value(outer[1][1], 0x30, "responseBytes")
-        rb = list(_der_children(response_bytes))
-        basic = _require_single_der_value(rb[1][1], 0x30, "BasicOCSPResponse")
-        basic_fields = list(_der_children(basic))
-        rd = list(_der_children(basic_fields[0][1]))
-        malformed_rd = der_value(0x30, rd[0][1] + rd[1][1]
-                                 + der_value(0x18, valid_time)
-                                 + der_value(0x30, wrong_single_response[2:-2]))
-        malformed_basic = der_value(0x30, malformed_rd + b"".join(
-            der_value(tag, value) for tag, value in basic_fields[1:]
-        ))
-        malformed_rb = der_value(0x30, rb[0][0].to_bytes(1, "big") + b"")
-        # Build the response envelope explicitly to avoid mutating TLV offsets.
-        rebuilt_rb = der_value(0x30, der_value(0x06, rb[0][1])
-                               + der_value(0x04, malformed_basic))
-        malformed = der_value(0x30, der_value(0x0A, b"\x00")
-                              + der_value(0xA0, rebuilt_rb))
-        with self.assertRaisesRegex(ValueError, "nextUpdate"):
-            validate_ocsp_generalized_time_profile(malformed)
+        with self.assertRaisesRegex(ValueError, "unexpected fields"):
+            validate_ocsp_generalized_time_profile(implicit_next_update)
+
+        extra_inner_value = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            next_update_field=der_value(
+                0xA0, der_value(0x18, valid_time) + der_value(0x05, b"")
+            ),
+        )
+        with self.assertRaisesRegex(ValueError, "not one complete DER value"):
+            validate_ocsp_generalized_time_profile(extra_inner_value)
+
+        extension = (
+            der_value(0x06, bytes.fromhex("2b0601050507300102"))
+            + der_value(0x01, b"\xff")
+            + der_value(0x04, b"opaque extension value")
+        )
+        valid_extensions = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            response_extensions=der_value(0xA1, der_value(0x30, der_value(0x30, extension))),
+            extension=extension,
+        )
+        validate_ocsp_generalized_time_profile(valid_extensions)
 
     def test_ocsp_generalized_time_profile_accepts_whole_second_utc_values(self):
         response = synthetic_ocsp_response(
