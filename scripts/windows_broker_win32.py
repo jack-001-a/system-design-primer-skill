@@ -530,7 +530,7 @@ class OverlappedOperation:
             return OverlappedResult(
                 succeeded=bool(result_ok),
                 bytes_transferred=int(transferred),
-                error_code=int(result_error),
+                error_code=0 if result_ok else int(result_error),
                 cancel_error=None if cancel_ok else int(cancel_error),
             )
 

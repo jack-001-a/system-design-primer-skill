@@ -1102,9 +1102,9 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
             calls.append(("cancel", handle, overlapped))
             return False, win32.ERROR_NOT_FOUND
         def drain(handle, overlapped, timeout_ms):
-            calls.append(("drain", handle, overlapped, wait))
+            calls.append(("drain", handle, overlapped, timeout_ms))
             self.assertIsNotNone(operation.buffer)
-            return True, 7, 0
+            return True, 7, None
         result = operation.cancel_and_drain(
             cancel_io_ex=cancel, get_overlapped_result_ex=drain
         )
