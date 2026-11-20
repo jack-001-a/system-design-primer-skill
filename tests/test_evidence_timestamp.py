@@ -68,8 +68,8 @@ class EvidenceTimestampTests(unittest.TestCase):
         digest = hashlib.sha256(b"s" * 64).hexdigest()
         with patch("scripts.evidence_timestamp.inspect_tsa_signer_certificate", return_value={"tsa_signer_certificate_sha256": "a" * 64, "tsa_signer_serial_number": "01", "tsa_signer_valid_at_gen_time": True, "tsa_signer_eku": "critical:id-kp-timeStamping", "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer"}), patch("scripts.evidence_timestamp.run_openssl") as run:
             run.side_effect = [
-                "Hash Algorithm: sha256\\nMessage data: 0x" + digest + "\\n",
-                "Time stamp: Nov 19 12:00:00.000001 2026 GMT\\nPolicy OID: 1.2.3\\nSerial number: 01\\nHash Algorithm: sha256\\nMessage data: 0x" + digest + "\\nAccuracy: 1 seconds, 2 millis, 3 micros\\nOrdering: no\\nNonce: 0x1234\\n",
+                "Hash Algorithm: sha256\nMessage data: 0x" + digest + "\n",
+                "Time stamp: Nov 19 12:00:00.000001 2026 GMT\nPolicy OID: 1.2.3\nSerial number: 01\nHash Algorithm: sha256\nMessage data: 0x" + digest + "\nAccuracy: 1 seconds, 2 millis, 3 micros\nOrdering: no\nNonce: 0x1234\n",
                 "",
             ]
             import hashlib as h
@@ -142,7 +142,7 @@ class EvidenceTimestampTests(unittest.TestCase):
 
     def test_parse_accuracy_accepts_optional_rfc3161_components_and_boundaries(self):
         from scripts.evidence_timestamp import parse_accuracy
-        self.assertIsNone(parse_accuracy("Policy OID: 1.2.3\\n"))
+        self.assertIsNone(parse_accuracy("Policy OID: 1.2.3\n"))
         self.assertEqual(parse_accuracy("Accuracy: 0 seconds"), {"seconds": 0})
         self.assertEqual(parse_accuracy("Accuracy: 999999 seconds, 1 millis, 999 micros"),
                          {"seconds": 999999, "millis": 1, "micros": 999})
@@ -164,7 +164,7 @@ class EvidenceTimestampTests(unittest.TestCase):
     def test_parse_accuracy_rejects_duplicate_accuracy_lines(self):
         from scripts.evidence_timestamp import parse_accuracy
         with self.assertRaisesRegex(ValueError, "malformed"):
-            parse_accuracy("Accuracy: 1 seconds\\nAccuracy: 2 millis")
+            parse_accuracy("Accuracy: 1 seconds\nAccuracy: 2 millis")
 
     def test_inspector_uses_cms_signerinfo_certificate_not_embedded_certificate_guess(self):
         from datetime import datetime, timedelta, timezone
