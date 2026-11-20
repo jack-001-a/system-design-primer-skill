@@ -68,9 +68,9 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertTrue(verification_time_within_validity(
             end.replace(microsecond=0) - timedelta(microseconds=1), start, end))
         self.assertFalse(verification_time_within_validity(
-            start - __import__("datetime").timedelta(microseconds=1), start, end))
+            start - timedelta(microseconds=1), start, end))
         self.assertFalse(verification_time_within_validity(
-            end + __import__("datetime").timedelta(microseconds=1), start, end))
+            end + timedelta(microseconds=1), start, end))
         self.assertTrue(verification_time_within_validity(start, start, end))
         self.assertTrue(verification_time_within_validity(end, start, end))
 
