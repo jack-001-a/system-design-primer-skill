@@ -86,6 +86,16 @@ class TsaValidationReportTests(unittest.TestCase):
             build_report(self.gen_time, self.crl, self.crl_file_hash,
                          timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
 
+    def test_fractional_gen_time_requires_ceiling_evaluation_bound(self):
+        gen_time = "2026-11-19T12:00:00.000001Z"
+        crl = dict(self.crl, at_time=gen_time, effective_at_time="2026-11-19T12:00:01Z")
+        report = self.build_report_with_timestamp(gen_time, crl, self.crl_file_hash)
+        self.assertEqual(report["historical_revocation_assessment"]["evaluation_time_upper_bound"],
+                         "2026-11-19T12:00:01Z")
+        bad = dict(crl, effective_at_time="2026-11-19T12:00:00Z")
+        with self.assertRaisesRegex(ValueError, "conservatively ceil"):
+            self.build_report_with_timestamp(gen_time, bad, self.crl_file_hash)
+
     def test_crl_alone_produces_historical_assessment(self):
         report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
         self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")

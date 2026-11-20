@@ -82,6 +82,14 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("historical CRL assessment must explicitly report verified non-revocation")
     if historical.get("validation_time") != report["gen_time"]:
         raise ValueError("historical CRL validation_time must exactly match report gen_time")
+    gen_dt = parse_utc(report["gen_time"], "gen_time")
+    effective_second = gen_dt.replace(microsecond=0)
+    if gen_dt.microsecond:
+        from datetime import timedelta
+        effective_second += timedelta(seconds=1)
+    expected_effective_at_time = effective_second.isoformat(timespec="seconds").replace("+00:00", "Z")
+    if historical.get("evaluation_time_upper_bound") != expected_effective_at_time:
+        raise ValueError("historical CRL evaluation_time_upper_bound does not conservatively ceil gen_time")
     for field in ("crl_sha256", "issuer_roots_sha256", "crl_issuer_certificate_sha256", "result_file_sha256"):
         require_sha256(historical.get(field), "historical_revocation_assessment." + field)
     if not isinstance(historical.get("crl_signature_algorithm_oid"), str) or not historical["crl_signature_algorithm_oid"].strip():
