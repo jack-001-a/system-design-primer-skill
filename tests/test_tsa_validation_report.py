@@ -222,6 +222,15 @@ class TsaValidationReportTests(unittest.TestCase):
                                     historical, self.ocsp_file_hash)
 
 
+    def test_accepts_preproduced_historical_ocsp_response(self):
+        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
+                          historical_at_time=self.gen_time, validation_time=self.gen_time,
+                          produced_at="2026-11-19T11:57:00Z",
+                          this_update="2026-11-19T11:58:00Z")
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+            historical, self.ocsp_file_hash)
+        self.assertTrue(report["current_ocsp_assessment"]["historical_status_claim"])
+
     def test_rejects_historical_ocsp_produced_after_gen_time(self):
         historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
                           historical_at_time=self.gen_time, validation_time=self.gen_time,
