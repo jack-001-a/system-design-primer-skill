@@ -34,6 +34,9 @@ class TsaOcspTests(unittest.TestCase):
             .serial_number(100).not_valid_before(self.now - timedelta(days=30))
             .not_valid_after(self.now + timedelta(days=365))
             .add_extension(x509.BasicConstraints(ca=True, path_length=2), critical=True)
+            .add_extension(x509.KeyUsage(digital_signature=False, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=True, crl_sign=True, encipher_only=False, decipher_only=False), critical=True)
             .sign(self.root_key, hashes.SHA256()))
         self.roots.write_bytes(self.root_certificate.public_bytes(Encoding.PEM))
         self.output = """Response verify OK
@@ -100,6 +103,48 @@ Next Update: Nov 19 12:05:00 2026 GMT
         self.roots.write_bytes(self.root_certificate.public_bytes(Encoding.PEM)
                                + intermediate.public_bytes(Encoding.PEM))
         with self.assertRaisesRegex(ValueError, "only self-issued trust anchors"):
+            verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
+                                 self.pin(), now=self.now)
+
+    def test_rejects_non_ca_certificate_in_root_bundle(self):
+        certificate = (x509.CertificateBuilder().subject_name(self.root_name)
+            .issuer_name(self.root_name).public_key(self.root_key.public_key())
+            .serial_number(102).not_valid_before(self.now - timedelta(days=30))
+            .not_valid_after(self.now + timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=False, crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
+            .sign(self.root_key, hashes.SHA256()))
+        self.roots.write_bytes(certificate.public_bytes(Encoding.PEM))
+        with self.assertRaisesRegex(ValueError, "BasicConstraints with CA:TRUE"):
+            verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
+                                 self.pin(), now=self.now)
+
+    def test_rejects_root_without_key_cert_sign(self):
+        certificate = (x509.CertificateBuilder().subject_name(self.root_name)
+            .issuer_name(self.root_name).public_key(self.root_key.public_key())
+            .serial_number(103).not_valid_before(self.now - timedelta(days=30))
+            .not_valid_after(self.now + timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=False, crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
+            .sign(self.root_key, hashes.SHA256()))
+        self.roots.write_bytes(certificate.public_bytes(Encoding.PEM))
+        with self.assertRaisesRegex(ValueError, "KeyUsage with keyCertSign"):
+            verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
+                                 self.pin(), now=self.now)
+
+    def test_rejects_root_missing_key_usage(self):
+        certificate = (x509.CertificateBuilder().subject_name(self.root_name)
+            .issuer_name(self.root_name).public_key(self.root_key.public_key())
+            .serial_number(104).not_valid_before(self.now - timedelta(days=30))
+            .not_valid_after(self.now + timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .sign(self.root_key, hashes.SHA256()))
+        self.roots.write_bytes(certificate.public_bytes(Encoding.PEM))
+        with self.assertRaisesRegex(ValueError, "must contain critical KeyUsage"):
             verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
                                  self.pin(), now=self.now)
 
