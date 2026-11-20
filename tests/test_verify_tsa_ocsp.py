@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509.oid import NameOID
 from cryptography.x509 import ocsp
 from scripts.verify_tsa_ocsp import bind_responder_certificate
-from scripts.verify_tsa_ocsp import verify_ocsp_response
+from scripts.verify_tsa_ocsp import verify_ocsp_response, validate_trust_anchor_bundle
 
 class TsaOcspTests(unittest.TestCase):
     def setUp(self):
@@ -144,9 +144,22 @@ Next Update: Nov 19 12:05:00 2026 GMT
             .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
             .sign(self.root_key, hashes.SHA256()))
         self.roots.write_bytes(certificate.public_bytes(Encoding.PEM))
-        with self.assertRaisesRegex(ValueError, "must contain critical KeyUsage"):
+        with self.assertRaisesRegex(ValueError, "must contain KeyUsage"):
             verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
                                  self.pin(), now=self.now)
+
+    def test_accepts_noncritical_key_usage_when_key_cert_sign_is_allowed(self):
+        certificate = (x509.CertificateBuilder().subject_name(self.root_name)
+            .issuer_name(self.root_name).public_key(self.root_key.public_key())
+            .serial_number(105).not_valid_before(self.now - timedelta(days=30))
+            .not_valid_after(self.now + timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), critical=True)
+            .add_extension(x509.KeyUsage(digital_signature=False, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=True, crl_sign=True, encipher_only=False, decipher_only=False), critical=False)
+            .sign(self.root_key, hashes.SHA256()))
+        self.roots.write_bytes(certificate.public_bytes(Encoding.PEM))
+        validate_trust_anchor_bundle(self.roots)
 
     def test_rejects_duplicate_certificate_in_root_bundle(self):
         pem = self.root_certificate.public_bytes(Encoding.PEM)
