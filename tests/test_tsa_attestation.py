@@ -256,7 +256,7 @@ class TsaAttestationTests(unittest.TestCase):
         }
         report["limitations"] = _build_limitations(
             report["current_ocsp_assessment"],
-            report["historical_ocsp_responder_revocation_assessment"])
+            report["historical_ocsp_responder_revocation_assessment"]) + report["timestamp_not_established"]
         self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
         self.assertTrue(create_attestation(self.report, self.private, "tsa-attester",
             hashlib.sha256(b"verifier package").hexdigest(), "system-design-primer TSA verifier release"))
