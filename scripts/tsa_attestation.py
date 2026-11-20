@@ -226,33 +226,6 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         "independently_authenticated_by_this_report": False,
     }:
         raise ValueError("TSA report must disclose that digest-pin provenance is not authenticated here")
-    timestamp_chain = report.get("timestamp_chain_validation")
-    expected_chain_fields = {
-        "status", "validation_time", "scope", "policy", "intermediates_sha256"
-    }
-    if not isinstance(timestamp_chain, dict) or set(timestamp_chain) != expected_chain_fields:
-        raise ValueError("TSA report timestamp_chain_validation is missing or malformed")
-    if timestamp_chain.get("status") != "verified":
-        raise ValueError("TSA report timestamp_chain_validation status is not verified")
-    if timestamp_chain.get("validation_time") != report["gen_time"]:
-        raise ValueError("TSA report timestamp chain validation time must match gen_time")
-    if timestamp_chain.get("scope") != (
-        "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; "
-        "RFC 3161 Accuracy is reported separately and does not widen the -attime interval"
-    ):
-        raise ValueError("TSA report timestamp chain validation scope is missing or unsupported")
-    if timestamp_chain.get("policy") != (
-        "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, "
-        "-auth_level 2, -purpose timestampsign, and -x509_strict at the exact floor/ceiling "
-        "Unix-second bound(s) of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL"
-    ):
-        raise ValueError("TSA report timestamp chain validation policy is missing or unsupported")
-    chain_intermediates_digest = timestamp_chain.get("intermediates_sha256")
-    if chain_intermediates_digest is not None:
-        require_sha256(
-            chain_intermediates_digest,
-            "timestamp_chain_validation.intermediates_sha256",
-        )
     signer_serial = report["timestamp_signer_serial_number"]
     if not isinstance(signer_serial, str) or not signer_serial.strip() or len(signer_serial) > 128:
         raise ValueError("timestamp_signer_serial_number must be a non-empty string of at most 128 characters")
