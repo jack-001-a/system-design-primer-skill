@@ -42,12 +42,12 @@ class BuildProvenanceTests(unittest.TestCase):
 
     def test_cli_version_parser_accepts_only_supported_release_lines(self):
         self.assertEqual(_version_tuple("gh version 2.102.0"), (2, 102, 0))
+        self.assertEqual(_version_tuple("gh version 2.101.99"), (2, 101, 99))
         self.assertEqual(
             _version_tuple("gh version 2.103.1 (2026-11-20)"),
             (2, 103, 1),
         )
         for output in (
-            "gh version 2.101.99",
             "gh version 2.102.0-rc.1",
             "gh version 2.102.0 unexpected",
             "prefix gh version 2.102.0",
