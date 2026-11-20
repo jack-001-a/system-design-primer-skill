@@ -72,6 +72,13 @@ class EvidenceTimestampTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaisesRegex(ValueError, "omit trailing zeros"):
                 parse_openssl_gen_time(value)
 
+        for value in (
+            "2026-11-19T12:00:00.0Z",
+            "2026-11-19T12:00:00.1200Z",
+        ):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "omit trailing zeros"):
+                verification_time_bounds_for_gen_time(value)
+
     def test_parse_openssl_gen_time_rejects_unsupported_precision_and_timezone(self):
         invalid = (
             "Nov 19 12:00:00. 2026 GMT",
