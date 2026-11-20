@@ -267,7 +267,7 @@ class NamedPipeConnection:
         The connection lock remains held through the native ReadFile/WriteFile
         submission. This makes registration, submission, and disconnect one
         serialized lifecycle; callers must not submit registered operations
-        through the low-level start_overlapped_io helper directly.
+        through the low-level _start_overlapped_io helper directly.
         """
         with self._lock:
             if self._state != self.CONNECTED:
@@ -290,7 +290,7 @@ class NamedPipeConnection:
                 raise OverlappedLifecycleError(
                     f"cannot submit operation in state {operation.state}"
                 )
-            return start_overlapped_io(
+            return _start_overlapped_io(
                 bindings,
                 operation,
                 buffer=buffer,
@@ -347,7 +347,7 @@ class NamedPipeConnection:
             self._connect_operation = operation
             self._state = self.CONNECTING
             try:
-                result, error = start_overlapped_connect(
+                result, error = _start_overlapped_connect(
                     bindings, operation, get_last_error=get_last_error
                 )
             except BaseException:
@@ -476,7 +476,7 @@ def close_named_pipe(
         return True, None
 
 
-def start_overlapped_connect(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, get_last_error: Callable[[], int] = last_error) -> tuple[str, int | None]:
+def _start_overlapped_connect(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, get_last_error: Callable[[], int] = last_error) -> tuple[str, int | None]:
     """Low-level ConnectNamedPipe primitive; prefer NamedPipeConnection.start_connect.
 
     This helper owns only the operation state transition. It cannot serialize
@@ -512,7 +512,7 @@ def start_overlapped_connect(bindings: Kernel32Bindings, operation: "OverlappedO
         raise
 
 
-def start_overlapped_io(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, buffer: Any, length: int, write: bool = False, get_last_error: Callable[[], int] = last_error) -> tuple[str, int, int | None]:
+def _start_overlapped_io(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, buffer: Any, length: int, write: bool = False, get_last_error: Callable[[], int] = last_error) -> tuple[str, int, int | None]:
     """Start one overlapped ReadFile/WriteFile using operation-owned memory."""
     if operation.state != operation.CREATED:
         raise OverlappedLifecycleError(f"cannot start operation in state {operation.state}")
