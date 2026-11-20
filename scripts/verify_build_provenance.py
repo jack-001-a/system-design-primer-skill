@@ -202,8 +202,19 @@ def _close_windows_job(job) -> None:
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     kernel32.CloseHandle.restype = wintypes.BOOL
+    kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel32.TerminateJobObject.restype = wintypes.BOOL
     if not kernel32.CloseHandle(job):
-        raise ctypes.WinError(ctypes.get_last_error())
+        close_error = ctypes.WinError(ctypes.get_last_error())
+        # A failed close must not degrade to killing only the CLI leader: the
+        # Job may still own descendants that inherited the output handles.
+        if not kernel32.TerminateJobObject(job, 1):
+            terminate_error = ctypes.WinError(ctypes.get_last_error())
+            raise RuntimeError(
+                "could not close or terminate the GitHub CLI Job Object"
+            ) from terminate_error
+        if not kernel32.CloseHandle(job):
+            raise ctypes.WinError(ctypes.get_last_error()) from close_error
 
 
 def _kill_and_reap_cli(
