@@ -118,6 +118,35 @@ class BuildProvenanceTests(unittest.TestCase):
 
     @patch("scripts.verify_build_provenance.subprocess.run")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_every_verified_attestation_must_match_artifact_and_repository(self, which, run):
+        import copy
+
+        matching = [copy.deepcopy(self.good_result[0]), copy.deepcopy(self.good_result[0])]
+        self._mock_cli(run, output=matching)
+        result = verify_build_provenance(self.artifact, **self.policy)
+        self.assertEqual(result["verified_attestation_count"], 2)
+
+        mismatched_digest = copy.deepcopy(matching)
+        mismatched_digest[1]["verificationResult"]["statement"]["subject"][0]["digest"]["sha256"] = "0" * 64
+        self._mock_cli(run, output=mismatched_digest)
+        with self.assertRaisesRegex(RuntimeError, "exact artifact SHA-256"):
+            verify_build_provenance(self.artifact, **self.policy)
+
+        bundle = Path(self.temp.name) / "multiple-attestations.jsonl"
+        root = Path(self.temp.name) / "trusted-root.jsonl"
+        bundle.write_text("{}\\n", encoding="utf-8")
+        root.write_text("{}\\n", encoding="utf-8")
+        mismatched_repository = copy.deepcopy(matching)
+        mismatched_repository[1]["verificationResult"]["signature"]["certificate"]["sourceRepositoryIdentifier"] = 999
+        self._mock_cli(run, output=mismatched_repository)
+        with self.assertRaisesRegex(RuntimeError, "repository ID"):
+            verify_build_provenance(
+                self.artifact, **self.policy, bundle=bundle,
+                trusted_root=root, repository_id=1462786926,
+            )
+
+    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_empty_or_malformed_cli_result_fails_closed(self, which, run):
         for stdout in ("[]", "not-json", '[{"unexpected": true}]'):
             with self.subTest(stdout=stdout):
