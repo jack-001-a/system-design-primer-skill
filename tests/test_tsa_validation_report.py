@@ -359,7 +359,12 @@ class TsaValidationReportTests(unittest.TestCase):
             "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
             "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
             "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
-            "verification": "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "verification": (
+                "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, "
+                "CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, target certificate "
+                "PKIX path validation at exact floor/ceiling Unix-second bound(s), AKI, scope, "
+                "freshness, signature-policy and entry-semantic preflight"
+            ),
             "revocation_entry": {"present": False, "status_at_time": "not_listed"},
         }
         value.update(overrides)
@@ -387,7 +392,8 @@ class TsaValidationReportTests(unittest.TestCase):
             path_validation_times=[1795089600, 1795089601],
         )
         timestamp = dict(self.timestamp, gen_time=gen_time, tsa_chain_validation_time=gen_time)
-        historical_ocsp = self.historical_ocsp_result(
+        historical_ocsp = dict(
+            self.historical_ocsp_with_signer(),
             historical_at_time=gen_time,
             validation_time=gen_time,
             responder_chain_validation_times=[1795089600, 1795089601],
@@ -488,6 +494,7 @@ class TsaValidationReportTests(unittest.TestCase):
             self.crl,
             at_time=gen_time,
             effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600, 1795089601],
         )
         timestamp = dict(
             self.timestamp,
@@ -526,6 +533,7 @@ class TsaValidationReportTests(unittest.TestCase):
             self.crl,
             at_time=gen_time,
             effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600, 1795089601],
         )
         timestamp = dict(
             self.timestamp,
