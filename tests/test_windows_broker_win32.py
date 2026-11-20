@@ -110,6 +110,37 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertFalse(ok)
         self.assertEqual((count, error), (9, 996))
 
+    def test_loader_binds_read_write_overlapped_signatures(self):
+        fake = FakeKernel32()
+        with patch.object(win32.os, "name", "nt"):
+            bindings = win32.load_kernel32(loader=lambda *args, **kwargs: fake)
+        self.assertIs(bindings.ReadFile, fake.ReadFile)
+        self.assertEqual(fake.ReadFile.argtypes[-1], ctypes.POINTER(win32.OVERLAPPED))
+
+    def test_start_overlapped_read_pending(self):
+        fake = FakeKernel32()
+        seen = []
+        fake.ReadFile = lambda *args: seen.append(args) or 0
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile)
+        buffer = (ctypes.c_ubyte * 4)()
+        operation = win32.OverlappedOperation(file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=20, buffer=buffer, close_handle=lambda _: True)
+        result = win32.start_overlapped_io(bindings, operation, buffer=buffer, length=4, get_last_error=lambda: win32.ERROR_IO_PENDING)
+        self.assertEqual(result, ("pending", 0, win32.ERROR_IO_PENDING))
+        self.assertEqual(operation.state, operation.PENDING)
+        self.assertIs(seen[0][-1]._obj, operation.overlapped)
+
+    def test_start_overlapped_write_immediate_completion(self):
+        fake = FakeKernel32()
+        def completed(handle, pointer, length, transferred, overlapped):
+            transferred._obj.value = 3
+            return 1
+        fake.WriteFile = completed
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile)
+        buffer = (ctypes.c_ubyte * 4)()
+        operation = win32.OverlappedOperation(file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=20, buffer=buffer, close_handle=lambda _: True)
+        self.assertEqual(win32.start_overlapped_io(bindings, operation, buffer=buffer, length=4, write=True), ("completed", 3, None))
+        self.assertEqual(operation.state, operation.COMPLETED)
+
     def test_close_is_forbidden_while_pending_then_idempotent(self):
         operation, closed = self.make_operation()
         operation.mark_pending()

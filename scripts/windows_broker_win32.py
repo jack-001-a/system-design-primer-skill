@@ -25,6 +25,7 @@ ERROR_IO_PENDING = 997
 ERROR_IO_INCOMPLETE = 996
 ERROR_NOT_FOUND = 1168
 ERROR_OPERATION_ABORTED = 995
+MAX_DWORD = 0xFFFFFFFF
 WAIT_OBJECT_0 = 0
 WAIT_TIMEOUT = 258
 INFINITE = 0xFFFFFFFF
@@ -77,6 +78,8 @@ class Kernel32Bindings:
     CancelIoEx: Any
     GetOverlappedResult: Any
     GetOverlappedResultEx: Any
+    ReadFile: Any
+    WriteFile: Any
 
 
 def _set_signature(function: Any, argtypes: list[Any], restype: Any) -> Any:
@@ -105,6 +108,8 @@ def load_kernel32(*, loader: Any = None) -> Kernel32Bindings:
             [HANDLE, ctypes.POINTER(OVERLAPPED), ctypes.POINTER(DWORD), BOOL],
             BOOL,
         )
+        read_file = _set_signature(library.ReadFile, [HANDLE, LPVOID, DWORD, ctypes.POINTER(DWORD), ctypes.POINTER(OVERLAPPED)], BOOL)
+        write_file = _set_signature(library.WriteFile, [HANDLE, LPVOID, DWORD, ctypes.POINTER(DWORD), ctypes.POINTER(OVERLAPPED)], BOOL)
         get_result_ex = _set_signature(
             library.GetOverlappedResultEx,
             [
@@ -121,7 +126,7 @@ def load_kernel32(*, loader: Any = None) -> Kernel32Bindings:
             "kernel32 is missing a required overlapped-I/O API"
         ) from exc
     return Kernel32Bindings(
-        library, create_event, close_handle, wait, cancel, get_result, get_result_ex
+        library, create_event, close_handle, wait, cancel, get_result, get_result_ex, read_file, write_file
     )
 
 
@@ -173,6 +178,34 @@ def get_overlapped_result_wait(
     ))
     error = None if succeeded else int(get_last_error())
     return succeeded, int(transferred.value), error
+
+
+def start_overlapped_io(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, buffer: Any, length: int, write: bool = False, get_last_error: Callable[[], int] = last_error) -> tuple[str, int, int | None]:
+    """Start one overlapped ReadFile/WriteFile using operation-owned memory."""
+    if operation.state != operation.CREATED:
+        raise OverlappedLifecycleError(f"cannot start operation in state {operation.state}")
+    if length < 0 or length > MAX_DWORD:
+        raise ValueError("I/O length must fit an unsigned Win32 DWORD")
+    if buffer is not operation.buffer:
+        raise ValueError("I/O buffer must be owned by the operation")
+    if length and buffer is None:
+        raise ValueError("non-empty I/O requires a live buffer")
+    try:
+        pointer = ctypes.cast(buffer, LPVOID) if buffer is not None else None
+    except (TypeError, ctypes.ArgumentError) as exc:
+        raise TypeError("buffer must expose a ctypes-compatible address") from exc
+    transferred = DWORD(0)
+    function = bindings.WriteFile if write else bindings.ReadFile
+    succeeded = bool(function(operation.file_handle, pointer, DWORD(length), ctypes.byref(transferred), ctypes.byref(operation.overlapped)))
+    if succeeded:
+        operation.mark_completed()
+        return "completed", int(transferred.value), None
+    error = int(get_last_error())
+    if error == ERROR_IO_PENDING:
+        operation.mark_pending()
+        return "pending", int(transferred.value), error
+    operation.mark_completed()
+    return "failed", int(transferred.value), error
 
 
 class OverlappedOperation:
