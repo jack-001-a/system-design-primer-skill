@@ -36,7 +36,7 @@ def _is_valid_git_ref(ref: str) -> bool:
     if ref.endswith(("/", ".")) or "//" in ref or ".." in ref or "@{" in ref:
         return False
     components = ref.split("/")
-    return all(component and not component.startswith(".") and not component.endswith(".lock") for component in components)
+    return all(component and component != "@" and not component.startswith(".") and not component.endswith((".", ".lock")) for component in components)
 
 
 def _version_tuple(output: str) -> tuple[int, int, int]:
