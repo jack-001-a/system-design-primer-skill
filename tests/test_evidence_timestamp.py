@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
-from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verification_time_bounds, verify_timestamp
+from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verification_time_bounds, parse_openssl_gen_time, verify_timestamp
 
 class EvidenceTimestampTests(unittest.TestCase):
     def setUp(self):
@@ -40,6 +40,25 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(verification_time_bounds(
             datetime(1969, 12, 31, 23, 59, 59, 999999, tzinfo=timezone.utc)),
             (-1, 0))
+
+    def test_parse_openssl_gen_time_canonicalizes_fractional_precision(self):
+        self.assertEqual(parse_openssl_gen_time("Nov 19 12:00:00 2026 GMT"),
+                         "2026-11-19T12:00:00Z")
+        self.assertEqual(parse_openssl_gen_time("Nov 19 12:00:00.1 2026 GMT"),
+                         "2026-11-19T12:00:00.100000Z")
+        self.assertEqual(parse_openssl_gen_time("Nov 19 12:00:00.123456 2026 GMT"),
+                         "2026-11-19T12:00:00.123456Z")
+
+    def test_parse_openssl_gen_time_rejects_unsupported_precision_and_timezone(self):
+        invalid = (
+            "Nov 19 12:00:00.1234567 2026 GMT",
+            "Nov 19 12:00:00.123456 UTC",
+            "Nov 19 12:00:00.123456 2026 +0000",
+            "Nov 19 12:00:00 2026",
+        )
+        for value in invalid:
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "GeneralizedTime"):
+                parse_openssl_gen_time(value)
 
     def test_verification_time_bounds_reject_naive_datetime(self):
         with self.assertRaisesRegex(ValueError, "timezone-aware"):
