@@ -43,7 +43,11 @@ def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_befo
         x509.CertificateRevocationListBuilder().issuer_name(name)
         .last_update(last_update or (NOW+timedelta(days=1) if future else NOW-timedelta(days=1)))
         .next_update(NOW+timedelta(days=30))
-        .add_extension(x509.AuthorityKeyIdentifier.from_issuer_public_key(aki_key.public_key()), False)
+        .add_extension(x509.AuthorityKeyIdentifier(
+            key_identifier=x509.SubjectKeyIdentifier.from_public_key(aki_key.public_key()).digest,
+            authority_cert_issuer=[x509.DirectoryName(name)],
+            authority_cert_serial_number=1,
+        ), False)
     )
     if delta:
         builder = builder.add_extension(x509.DeltaCRLIndicator(1), True)
@@ -151,6 +155,59 @@ class TsaRevocationTests(unittest.TestCase):
         self.write_material()
         with self.assertRaisesRegex(ValueError, "CA=true"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+    def test_aki_authority_issuer_and_serial_disambiguate_cross_signed_same_subject_ski(self):
+        self.issuer, self.leaf, self.listing = make_material()
+        cross_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        cross_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Cross signer")])
+        cross_signed = (
+            x509.CertificateBuilder().subject_name(self.issuer.subject).issuer_name(cross_name)
+            .public_key(self.issuer.public_key()).serial_number(99)
+            .not_valid_before(NOW-timedelta(days=30)).not_valid_after(NOW+timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=True, crl_sign=True, encipher_only=None, decipher_only=None), True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()), False)
+            .sign(cross_key, hashes.SHA256())
+        )
+        self.write_material()
+        self.roots.write_bytes(self.issuer.public_bytes(serialization.Encoding.PEM)
+                               + cross_signed.public_bytes(serialization.Encoding.PEM))
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
+            result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+        self.assertEqual(result["crl_issuer_certificate_sha256"],
+                         hashlib.sha256(self.issuer.public_bytes(serialization.Encoding.DER)).hexdigest())
+
+    def test_aki_key_identifier_alone_rejects_cross_signed_ambiguity(self):
+        self.issuer, self.leaf, self.listing = make_material()
+        cross_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        cross_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Cross signer")])
+        cross_signed = (
+            x509.CertificateBuilder().subject_name(self.issuer.subject).issuer_name(cross_name)
+            .public_key(self.issuer.public_key()).serial_number(99)
+            .not_valid_before(NOW-timedelta(days=30)).not_valid_after(NOW+timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=True, crl_sign=True, encipher_only=None, decipher_only=None), True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()), False)
+            .sign(cross_key, hashes.SHA256())
+        )
+        self.write_material()
+        self.roots.write_bytes(self.issuer.public_bytes(serialization.Encoding.PEM)
+                               + cross_signed.public_bytes(serialization.Encoding.PEM))
+        aki_only = x509.AuthorityKeyIdentifier(
+            key_identifier=x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()).digest,
+            authority_cert_issuer=None, authority_cert_serial_number=None)
+        self.listing = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
+            .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
+            .add_extension(aki_only, False).sign(
+                rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256()))
+        self.crl.write_bytes(self.listing.public_bytes(serialization.Encoding.PEM))
+        with self.assertRaisesRegex(ValueError, "exactly one supplied certificate after AKI matching"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
     def test_rejects_mismatched_crl_issuer(self):
         other = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "other issuer")])
         other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
