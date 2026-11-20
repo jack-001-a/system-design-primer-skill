@@ -190,6 +190,8 @@ def validate_direct_crl_scope(
             is_ca = False
         if idp.only_contains_attribute_certs:
             raise ValueError("attribute-certificate CRLs cannot cover an X.509 public-key certificate")
+        if (idp.only_contains_user_certs or idp.only_contains_ca_certs) and certificate.version != x509.Version.v3:
+            raise ValueError("user-only or CA-only CRL scopes cannot cover X.509 v1/v2 certificates")
         if idp.only_contains_ca_certs and not is_ca:
             raise ValueError("CRL scope excludes end-entity certificates")
         if idp.only_contains_user_certs and is_ca:
