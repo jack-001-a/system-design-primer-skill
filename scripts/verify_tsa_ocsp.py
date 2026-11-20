@@ -141,7 +141,9 @@ def _validate_generalized_time_tree(data: bytes) -> None:
                         )
                         _validate_generalized_time_tree(crl_id)
             for child_tag, child_value in children:
-                if child_tag & 0x20:
+                if child_tag == 0x18:
+                    _validate_generalized_time_value(child_value)
+                elif child_tag & 0x20:
                     _validate_generalized_time_tree(child_value)
 
 
