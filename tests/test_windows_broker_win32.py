@@ -131,6 +131,56 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         with self.assertRaises(win32.OverlappedLifecycleError):
             win32.disconnect_named_pipe(bindings, connection, operation)
 
+    def test_concurrent_disconnect_invokes_win32_once(self):
+        entered = threading.Event()
+        release = threading.Event()
+        calls = []
+        fake = FakeKernel32()
+
+        def blocking_disconnect(handle):
+            calls.append(handle)
+            entered.set()
+            if not release.wait(2):
+                raise AssertionError("disconnect was not released")
+            return 1
+
+        fake.DisconnectNamedPipe = blocking_disconnect
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        operation, _ = self.make_operation()
+        operation.mark_completed()
+        connection = win32.NamedPipeConnection(10)
+        connection.register_operation(operation)
+
+        results = []
+        errors = []
+        def disconnect():
+            try:
+                results.append(win32.disconnect_named_pipe(bindings, connection, operation))
+            except win32.OverlappedLifecycleError as exc:
+                errors.append(str(exc))
+
+        first = threading.Thread(target=disconnect)
+        second = threading.Thread(target=disconnect)
+        first.start()
+        self.assertTrue(entered.wait(2))
+        second.start()
+        release.set()
+        first.join(2)
+        second.join(2)
+
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(calls, [10])
+        self.assertEqual(results, [(True, None)])
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertIn(operation, connection._operations)
+
     def test_disconnect_error_lookup_exception_preserves_connected_state(self):
         fake = FakeKernel32()
         calls = []
