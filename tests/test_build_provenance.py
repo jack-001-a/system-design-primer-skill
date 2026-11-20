@@ -180,6 +180,39 @@ class BuildProvenanceTests(unittest.TestCase):
     def test_uses_explicit_bundle_and_trusted_root(self, which, run):
         bundle = Path(self.temp.name) / "attestations.jsonl"
         root = Path(self.temp.name) / "trusted-root.jsonl"
+        bundle.write_text("{}\\n", encoding="utf-8")
+        root.write_text("{}\\n", encoding="utf-8")
+        observed = {}
+
+        def fake_run(command, **kwargs):
+            if command[-1:] == ["version"]:
+                return type("Completed", (), {
+                    "returncode": 0, "stdout": "gh version 2.102.0", "stderr": "",
+                })()
+            bundle_snapshot = Path(command[command.index("--bundle") + 1])
+            root_snapshot = Path(command[command.index("--custom-trusted-root") + 1])
+            observed["bundle_path"] = bundle_snapshot
+            observed["root_path"] = root_snapshot
+            observed["bundle_bytes"] = bundle_snapshot.read_bytes()
+            observed["root_bytes"] = root_snapshot.read_bytes()
+            return type("Completed", (), {
+                "returncode": 0, "stdout": json.dumps(self.good_result), "stderr": "",
+            })()
+
+        run.side_effect = fake_run
+        verify_build_provenance(
+            self.artifact, **self.policy, bundle=bundle,
+            trusted_root=root, repository_id=1462786926,
+        )
+        self.assertNotEqual(observed["bundle_path"], bundle)
+        self.assertNotEqual(observed["root_path"], root)
+        self.assertEqual(observed["bundle_bytes"], bundle.read_bytes())
+        self.assertEqual(observed["root_bytes"], root.read_bytes())
+
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_uses_explicit_bundle_and_trusted_root(self, which, run):
+        bundle = Path(self.temp.name) / "attestations.jsonl"
+        root = Path(self.temp.name) / "trusted-root.jsonl"
         bundle.write_text("{}\n", encoding="utf-8")
         root.write_text("{}\n", encoding="utf-8")
         self._mock_cli(run)
@@ -237,6 +270,29 @@ class BuildProvenanceTests(unittest.TestCase):
         root.write_text("{}\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "only be used with an offline bundle"):
             verify_build_provenance(self.artifact, **self.policy, trusted_root=root)
+
+    def test_rejects_symlink_inputs(self):
+        if not hasattr(Path, "symlink_to"):
+            self.skipTest("symlinks are unavailable")
+        target = Path(self.temp.name) / "target.bin"
+        target.write_bytes(b"target")
+        link = Path(self.temp.name) / "artifact-link.bin"
+        try:
+            link.symlink_to(target)
+        except (OSError, NotImplementedError):
+            self.skipTest("symlink creation is not permitted")
+        with self.assertRaisesRegex(ValueError, "regular file"):
+            verify_build_provenance(link, **self.policy)
+
+        bundle = Path(self.temp.name) / "bundle-link.jsonl"
+        bundle.symlink_to(target)
+        root = Path(self.temp.name) / "trusted-root.jsonl"
+        root.write_text("{}\\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "regular file"):
+            verify_build_provenance(
+                self.artifact, **self.policy, bundle=bundle,
+                trusted_root=root, repository_id=1462786926,
+            )
 
     def test_rejects_unqualified_or_mismatched_identity_inputs(self):
         for overrides in (

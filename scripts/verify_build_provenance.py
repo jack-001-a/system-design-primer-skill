@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import json
 import re
+import stat
 import shutil
 import subprocess
 import sys
@@ -37,6 +38,17 @@ def _is_valid_git_ref(ref: str) -> bool:
         return False
     components = ref.split("/")
     return all(component and component != "@" and not component.startswith(".") and not component.endswith((".", ".lock")) for component in components)
+
+
+
+def _require_regular_file(path: Path, label: str) -> None:
+    """Reject symlinks and non-regular filesystem objects at the input boundary."""
+    try:
+        mode = path.lstat().st_mode
+    except OSError as exc:
+        raise ValueError(f"{label} must identify an existing regular file") from exc
+    if not stat.S_ISREG(mode):
+        raise ValueError(f"{label} must identify an existing regular file, not a symlink or special file")
 
 
 def _version_tuple(output: str) -> tuple[int, int, int]:
@@ -98,8 +110,7 @@ def verify_build_provenance(
     repository_id: int | None = None,
     gh_bin: str = "gh",
 ) -> dict[str, Any]:
-    if not artifact.is_file():
-        raise ValueError("artifact must identify an existing regular file")
+    _require_regular_file(artifact, "artifact")
     if not REPO_RE.fullmatch(repository):
         raise ValueError("repository must use owner/repository syntax")
     workflow_prefix = repository + "/.github/workflows/"
@@ -114,8 +125,8 @@ def verify_build_provenance(
         raise ValueError("source_ref must be a valid fully qualified Git branch or tag ref")
     if not SHA1_RE.fullmatch(source_digest):
         raise ValueError("source_digest must be a full lowercase 40-character Git commit SHA")
-    if bundle is not None and not bundle.is_file():
-        raise ValueError("bundle must identify an existing regular file")
+    if bundle is not None:
+        _require_regular_file(bundle, "bundle")
     if bundle is not None:
         if repository_id is None or repository_id <= 0:
             raise ValueError("offline bundle verification requires a positive --repository-id")
@@ -128,8 +139,7 @@ def verify_build_provenance(
     if trusted_root is not None:
         if bundle is None:
             raise ValueError("trusted_root can only be used with an offline bundle")
-        if not trusted_root.is_file():
-            raise ValueError("trusted_root must identify an existing regular file")
+        _require_regular_file(trusted_root, "trusted_root")
 
     executable = shutil.which(gh_bin)
     if executable is None:
