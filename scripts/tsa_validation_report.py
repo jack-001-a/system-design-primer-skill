@@ -203,7 +203,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
     ):
         raise ValueError("timestamp TSA chain validation scope is missing or unsupported")
     if timestamp_result.get("tsa_chain_validation_policy") != (
-        "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, -auth_level 2, -purpose timestampsign, and -x509_strict at both floor and ceiling seconds of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL"
+        "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, -auth_level 2, -purpose timestampsign, and -x509_strict at the exact floor/ceiling Unix-second bound(s) of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL"
     ):
         raise ValueError("timestamp TSA chain validation policy is missing or unsupported")
     if type(timestamp_result.get("ordering")) is not bool or type(timestamp_result.get("nonce_present")) is not bool:
