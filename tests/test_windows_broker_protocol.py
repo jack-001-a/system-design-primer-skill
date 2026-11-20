@@ -170,7 +170,7 @@ class WindowsBrokerProtocolTests(unittest.TestCase):
         with self.assertRaisesRegex(ProtocolError, "command-line length"):
             validate_message(message(payload))
         payload = self._launch_payload()
-        payload["environment"] = {"A": "x" * 32768}
+        payload["environment"] = {"A": "x" * 32760}
         with self.assertRaisesRegex(ProtocolError, "environment block"):
             validate_message(message(payload))
 
