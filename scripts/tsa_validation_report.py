@@ -316,7 +316,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             if responder_chain_validation_times != expected_chain_times:
                 raise ValueError("historical OCSP responder path must be checked at floor/ceiling Unix-second bounds")
             if ocsp_result.get("responder_chain_validation_scope") != (
-                "OpenSSL responder PKIX path validation at both floor and ceiling Unix-second bounds of historical validation_time"
+                "OpenSSL responder PKIX path validation at the exact floor/ceiling Unix-second bound(s) of historical validation_time"
             ):
                 raise ValueError("historical OCSP responder-chain validation scope is missing or unsupported")
         else:
