@@ -389,9 +389,9 @@ Next Update: Nov 19 12:05:00 2026 GMT
         response_results = [
             Mock(returncode=0, stdout=self.output, stderr="") for _ in bounds
         ]
-        with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), \\
+        with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), \
              patch("scripts.verify_tsa_ocsp.subprocess.run",
-                   side_effect=[Mock(returncode=0, stdout="", stderr=""), *response_results]), \\
+                   side_effect=[Mock(returncode=0, stdout="", stderr=""), *response_results]), \
              patch("scripts.verify_tsa_ocsp.ocsp.load_der_ocsp_response", return_value=parsed):
             return verify_ocsp_response(
                 self.cert, self.issuer, self.roots, self.response, self.pin(),
