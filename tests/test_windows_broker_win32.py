@@ -373,8 +373,13 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
                 bindings, connection,
                 get_last_error=lambda: (_ for _ in ()).throw(RuntimeError("last-error"))
             )
-        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertEqual(connection.state, connection.CLOSING)
         self.assertEqual(connection.file_handle, 10)
+        reconnect_operation, _ = self.make_operation()
+        with self.assertRaisesRegex(
+            win32.OverlappedLifecycleError, "cannot start pipe connect in state closing"
+        ):
+            connection.start_connect(bindings, reconnect_operation)
         fake.CloseHandle = lambda handle: calls.append(handle) or 1
         bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
             fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,

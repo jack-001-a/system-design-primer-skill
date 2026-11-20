@@ -481,7 +481,9 @@ def close_named_pipe(
         connection._state = connection.CLOSING
         succeeded = bool(bindings.CloseHandle(connection.file_handle))
         if not succeeded:
-            connection._state = connection.DISCONNECTED
+            # A failed CloseHandle does not establish that the numeric handle
+            # is still valid. Keep CLOSING so it can only be retried/abandoned,
+            # never reused for a new connection.
             return False, int(get_last_error())
         connection.file_handle = None
         connection._state = connection.CLOSED

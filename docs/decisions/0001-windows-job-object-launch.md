@@ -350,7 +350,7 @@ The per-launch broker prototype uses one dedicated local named-pipe instance for
 
 #### Ownership, cancellation, and cleanup
 
-- The host owns the server pipe handle and closes it on every exit path. The broker owns its client pipe handle. Neither pipe handle is inheritable.
+- The host owns the server pipe handle and closes it on every exit path. The broker owns its client pipe handle. Neither pipe handle is inheritable. If `CloseHandle` raises or returns failure, retain the connection in `CLOSING` and prohibit reconnect; a failed close does not prove the handle value is still valid.
 - The host owns the broker process handle; the broker owns the host synchronization handle. Each process closes only handles in its own handle table.
 - A single request owns one pipe instance. No shared multi-request multiplexing is introduced in this prototype.
 - Host cancellation sends the protocol cancel message only while the authenticated connection is usable, then cancels pending I/O, disconnects/closes the pipe, and terminates/reaps the broker if it does not exit within the bounded shutdown interval.
