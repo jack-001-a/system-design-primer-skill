@@ -322,7 +322,7 @@ def verify_crl_status(
         raise ValueError("OpenSSL CLI is required for CRL historical validation")
     command = [
         executable, "verify", "-verbose", "-attime", str(epoch), "-crl_check",
-        "-CRLfile", str(crl), "-CAfile", str(issuer_roots),
+        "-CRLfile", str(crl), "-CAfile", str(issuer_roots), "-no-CApath", "-no-CAstore",
     ]
     if intermediates is not None:
         command.extend(["-untrusted", str(intermediates)])
