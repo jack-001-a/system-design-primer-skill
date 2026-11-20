@@ -289,9 +289,9 @@ class OverlappedOperation:
             self._state = self.PENDING
 
     def mark_completed(self) -> None:
-        """Record completion observed by the normal (non-cancellation) path."""
+        """Record immediate or drained completion of an overlapped operation."""
         with self._lock:
-            if self._state != self.PENDING:
+            if self._state not in (self.CREATED, self.PENDING):
                 raise OverlappedLifecycleError(
                     f"cannot complete operation in state {self._state}"
                 )
