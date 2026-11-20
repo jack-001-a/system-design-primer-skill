@@ -282,6 +282,12 @@ class TsaRevocationTests(unittest.TestCase):
         crl_argument = run.call_args.args[0][run.call_args.args[0].index("-CRLfile") + 1]
         self.assertNotEqual(Path(crl_argument), self.crl)
         self.assertFalse(Path(crl_argument).exists(), "temporary CRL snapshot must be removed after verification")
+        ca_argument = run.call_args.args[0][run.call_args.args[0].index("-CAfile") + 1]
+        certificate_argument = run.call_args.args[0][-1]
+        self.assertNotEqual(Path(ca_argument), self.roots)
+        self.assertNotEqual(Path(certificate_argument), self.cert)
+        self.assertFalse(Path(ca_argument).exists(), "temporary trust-anchor snapshot must be removed")
+        self.assertFalse(Path(certificate_argument).exists(), "temporary target-certificate snapshot must be removed")
         self.assertIn("-no-CApath", run.call_args.args[0])
         self.assertIn("-no-CAstore", run.call_args.args[0])
         self.assertIn("-x509_strict", run.call_args.args[0])
