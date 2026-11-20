@@ -55,8 +55,9 @@ python scripts/verify_build_provenance.py dist/system-design-primer-v2.3.0.zip \
   --signer-workflow jack-001-a/system-design-primer-skill/.github/workflows/ci.yml \
   --source-ref refs/heads/main \
   --source-digest <full-40-character-source-commit-sha> \
-  --bundle sha256-<artifact-digest>.jsonl \
-  --trusted-root trusted-root.jsonl
+  --bundle sha256:<artifact-digest>.jsonl \
+  --trusted-root trusted_root.jsonl \
+  --repository-id 1462786926
 ```
 
-Never trust a bundle or trusted-root file merely because it is adjacent to the artifact. A bundle is evidence to verify, not a trust anchor; the trusted root must be authenticated independently. With a local bundle, GitHub CLI checks repository identity against the certificate recorded at signing time and cannot detect subsequent repository renames or name reuse. Use online API-backed verification when current repository-name ownership matters. The bundle download command is currently public preview.
+Obtain the expected numeric repository ID online from the canonical repository using `gh api repos/jack-001-a/system-design-primer-skill --jq .id`, and pass it with `--repository-id`. The verifier compares it with `verificationResult.signature.certificate.sourceRepositoryIdentifier` for every verified statement. Never trust a bundle or trusted-root file merely because it is adjacent to the artifact. A bundle is evidence to verify, not a trust anchor; the trusted root must be authenticated independently. With a local bundle, GitHub CLI checks repository identity against the certificate recorded at signing time and cannot detect subsequent repository renames or name reuse. Use online API-backed verification when current repository-name ownership matters. The bundle download command is currently public preview.

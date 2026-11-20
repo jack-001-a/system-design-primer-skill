@@ -30,6 +30,9 @@ class BuildProvenanceTests(unittest.TestCase):
                     "predicateType": PREDICATE_TYPE,
                     "subject": [{"name": "distribution.zip", "digest": {"sha256": self.digest}}],
                     "predicate": {},
+                },
+                "signature": {
+                    "certificate": {"sourceRepositoryIdentifier": 1462786926}
                 }
             }
         }]
@@ -133,10 +136,28 @@ class BuildProvenanceTests(unittest.TestCase):
         bundle.write_text("{}\n", encoding="utf-8")
         root.write_text("{}\n", encoding="utf-8")
         self._mock_cli(run)
-        verify_build_provenance(self.artifact, **self.policy, bundle=bundle, trusted_root=root)
+        verify_build_provenance(self.artifact, **self.policy, bundle=bundle, trusted_root=root, repository_id=1462786926)
         command = run.call_args_list[1].args[0]
         self.assertEqual(command[command.index("--bundle") + 1], str(bundle))
         self.assertEqual(command[command.index("--custom-trusted-root") + 1], str(root))
+
+    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_offline_bundle_rejects_repository_id_mismatch(self, which, run):
+        bundle = Path(self.temp.name) / "attestations.jsonl"
+        bundle.write_text("{}\\n", encoding="utf-8")
+        self._mock_cli(run)
+        with self.assertRaisesRegex(RuntimeError, "repository ID"):
+            verify_build_provenance(self.artifact, **self.policy, bundle=bundle, repository_id=999)
+
+    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
+    def test_offline_bundle_requires_repository_id(self, which, run):
+        bundle = Path(self.temp.name) / "attestations.jsonl"
+        bundle.write_text("{}\\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "requires a positive --repository-id"):
+            verify_build_provenance(self.artifact, **self.policy, bundle=bundle)
+        run.assert_not_called()
 
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_trusted_root_without_bundle_is_rejected_before_cli(self, which):

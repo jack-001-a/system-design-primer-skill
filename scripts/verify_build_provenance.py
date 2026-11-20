@@ -34,7 +34,7 @@ def _version_tuple(output: str) -> tuple[int, int, int]:
 
 
 def _validate_verified_statements(
-    verified: Any, expected_sha256: str
+    verified: Any, expected_sha256: str, expected_repository_id: int | None = None
 ) -> int:
     if not isinstance(verified, list) or not verified:
         raise RuntimeError("gh attestation verify returned no verified attestations")
@@ -57,6 +57,18 @@ def _validate_verified_statements(
             for subject in subjects
         ):
             raise RuntimeError("verified attestation does not name the exact artifact SHA-256")
+        if expected_repository_id is not None:
+            signature = result.get("signature")
+            certificate = signature.get("certificate") if isinstance(signature, dict) else None
+            actual_repository_id = (
+                certificate.get("sourceRepositoryIdentifier")
+                if isinstance(certificate, dict) else None
+            )
+            if str(actual_repository_id) != str(expected_repository_id):
+                raise RuntimeError(
+                    "verified attestation certificate repository ID does not match "
+                    "the expected repository ID"
+                )
     return len(verified)
 
 
@@ -69,6 +81,7 @@ def verify_build_provenance(
     source_digest: str,
     bundle: Path | None = None,
     trusted_root: Path | None = None,
+    repository_id: int | None = None,
     gh_bin: str = "gh",
 ) -> dict[str, Any]:
     if not artifact.is_file():
@@ -89,6 +102,10 @@ def verify_build_provenance(
         raise ValueError("source_digest must be a full lowercase 40-character Git commit SHA")
     if bundle is not None and not bundle.is_file():
         raise ValueError("bundle must identify an existing regular file")
+    if bundle is not None and (repository_id is None or repository_id <= 0):
+        raise ValueError("offline bundle verification requires a positive --repository-id")
+    if repository_id is not None and repository_id <= 0:
+        raise ValueError("repository_id must be a positive integer")
     if trusted_root is not None:
         if bundle is None:
             raise ValueError("trusted_root can only be used with an offline bundle")
@@ -140,7 +157,7 @@ def verify_build_provenance(
             verified = json.loads(completed.stdout)
         except json.JSONDecodeError as exc:
             raise RuntimeError("gh attestation verify returned invalid JSON despite success") from exc
-        count = _validate_verified_statements(verified, artifact_sha256)
+        count = _validate_verified_statements(verified, artifact_sha256, repository_id if bundle is not None else None)
 
     return {
         "verified": True,
@@ -167,6 +184,7 @@ def main() -> int:
     parser.add_argument("--source-digest", required=True)
     parser.add_argument("--bundle", type=Path, help="Previously downloaded attestation bundle (JSON or JSONL)")
     parser.add_argument("--trusted-root", type=Path, help="Explicit Sigstore trusted-root JSONL for offline verification; requires --bundle")
+    parser.add_argument("--repository-id", type=int, help="Expected numeric GitHub repository ID; required with --bundle")
     parser.add_argument("--gh-bin", default="gh", help="GitHub CLI executable (default: gh)")
     args = parser.parse_args()
     try:
@@ -178,6 +196,7 @@ def main() -> int:
             source_digest=args.source_digest,
             bundle=args.bundle,
             trusted_root=args.trusted_root,
+            repository_id=args.repository_id,
             gh_bin=args.gh_bin,
         )
     except (OSError, ValueError, RuntimeError) as exc:
