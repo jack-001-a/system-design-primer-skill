@@ -15,7 +15,7 @@ from typing import Any
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import dsa, ec, ed25519, ed448, rsa
-from cryptography.x509.oid import ExtensionOID
+from cryptography.x509.oid import CRLEntryExtensionOID, ExtensionOID
 
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
 UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
@@ -58,6 +58,12 @@ def validate_trust_anchor_bundle(certificates: list[x509.Certificate]) -> None:
         seen.add(fingerprint)
         if certificate.subject != certificate.issuer:
             raise ValueError("trust-anchor bundle may contain only self-issued certificates; place intermediates in --intermediates")
+
+def validate_crl_number_value(value: int) -> None:
+    """Enforce the ASN.1 CRLNumber INTEGER lower bound independently of parsing."""
+    if value < 0:
+        raise ValueError("CRLNumber must be a non-negative integer")
+
 
 def load_crl(path: Path) -> x509.CertificateRevocationList:
     raw = path.read_bytes()
@@ -103,7 +109,7 @@ def assess_crl_entry(certificate: x509.Certificate, crl: x509.CertificateRevocat
     """Interpret the target serial's CRL entry conservatively at a historical instant."""
     for entry in crl:
         try:
-            entry.extensions.get_extension_for_oid(ExtensionOID.CERTIFICATE_ISSUER)
+            entry.extensions.get_extension_for_oid(CRLEntryExtensionOID.CERTIFICATE_ISSUER)
         except x509.ExtensionNotFound:
             continue
         raise ValueError("certificateIssuer CRL entries require indirect-CRL processing, which is unsupported")
@@ -224,8 +230,7 @@ def validate_direct_crl_scope(
         raise ValueError("CRL lacks the mandatory CRLNumber extension") from exc
     if crl_number_ext.critical:
         raise ValueError("CRLNumber must be non-critical")
-    if crl_number_ext.value.crl_number < 0:
-        raise ValueError("CRLNumber must be a non-negative integer")
+    validate_crl_number_value(crl_number_ext.value.crl_number)
 
     candidates = [item for item in issuer_certificates if item.subject == crl.issuer]
     if aki is not None:
