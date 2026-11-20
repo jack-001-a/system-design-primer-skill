@@ -69,6 +69,18 @@ def validate_trust_anchor_bundle(path: Path) -> None:
         seen.add(fingerprint)
         if certificate.subject != certificate.issuer:
             raise ValueError("issuer-root bundle may contain only self-issued trust anchors; place intermediates in --intermediates")
+        try:
+            basic_constraints_ext = certificate.extensions.get_extension_for_class(x509.BasicConstraints)
+        except x509.ExtensionNotFound as exc:
+            raise ValueError("issuer-root certificates must contain critical BasicConstraints with CA:TRUE") from exc
+        if not basic_constraints_ext.critical or not basic_constraints_ext.value.ca:
+            raise ValueError("issuer-root certificates must contain critical BasicConstraints with CA:TRUE")
+        try:
+            key_usage_ext = certificate.extensions.get_extension_for_class(x509.KeyUsage)
+        except x509.ExtensionNotFound as exc:
+            raise ValueError("issuer-root certificates must contain critical KeyUsage with keyCertSign") from exc
+        if not key_usage_ext.critical or not key_usage_ext.value.key_cert_sign:
+            raise ValueError("issuer-root certificates must contain critical KeyUsage with keyCertSign")
 
 
 def bind_responder_certificate(response_path: Path, certificate_path: Path,
