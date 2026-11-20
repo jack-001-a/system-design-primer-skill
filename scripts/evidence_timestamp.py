@@ -170,8 +170,10 @@ def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[s
                           key_usage.key_agreement, key_usage.key_cert_sign, key_usage.crl_sign))
         if not permitted or prohibited:
             raise ValueError("TSA signer KeyUsage must be limited to digitalSignature or contentCommitment")
-    not_before = certificate.not_valid_before.replace(tzinfo=timezone.utc)
-    not_after = certificate.not_valid_after.replace(tzinfo=timezone.utc)
+    # cryptography>=42 exposes timezone-aware UTC validity properties; prefer
+    # them over the deprecated naive-UTC accessors to avoid implicit timezone relabeling.
+    not_before = certificate.not_valid_before_utc
+    not_after = certificate.not_valid_after_utc
     if target < not_before or target > not_after:
         raise ValueError("TSA signer certificate is not valid at RFC 3161 genTime")
     return {
