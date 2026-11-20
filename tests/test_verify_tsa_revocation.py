@@ -12,7 +12,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from scripts.verify_tsa_revocation import (parse_utc_epoch, verify_crl_status, validate_crl_signature_policy,
-    validate_crl_number_value, validate_direct_crl_scope)
+    validate_crl_number_value, validate_crl_der_profile, validate_direct_crl_scope, _read_der_tlv)
 
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
@@ -126,6 +126,18 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "CRL SHA-256 pin mismatch"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(),
                               expected_crl_sha256="0"*64)
+
+    def test_crl_der_requires_matching_inner_and_outer_signature_algorithms(self):
+        der = self.listing.public_bytes(serialization.Encoding.DER)
+        validate_crl_der_profile(der, self.listing)
+        _, outer_start, _, _ = _read_der_tlv(der, 0)
+        _, _, _, tbs_next = _read_der_tlv(der, outer_start)
+        _, alg_start, alg_end, _ = _read_der_tlv(der, tbs_next)
+        malformed = bytearray(der)
+        # RSA-with-SHA256 OID's final arc changes while the AlgorithmIdentifier length stays constant.
+        malformed[alg_end - 3] ^= 1
+        with self.assertRaisesRegex(ValueError, "AlgorithmIdentifiers must match exactly"):
+            validate_crl_der_profile(bytes(malformed), self.listing)
 
     def test_accepts_scoped_direct_crl_then_invokes_openssl(self):
         with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
