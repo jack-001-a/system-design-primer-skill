@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import ctypes
+import threading
 import unittest
 from unittest.mock import patch
 
@@ -374,6 +375,67 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(operation.state, win32.OverlappedOperation.CLOSED)
         self.assertIsNone(operation.buffer)
         self.assertIsNone(operation.overlapped)
+
+    def test_close_is_rejected_while_win32_submission_is_in_progress(self):
+        operation, closed = self.make_operation()
+        entered = threading.Event()
+        release = threading.Event()
+        fake = FakeKernel32()
+        def blocked_read(*args):
+            entered.set()
+            self.assertTrue(release.wait(2))
+            return 0
+        fake.ReadFile = blocked_read
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent)
+        buffer = (ctypes.c_ubyte * 4)()
+        operation.buffer = buffer
+        result = []
+        worker = threading.Thread(target=lambda: result.append(
+            win32.start_overlapped_io(
+                bindings, operation, buffer=buffer, length=4,
+                get_last_error=lambda: win32.ERROR_IO_PENDING
+            )
+        ))
+        worker.start()
+        self.assertTrue(entered.wait(2))
+        self.assertEqual(operation.state, operation.STARTING)
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            operation.close()
+        self.assertEqual(closed, [])
+        release.set()
+        worker.join(2)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(result[0][0], "pending")
+        operation.mark_completed()
+        operation.close()
+        self.assertEqual(closed, [20])
+
+    def test_concurrent_close_releases_event_only_once(self):
+        entered = threading.Event()
+        release = threading.Event()
+        calls = []
+        def blocking_close(handle):
+            calls.append(handle)
+            entered.set()
+            self.assertTrue(release.wait(2))
+            return True
+        operation, _ = self.make_operation(close=blocking_close)
+        operation.mark_completed()
+        first = threading.Thread(target=operation.close)
+        second = threading.Thread(target=operation.close)
+        first.start()
+        self.assertTrue(entered.wait(2))
+        second.start()
+        release.set()
+        first.join(2)
+        second.join(2)
+        self.assertFalse(first.is_alive())
+        self.assertFalse(second.is_alive())
+        self.assertEqual(calls, [20])
+        self.assertEqual(operation.state, operation.CLOSED)
 
     def test_error_not_found_still_drains_before_resources_can_be_released(self):
         operation, closed = self.make_operation()

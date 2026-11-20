@@ -329,8 +329,14 @@ def start_overlapped_connect(bindings: Kernel32Bindings, operation: "OverlappedO
         raise OverlappedLifecycleError(f"cannot start connect in state {operation.state}")
     if not operation.event_handle:
         raise ValueError("overlapped connect requires an event handle")
+    operation.mark_starting()
     operation.overlapped.hEvent = operation.event_handle
-    succeeded = bool(bindings.ConnectNamedPipe(operation.file_handle, ctypes.byref(operation.overlapped)))
+    try:
+        succeeded = bool(bindings.ConnectNamedPipe(operation.file_handle, ctypes.byref(operation.overlapped)))
+    except BaseException:
+        # Submission outcome is uncertain; retain resources as if I/O were pending.
+        operation.mark_pending()
+        raise
     if succeeded:
         operation.mark_completed()
         return "connected", None
@@ -364,10 +370,16 @@ def start_overlapped_io(bindings: Kernel32Bindings, operation: "OverlappedOperat
         raise TypeError("buffer must expose a ctypes-compatible address") from exc
     if not operation.event_handle:
         raise ValueError("overlapped I/O requires an event handle")
+    operation.mark_starting()
     operation.overlapped.hEvent = operation.event_handle
     transferred = DWORD(0)
     function = bindings.WriteFile if write else bindings.ReadFile
-    succeeded = bool(function(operation.file_handle, pointer, DWORD(length), ctypes.byref(transferred), ctypes.byref(operation.overlapped)))
+    try:
+        succeeded = bool(function(operation.file_handle, pointer, DWORD(length), ctypes.byref(transferred), ctypes.byref(operation.overlapped)))
+    except BaseException:
+        # Submission outcome is uncertain; retain resources as if I/O were pending.
+        operation.mark_pending()
+        raise
     if succeeded:
         operation.mark_completed()
         return "completed", int(transferred.value), None
@@ -390,6 +402,7 @@ class OverlappedOperation:
     """
 
     CREATED = "created"
+    STARTING = "starting"
     PENDING = "pending"
     COMPLETED = "completed"
     CLOSED = "closed"
@@ -418,18 +431,27 @@ class OverlappedOperation:
         with self._lock:
             return self._state
 
-    def mark_pending(self) -> None:
+    def mark_starting(self) -> None:
+        """Reserve the operation before entering a Win32 submission call."""
         with self._lock:
             if self._state != self.CREATED:
                 raise OverlappedLifecycleError(
                     f"cannot start operation in state {self._state}"
+                )
+            self._state = self.STARTING
+
+    def mark_pending(self) -> None:
+        with self._lock:
+            if self._state not in (self.CREATED, self.STARTING):
+                raise OverlappedLifecycleError(
+                    f"cannot mark operation pending in state {self._state}"
                 )
             self._state = self.PENDING
 
     def mark_completed(self) -> None:
         """Record immediate or drained completion of an overlapped operation."""
         with self._lock:
-            if self._state not in (self.CREATED, self.PENDING):
+            if self._state not in (self.CREATED, self.STARTING, self.PENDING):
                 raise OverlappedLifecycleError(
                     f"cannot complete operation in state {self._state}"
                 )
