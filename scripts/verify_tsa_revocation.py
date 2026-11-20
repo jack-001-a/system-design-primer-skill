@@ -201,7 +201,12 @@ def validate_invalidity_date_der_encoding(raw: bytes, tbs_start: int, tbs_end: i
                     time_tag, time_start, time_end, time_next = read_child(value_start, value_end)
                     if time_next != value_end or time_tag != 0x18:
                         raise ValueError("invalidityDate must be a single GeneralizedTime value")
-                    _validate_crl_time_der(time_tag, raw[time_start:time_end], "invalidityDate")
+                    try:
+                        _validate_crl_time_der(time_tag, raw[time_start:time_end], "invalidityDate")
+                    except ValueError as exc:
+                        raise ValueError(
+                            "invalidityDate must be GeneralizedTime with UTC seconds and a trailing Z, without fractions"
+                        ) from exc
                 extension_cursor = ext_next
         entry_cursor = entry_next
 
