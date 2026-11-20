@@ -153,10 +153,34 @@ class TsaAttestationTests(unittest.TestCase):
         report["historical_ocsp_responder_revocation_assessment"] = {
             "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
             "responder_certificate_sha256": "e" * 64, "crl_sha256": "f" * 64,
-            "issuer_roots_sha256": "1" * 64, "result_file_sha256": "2" * 64
+            "issuer_roots_sha256": "1" * 64, "crl_issuer_certificate_sha256": "3" * 64,
+            "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
+            "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
+            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": "2" * 64
         }
         self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "fingerprint differs"):
+            create_attestation(self.report, self.private, "tsa-attester",
+                hashlib.sha256(b"verifier package").hexdigest(), "system-design-primer TSA verifier release")
+
+
+    def test_attestation_rejects_responder_crl_without_signature_policy(self):
+        report = json.loads(self.report.read_text(encoding="utf-8"))
+        report["current_ocsp_assessment"] = self._ocsp_fixture()
+        report["overall_assessment"] = "historical_crl_passed_and_historical_ocsp_good_with_scope_limitations"
+        responder = {
+            "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
+            "responder_certificate_sha256": "d" * 64, "crl_sha256": "e" * 64,
+            "issuer_roots_sha256": "f" * 64, "crl_issuer_certificate_sha256": "2" * 64,
+            "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
+            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": "1" * 64
+        }
+        report["historical_ocsp_responder_revocation_assessment"] = responder
+        report["limitations"] = _build_limitations(report["current_ocsp_assessment"], responder)
+        self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "signature policy is missing"):
             create_attestation(self.report, self.private, "tsa-attester",
                 hashlib.sha256(b"verifier package").hexdigest(), "system-design-primer TSA verifier release")
 
@@ -167,7 +191,11 @@ class TsaAttestationTests(unittest.TestCase):
         report["historical_ocsp_responder_revocation_assessment"] = {
             "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
             "responder_certificate_sha256": "d" * 64, "crl_sha256": "e" * 64,
-            "issuer_roots_sha256": "f" * 64, "result_file_sha256": "1" * 64
+            "issuer_roots_sha256": "f" * 64, "crl_issuer_certificate_sha256": "2" * 64,
+            "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
+            "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
+            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": "1" * 64
         }
         report["limitations"] = _build_limitations(
             report["current_ocsp_assessment"],

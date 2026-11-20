@@ -948,3 +948,8 @@ OCSP evidence that was not supplied. A current-time OCSP result never changes
 the historical status at RFC 3161 `genTime`. The historical CRL finding remains
 separately visible; contradictory CRL and OCSP findings are preserved rather
 than silently collapsed into a single pass/fail value.
+
+
+### OCSP responder historical CRL evidence binding
+
+When a separate CRL is used to assess the OCSP responder at RFC 3161 genTime, the report preserves the CRL issuer-certificate fingerprint, signature algorithm OID, enforced signature policy, revocation-entry-at-time evidence, and verifier provenance. Report construction and attestation validation both require these fields; a responder non-revocation claim without the same strict direct-CRL signature-policy and entry evidence is rejected. This strengthens the evidence binding but does not expand supported CRL distribution-point coverage or prove completeness of revocation sources.

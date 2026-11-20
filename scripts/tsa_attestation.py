@@ -143,8 +143,17 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
             raise ValueError("OCSP responder revocation fingerprint differs from the OCSP signer")
         if responder.get("validation_time") != report["gen_time"]:
             raise ValueError("OCSP responder revocation validation_time must match report gen_time")
-        for field in ("crl_sha256", "issuer_roots_sha256", "result_file_sha256"):
+        for field in ("crl_sha256", "issuer_roots_sha256", "crl_issuer_certificate_sha256", "result_file_sha256"):
             require_sha256(responder.get(field), "historical_ocsp_responder_revocation_assessment." + field)
+        if not isinstance(responder.get("crl_signature_algorithm_oid"), str) or not responder["crl_signature_algorithm_oid"].strip():
+            raise ValueError("historical OCSP responder CRL signature algorithm identity is missing")
+        if responder.get("crl_signature_policy") != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
+            raise ValueError("historical OCSP responder CRL signature policy is missing or unsupported")
+        if responder.get("verification") != "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight":
+            raise ValueError("historical OCSP responder CRL verification provenance is missing or unsupported")
+        responder_entry = responder.get("revocation_entry")
+        if not isinstance(responder_entry, dict) or responder_entry.get("status_at_time") not in ("not_listed", "not_yet_revoked"):
+            raise ValueError("historical OCSP responder CRL entry evidence does not establish non-revocation")
     else:
         raise ValueError("historical OCSP responder revocation has an unsupported status")
     expected_overall_assessment = _build_overall_assessment(current)

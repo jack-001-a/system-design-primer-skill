@@ -173,6 +173,9 @@ class TsaValidationReportTests(unittest.TestCase):
             "issuer_roots_sha256": hashlib.sha256(b"responder roots").hexdigest(),
             "crl_issuer_certificate_sha256": hashlib.sha256(b"responder issuer").hexdigest(),
             "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
+            "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
+            "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
+            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
             "revocation_entry": {"present": False, "status_at_time": "not_listed"},
         }
         value.update(overrides)
@@ -190,6 +193,23 @@ class TsaValidationReportTests(unittest.TestCase):
             self.responder_result(), hashlib.sha256(b"responder result").hexdigest())
         self.assertEqual(report["historical_ocsp_responder_revocation_assessment"]["status"],
                          "not_revoked_at_gen_time")
+
+
+    def test_rejects_responder_crl_without_signature_policy(self):
+        bad = self.responder_result()
+        bad.pop("crl_signature_policy")
+        with self.assertRaisesRegex(ValueError, "signature policy evidence is missing"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+                bad, hashlib.sha256(b"responder result").hexdigest())
+
+    def test_rejects_responder_crl_without_verification_provenance(self):
+        bad = self.responder_result()
+        bad.pop("verification")
+        with self.assertRaisesRegex(ValueError, "verification provenance is missing"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+                bad, hashlib.sha256(b"responder result").hexdigest())
 
     def test_rejects_responder_crl_for_different_certificate(self):
         with self.assertRaisesRegex(ValueError, "different certificate"):
