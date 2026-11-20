@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import re
 import struct
+import subprocess
 from typing import BinaryIO, Any
 
 PROTOCOL_VERSION = 1
@@ -109,7 +110,7 @@ def _validate_payload(message_type: str, payload: dict[str, Any]) -> None:
             environment_chars += len(key) + len(value) + 2
         if environment_chars > 32767:
             raise ProtocolError("environment block exceeds the Windows 32767-character limit")
-        if sum(len(argument) + 1 for argument in argv) > 32767:
+        if len(subprocess.list2cmdline(argv)) + 1 > 32767:
             raise ProtocolError("argv exceeds the Windows command-line length limit")
         for name in ("stdin_handle", "stdout_handle", "stderr_handle"):
             _require_handle(payload[name], name)

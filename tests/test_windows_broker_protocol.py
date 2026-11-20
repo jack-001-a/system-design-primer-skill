@@ -166,6 +166,9 @@ class WindowsBrokerProtocolTests(unittest.TestCase):
         payload["argv"] = ["x" * 32768]
         with self.assertRaisesRegex(ProtocolError, "command-line length"):
             validate_message(message(payload))
+        payload["argv"] = ["worker.exe", '"' * 20000]
+        with self.assertRaisesRegex(ProtocolError, "command-line length"):
+            validate_message(message(payload))
         payload = self._launch_payload()
         payload["environment"] = {"A": "x" * 32768}
         with self.assertRaisesRegex(ProtocolError, "environment block"):
