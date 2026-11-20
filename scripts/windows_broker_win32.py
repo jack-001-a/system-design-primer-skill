@@ -25,10 +25,13 @@ ERROR_IO_PENDING = 997
 ERROR_IO_INCOMPLETE = 996
 ERROR_NOT_FOUND = 1168
 ERROR_OPERATION_ABORTED = 995
+ERROR_INVALID_HANDLE = 6
+ERROR_INVALID_PARAMETER = 87
 ERROR_PIPE_CONNECTED = 535
 MAX_DWORD = 0xFFFFFFFF
 WAIT_OBJECT_0 = 0
 WAIT_TIMEOUT = 258
+WAIT_FAILED = 0xFFFFFFFF
 INFINITE = 0xFFFFFFFF
 
 
@@ -673,6 +676,9 @@ class OverlappedOperation:
                 ERROR_IO_INCOMPLETE,
                 ERROR_IO_PENDING,
                 WAIT_TIMEOUT,
+                WAIT_FAILED,
+                ERROR_INVALID_HANDLE,
+                ERROR_INVALID_PARAMETER,
             ):
                 raise OverlappedStillPending(
                     "bounded GetOverlappedResultEx did not establish terminal completion"
