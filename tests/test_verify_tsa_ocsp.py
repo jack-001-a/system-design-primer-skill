@@ -152,6 +152,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
         fractional = b"20261120115700.1Z"
         archive_cutoff_oid = bytes.fromhex("2b0601050507300106")
         crl_id_oid = bytes.fromhex("2b0601050507300103")
+        invalidity_date_oid = bytes.fromhex("551d18")
         cases = (
             (
                 "archiveCutoff",
@@ -166,6 +167,13 @@ Next Update: Nov 19 12:05:00 2026 GMT
                 + der_value(0x04, der_value(0x30, der_value(0xA2, der_value(0x18, valid)))),
                 der_value(0x06, crl_id_oid)
                 + der_value(0x04, der_value(0x30, der_value(0xA2, der_value(0x18, fractional)))),
+            ),
+            (
+                "invalidityDate",
+                der_value(0x06, invalidity_date_oid)
+                + der_value(0x04, der_value(0x18, valid)),
+                der_value(0x06, invalidity_date_oid)
+                + der_value(0x04, der_value(0x18, fractional)),
             ),
         )
         for name, valid_extension, invalid_extension in cases:
