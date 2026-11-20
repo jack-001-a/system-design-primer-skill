@@ -190,11 +190,11 @@ Next Update: Nov 19 12:05:00 2026 GMT
 
     def test_ocsp_profile_walk_rejects_noncanonical_primitive_fields(self):
         cases = (
-            (0x01, b"\\x01", "00 or FF"),
-            (0x02, b"\\x00\\x7f", "redundant sign octets"),
-            (0x03, b"\\x03\\xa7", "non-zero padding bits"),
-            (0x05, b"\\x00", "empty contents"),
-            (0x06, b"\\x80\\x2b", "non-minimal subidentifier"),
+            (0x01, b"\x01", "00 or FF"),
+            (0x02, b"\x00\x7f", "redundant sign octets"),
+            (0x03, b"\x03\xa7", "non-zero padding bits"),
+            (0x05, b"\x00", "empty contents"),
+            (0x06, b"\x80\x2b", "non-minimal subidentifier"),
         )
         for tag, value, message in cases:
             with self.subTest(tag=hex(tag)):
