@@ -64,6 +64,18 @@ def load_certificate(path: Path, description: str) -> x509.Certificate:
             raise ValueError("could not parse " + description) from exc
 
 
+def _read_bounded_ocsp_response(path: Path) -> bytes:
+    """Read an OCSP response without allocating beyond the configured limit."""
+    with path.open("rb") as stream:
+        raw = stream.read(MAX_OCSP_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_OCSP_RESPONSE_BYTES:
+        raise ValueError(
+            "OCSP response exceeds the maximum supported size of "
+            + str(MAX_OCSP_RESPONSE_BYTES) + " bytes"
+        )
+    return raw
+
+
 def _der_tlv(data: bytes | memoryview, offset: int = 0) -> tuple[int, memoryview, int]:
     if offset >= len(data):
         raise ValueError("truncated DER value")
@@ -293,7 +305,7 @@ def bind_responder_certificate(response_path: Path, certificate_path: Path,
             certificate = x509.load_pem_x509_certificate(certificate_bytes)
         except ValueError:
             certificate = x509.load_der_x509_certificate(certificate_bytes)
-        response = ocsp.load_der_ocsp_response(response_path.read_bytes())
+        response = ocsp.load_der_ocsp_response(_read_bounded_ocsp_response(response_path))
     except ValueError as exc:
         raise ValueError("could not parse OCSP response or responder certificate") from exc
     if response.response_status is not ocsp.OCSPResponseStatus.SUCCESSFUL:
@@ -334,16 +346,14 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
             destination = snapshot_dir / name
             if max_bytes is None:
                 raw = source.read_bytes()
+            elif max_bytes == MAX_OCSP_RESPONSE_BYTES and name == "ocsp-response.der":
+                raw = _read_bounded_ocsp_response(source)
             else:
-                # Read at most one byte beyond the limit so a hostile oversized
-                # file is rejected without first allocating the entire input.
+                # Read at most one byte beyond any other explicit limit.
                 with source.open("rb") as stream:
                     raw = stream.read(max_bytes + 1)
                 if len(raw) > max_bytes:
-                    raise ValueError(
-                        "OCSP response exceeds the maximum supported size of "
-                        + str(max_bytes) + " bytes"
-                    )
+                    raise ValueError("input exceeds the maximum supported size")
             destination.write_bytes(raw)
             return destination
 
