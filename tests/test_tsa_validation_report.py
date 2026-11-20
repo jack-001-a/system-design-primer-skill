@@ -49,7 +49,10 @@ class TsaValidationReportTests(unittest.TestCase):
             "issuer_roots_sha256": hashlib.sha256(b"ocsp roots").hexdigest(),
             "issuer_intermediates_sha256": None,
             "trust_anchor_policy": "issuer-roots bundle is SHA-256 pinned and restricted to self-issued CA certificates with critical BasicConstraints and keyCertSign; optional responder certificates/intermediates are supplied separately via -verify_other",
-            "verification": "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, -x509_strict, and -auth_level 2; Python verifies exact target CertID, status, and freshness",
+            "responder_chain_validation_scope": "OpenSSL responder PKIX path validation at the host wall-clock time",
+            "responder_chain_validation_times": [],
+            "responder_chain_validation_policy": "OpenSSL ocsp uses the SHA-256-pinned -CAfile, empty -CApath/-CAstore, -x509_strict, and -auth_level 2",
+            "verification": "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, empty -CApath/-CAstore, -x509_strict, and -auth_level 2; historical validation repeats path verification at floor/ceiling Unix-second bounds; Python verifies exact target CertID, status, and freshness",
         }
         self.timestamp = {
             "verified": True, "signature_sha256": hashlib.sha256(b"signature").hexdigest(),
@@ -80,6 +83,22 @@ class TsaValidationReportTests(unittest.TestCase):
         self.timestamp_file_hash = hashlib.sha256(b"timestamp result").hexdigest()
         self.crl_file_hash = hashlib.sha256(b"crl result").hexdigest()
         self.ocsp_file_hash = hashlib.sha256(b"ocsp result").hexdigest()
+    def historical_ocsp_result(self, **overrides):
+        value = dict(
+            self.ocsp,
+            scope="historical OCSP status validation at the supplied target time",
+            historical_at_time=self.gen_time,
+            validation_time=self.gen_time,
+            produced_at="2026-11-19T11:59:00Z",
+            this_update="2026-11-19T11:58:00Z",
+            responder_chain_validation_scope=(
+                "OpenSSL responder PKIX path validation at both floor and ceiling Unix-second bounds of historical validation_time"
+            ),
+            responder_chain_validation_times=[1795089600],
+        )
+        value.update(overrides)
+        return value
+
     def build_report_with_timestamp(self, gen_time, crl_result, crl_result_sha256,
                                 ocsp_result=None, ocsp_result_sha256=None,
                                 responder_revocation_result=None,
@@ -209,10 +228,7 @@ class TsaValidationReportTests(unittest.TestCase):
         self.assertIn("single supplied", assessment["claim_scope"]["meaning"])
         self.assertEqual(report["current_ocsp_assessment"]["assessment"], "not_provided")
     def test_overall_assessment_distinguishes_historical_ocsp_revoked(self):
-        historical = dict(self.ocsp, status="revoked",
-            scope="historical OCSP status validation at the supplied target time",
-            historical_at_time=self.gen_time, validation_time=self.gen_time,
-            produced_at="2026-11-19T11:59:00Z", this_update="2026-11-19T11:58:00Z")
+        historical = self.historical_ocsp_result(status="revoked")
         report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
             historical, self.ocsp_file_hash)
         self.assertEqual(report["overall_assessment"],
@@ -238,56 +254,39 @@ class TsaValidationReportTests(unittest.TestCase):
         self.assertFalse(report["current_ocsp_assessment"]["historical_status_claim"])
         self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")
     def test_accepts_historical_ocsp_only_when_bound_to_gen_time(self):
-        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
-                          historical_at_time=self.gen_time, validation_time=self.gen_time,
-                          produced_at="2026-11-19T11:59:00Z",
-                          this_update="2026-11-19T11:58:00Z")
+        historical = self.historical_ocsp_result()
         report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
                                          historical, self.ocsp_file_hash)
         self.assertTrue(report["current_ocsp_assessment"]["historical_status_claim"])
         self.assertEqual(report["historical_ocsp_responder_revocation_assessment"]["status"], "not_assessed")
 
     def test_rejects_historical_ocsp_time_not_bound_to_gen_time(self):
-        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
-                          historical_at_time="2026-11-19T12:00:01Z")
+        historical = self.historical_ocsp_result(historical_at_time="2026-11-19T12:00:01Z")
         with self.assertRaisesRegex(ValueError, "does not exactly match"):
             self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
                                     historical, self.ocsp_file_hash)
 
 
     def test_accepts_preproduced_historical_ocsp_response(self):
-        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
-                          historical_at_time=self.gen_time, validation_time=self.gen_time,
-                          produced_at="2026-11-19T11:57:00Z",
-                          this_update="2026-11-19T11:58:00Z")
+        historical = self.historical_ocsp_result(produced_at="2026-11-19T11:57:00Z")
         report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
             historical, self.ocsp_file_hash)
         self.assertTrue(report["current_ocsp_assessment"]["historical_status_claim"])
 
     def test_rejects_historical_ocsp_produced_after_gen_time(self):
-        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
-                          historical_at_time=self.gen_time, validation_time=self.gen_time,
-                          produced_at="2026-11-19T12:00:01Z",
-                          this_update="2026-11-19T11:58:00Z")
+        historical = self.historical_ocsp_result(produced_at="2026-11-19T12:00:01Z")
         with self.assertRaisesRegex(ValueError, "producedAt is later"):
             self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
                                     historical, self.ocsp_file_hash)
 
     def test_rejects_historical_ocsp_validation_time_drift(self):
-        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
-                          historical_at_time=self.gen_time, validation_time="2026-11-19T12:00:01Z",
-                          produced_at="2026-11-19T11:59:00Z",
-                          this_update="2026-11-19T11:58:00Z")
+        historical = self.historical_ocsp_result(validation_time="2026-11-19T12:00:01Z")
         with self.assertRaisesRegex(ValueError, "validation_time must exactly match"):
             self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
                                     historical, self.ocsp_file_hash)
 
     def test_rejects_historical_ocsp_interval_not_covering_gen_time(self):
-        historical = dict(self.ocsp, scope="historical OCSP status validation at the supplied target time",
-                          historical_at_time=self.gen_time, validation_time=self.gen_time,
-                          produced_at="2026-11-19T11:59:00Z",
-                          this_update="2026-11-19T11:58:00Z",
-                          next_update="2026-11-19T11:59:59Z")
+        historical = self.historical_ocsp_result(next_update="2026-11-19T11:59:59Z")
         with self.assertRaisesRegex(ValueError, "does not cover its validation_time"):
             self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
                                     historical, self.ocsp_file_hash)
