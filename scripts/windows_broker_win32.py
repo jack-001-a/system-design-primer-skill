@@ -339,8 +339,13 @@ class NamedPipeConnection:
                     bindings, operation, get_last_error=get_last_error
                 )
             except BaseException:
-                # Submission may have reached the kernel. Keep CONNECTING and
-                # retain the registered operation until its outcome is drained.
+                # Validation failures before STARTING cannot have reached the
+                # kernel, so roll back registration and permit a safe retry.
+                # Once submission starts, retain both state and resources until
+                # the uncertain kernel operation has been drained.
+                if operation.state == operation.CREATED:
+                    self._operations.discard(operation)
+                    self._state = self.DISCONNECTED
                 raise
             if result == "connected":
                 self._state = self.CONNECTED

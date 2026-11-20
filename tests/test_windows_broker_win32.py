@@ -1004,6 +1004,26 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         operation.close()
         connection.unregister_operation(operation)
 
+    def test_connection_start_connect_validation_failure_rolls_back_registration(self):
+        fake = FakeKernel32()
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        operation = win32.OverlappedOperation(
+            file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=None,
+            buffer=None, close_handle=lambda _: True,
+        )
+        connection = win32.NamedPipeConnection(10)
+        connection._state = connection.DISCONNECTED
+        with self.assertRaisesRegex(ValueError, "event handle"):
+            connection.start_connect(bindings, operation)
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertNotIn(operation, connection._operations)
+        self.assertEqual(operation.state, operation.CREATED)
+
     def test_connection_start_connect_failure_returns_to_disconnected(self):
         fake = FakeKernel32()
         fake.ConnectNamedPipe = lambda *_: 0
