@@ -342,6 +342,24 @@ class BuildProvenanceTests(unittest.TestCase):
                 _copy_regular_file_snapshot(source, snapshot, "source")
         self.assertFalse(snapshot.exists())
 
+    def test_descriptor_snapshot_cleanup_failure_preserves_original_error(self):
+        source = Path(self.temp.name) / "source.bin"
+        snapshot = Path(self.temp.name) / "snapshot.bin"
+        source.write_bytes(b"original")
+        real_copy = __import__("shutil").copyfileobj
+
+        def mutate_during_copy(source_stream, destination_stream):
+            real_copy(source_stream, destination_stream)
+            with source.open("ab") as writer:
+                writer.write(b"-changed")
+
+        with patch("scripts.verify_build_provenance.shutil.copyfileobj", side_effect=mutate_during_copy):
+            with patch.object(Path, "unlink", side_effect=PermissionError("cleanup denied")):
+                with self.assertRaisesRegex(ValueError, "changed while being snapshotted"):
+                    _copy_regular_file_snapshot(source, snapshot, "source")
+        self.assertTrue(snapshot.exists())
+        snapshot.unlink()
+
     def test_descriptor_snapshot_rejects_path_replacement(self):
         source = Path(self.temp.name) / "source.bin"
         replacement = Path(self.temp.name) / "replacement.bin"

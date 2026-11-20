@@ -105,7 +105,9 @@ def _copy_regular_file_snapshot(source: Path, destination: Path, label: str) -> 
         if destination_created:
             try:
                 destination.unlink()
-            except FileNotFoundError:
+            except OSError:
+                # Preserve the original snapshot failure; the enclosing private
+                # TemporaryDirectory remains responsible for final cleanup.
                 pass
         raise
 
