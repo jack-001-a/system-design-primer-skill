@@ -1,173 +1,98 @@
+"""Tests for platform-neutral Windows broker transport primitives."""
 from __future__ import annotations
 
-import threading
 import unittest
 
 from scripts.windows_broker_transport import (
-    NamedPipeByteStream,
-    OverlappedIO,
-    TransportCancelled,
-    TransportCleanupError,
-    TransportTimeout,
+    Deadline,
+    PIPE_PREFIX,
+    PipeDeadlineExceeded,
+    PipeNoProgress,
+    PipePeerClosed,
+    new_pipe_name,
+    read_exact,
+    validate_pipe_name,
+    write_all,
 )
 
 
-class FakeBackend:
-    def __init__(self, *, immediate=None, result=0, waits=None, fail_wait=None):
-        self.immediate = immediate
-        self.result = result
-        self.waits = list(waits or [True])
-        self.fail_wait = fail_wait
-        self.events = []
-        self.read_data = b""
+class FakeClock:
+    def __init__(self) -> None:
+        self.now = 100.0
 
-    def start(self, operation, handle, buffer):
-        self.events.append("start")
-        if operation == "read" and isinstance(buffer, bytearray):
-            buffer[:min(len(buffer), len(self.read_data))] = self.read_data[:len(buffer)]
-        return {"operation": operation, "buffer": buffer}, self.immediate
+    def __call__(self) -> float:
+        return self.now
 
-    def wait(self, token, timeout_ms, cancel_event):
-        self.events.append(("wait", timeout_ms))
-        if self.fail_wait is not None:
-            raise self.fail_wait
-        return self.waits.pop(0) if self.waits else True
-
-    def complete(self, token):
-        self.events.append("complete")
-        return self.result
-
-    def cancel(self, token):
-        self.events.append("cancel")
-
-    def drain(self, token):
-        self.events.append("drain")
-
-    def close(self, token):
-        self.events.append("close")
+    def advance(self, amount: float) -> None:
+        self.now += amount
 
 
 class WindowsBrokerTransportTests(unittest.TestCase):
-    def test_pending_operation_completes_and_closes_after_result(self):
-        backend = FakeBackend(result=4)
-        count = OverlappedIO(backend).perform("write", 12, b"data", timeout=2)
-        self.assertEqual(count, 4)
-        self.assertEqual(backend.events, ["start", ("wait", 2000), "complete", "close"])
+    def test_pipe_name_uses_exactly_256_bits_and_canonical_namespace(self):
+        name = new_pipe_name(lambda count: b"\xab" * count)
+        self.assertEqual(name, PIPE_PREFIX + "broker-" + "ab" * 32)
+        self.assertEqual(validate_pipe_name(name), name)
 
-    def test_connect_accepts_inline_pipe_connected_translation(self):
-        backend = FakeBackend(immediate=0)
-        OverlappedIO(backend).connect(12, timeout=2)
-        self.assertEqual(backend.events, ["start", "close"])
+    def test_pipe_name_rejects_noncanonical_or_remote_names(self):
+        for name in (
+            r"\\server\pipe\broker-" + "ab" * 32,
+            PIPE_PREFIX + "broker-" + "AB" * 32,
+            PIPE_PREFIX + "broker-" + "ab" * 31,
+            PIPE_PREFIX + "other-" + "ab" * 32,
+            PIPE_PREFIX + "broker-" + "ab" * 32 + r"\child",
+        ):
+            with self.subTest(name=name), self.assertRaises(ValueError):
+                validate_pipe_name(name)
 
-    def test_cancel_event_that_wins_native_wait_is_drained(self):
-        backend = FakeBackend(waits=[False])
-        cancel = threading.Event()
-
-        def set_cancel():
-            cancel.set()
-
-        backend.wait = lambda token, timeout_ms, cancel_event: (set_cancel() or False)
-        with self.assertRaises(TransportCancelled):
-            OverlappedIO(backend).perform(
-                "read", 12, bytearray(4), timeout=2, cancel_event=cancel
-            )
-        self.assertEqual(backend.events, ["start", "cancel", "drain", "close"])
-
-    def test_invalid_completion_count_is_rejected_after_native_completion(self):
-        backend = FakeBackend(result=5)
-        with self.assertRaisesRegex(OSError, "invalid write byte count"):
-            OverlappedIO(backend).perform("write", 12, b"data", timeout=2)
-        self.assertEqual(backend.events[-2:], ["complete", "close"])
-
-    def test_close_handle_failure_does_not_mark_stream_closed(self):
-        attempts = []
-
-        def close_handle(handle):
-            attempts.append(handle)
-            if len(attempts) == 1:
-                raise OSError("close failed")
-
-        stream = NamedPipeByteStream(
-            OverlappedIO(FakeBackend()), 12, close_handle=close_handle
-        )
-        with self.assertRaisesRegex(OSError, "close failed"):
-            stream.close()
-        self.assertFalse(stream.closed)
-        stream.close()
-        self.assertTrue(stream.closed)
-        self.assertEqual(attempts, [12, 12])
-
-    def test_inline_completion_does_not_wait(self):
-        backend = FakeBackend(immediate=3)
-        count = OverlappedIO(backend).perform("write", 12, b"abc", timeout=2)
-        self.assertEqual(count, 3)
-        self.assertEqual(backend.events, ["start", "close"])
-
-    def test_timeout_cancels_drains_then_closes(self):
-        backend = FakeBackend(waits=[False])
-        with self.assertRaises(TransportTimeout):
-            OverlappedIO(backend).perform("read", 12, bytearray(8), timeout=0.001)
-        self.assertEqual(
-            [event if isinstance(event, str) else event[0] for event in backend.events],
-            ["start", "wait", "cancel", "drain", "close"],
-        )
-
-    def test_cancellation_drains_before_close(self):
-        backend = FakeBackend()
-        cancel = threading.Event()
-        cancel.set()
-        with self.assertRaises(TransportCancelled):
-            OverlappedIO(backend).perform(
-                "read", 12, bytearray(8), timeout=2, cancel_event=cancel
-            )
-        self.assertEqual(backend.events, ["start", "cancel", "drain", "close"])
-
-    def test_wait_failure_still_cancels_and_drains(self):
-        backend = FakeBackend(fail_wait=RuntimeError("wait failed"))
-        with self.assertRaisesRegex(RuntimeError, "wait failed"):
-            OverlappedIO(backend).perform("read", 12, bytearray(8), timeout=2)
-        self.assertEqual(backend.events, ["start", ("wait", 2000), "cancel", "drain", "close"])
-
-    def test_drain_failure_is_reported_and_storage_is_not_closed(self):
-        class BrokenDrain(FakeBackend):
-            def drain(self, token):
-                self.events.append("drain")
-                raise RuntimeError("still pending")
-
-        backend = BrokenDrain(waits=[False])
-        with self.assertRaises(TransportCleanupError):
-            OverlappedIO(backend).perform("read", 12, bytearray(8), timeout=0.001)
-        self.assertNotIn("close", backend.events)
-
-    def test_stream_handles_partial_reads_and_writes(self):
-        backend = FakeBackend(immediate=2)
-        backend.read_data = b"ab"
-        stream = NamedPipeByteStream(OverlappedIO(backend), 12)
-        self.assertEqual(stream.read(4), b"ab")
-        self.assertEqual(stream.write(b"wxyz"), 2)
-        self.assertEqual(stream.read(0), b"")
-        self.assertEqual(len([event for event in backend.events if event == "start"]), 2)
-
-    def test_stream_rejects_unbounded_reads_and_closes_idempotently(self):
-        closed = []
-        stream = NamedPipeByteStream(
-            OverlappedIO(FakeBackend(immediate=1)), 12, close_handle=closed.append
-        )
+    def test_pipe_name_rejects_weak_token_source(self):
         with self.assertRaises(ValueError):
-            stream.read()
-        with self.assertRaises(ValueError):
-            stream.read(1024 * 1024 + 5)
-        stream.close()
-        stream.close()
-        self.assertTrue(stream.closed)
-        self.assertEqual(closed, [12])
-        with self.assertRaises(ValueError):
-            stream.read(1)
+            new_pipe_name(lambda count: b"short")
 
-    def test_stream_requires_finite_positive_timeout(self):
-        for timeout in (0, -1, float("inf"), float("nan"), True):
-            with self.subTest(timeout=timeout), self.assertRaises(ValueError):
-                NamedPipeByteStream(OverlappedIO(FakeBackend()), 12, timeout=timeout)
+    def test_read_exact_handles_short_reads_with_one_absolute_deadline(self):
+        clock = FakeClock()
+        calls = []
+        chunks = iter((b"ab", b"c", b"de"))
+
+        def read_chunk(size, timeout):
+            calls.append((size, timeout))
+            clock.advance(0.1)
+            return next(chunks)
+
+        self.assertEqual(read_exact(read_chunk, 5, Deadline(1.0, clock=clock)), b"abcde")
+        self.assertEqual([call[0] for call in calls], [5, 3, 2])
+        self.assertAlmostEqual(calls[-1][1], 0.8)
+
+    def test_read_exact_fails_closed_on_eof_and_deadline(self):
+        with self.assertRaises(PipePeerClosed):
+            read_exact(lambda size, timeout: b"", 1, Deadline(1))
+        clock = FakeClock()
+
+        def slow_read(size, timeout):
+            clock.advance(0.6)
+            return b"x"
+
+        with self.assertRaises(PipeDeadlineExceeded):
+            read_exact(slow_read, 2, Deadline(1, clock=clock))
+
+    def test_write_all_handles_short_writes_and_zero_progress(self):
+        chunks = []
+
+        def write_chunk(data, timeout):
+            amount = min(2, len(data))
+            chunks.append(bytes(data[:amount]))
+            return amount
+
+        write_all(write_chunk, b"abcde", Deadline(1))
+        self.assertEqual(chunks, [b"ab", b"cd", b"e"])
+        with self.assertRaises(PipeNoProgress):
+            write_all(lambda data, timeout: 0, b"x", Deadline(1))
+
+    def test_write_all_maps_timeout_to_transport_deadline(self):
+        def timed_out(data, timeout):
+            raise TimeoutError("native wait timed out")
+
+        with self.assertRaises(PipeDeadlineExceeded):
+            write_all(timed_out, b"x", Deadline(1))
 
 
 if __name__ == "__main__":
