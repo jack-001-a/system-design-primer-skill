@@ -27,6 +27,14 @@ def parse_utc_parts(value: str, field: str) -> tuple[datetime, str]:
     return whole_second, match.group(2) or ""
 
 
+def parse_rfc3161_gen_time(value: str, field: str = "gen_time") -> tuple[datetime, str]:
+    """Enforce the RFC 3161 DER GeneralizedTime fractional-seconds form."""
+    whole_second, fraction = parse_utc_parts(value, field)
+    if fraction.endswith("0"):
+        raise ValueError(field + " fractional seconds must omit trailing zeros")
+    return whole_second, fraction
+
+
 def compare_utc_values(left: str, right: str, field: str = "UTC timestamp") -> int:
     """Compare two UTC timestamps without truncating or rounding fractional digits."""
     left_second, left_fraction = parse_utc_parts(left, field + " left value")
@@ -75,6 +83,7 @@ def utc_unix_second_bounds(value: str, field: str = "UTC timestamp") -> list[int
 def validate_crl_issuer_validity(value: Any, field: str, gen_time: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(field + " evidence is missing")
+    parse_rfc3161_gen_time(gen_time, "gen_time")
     required = ("crl_this_update", "not_before", "not_after")
     times = {name: parse_utc(value.get(name), field + "." + name) for name in required}
     if not (times["not_before"] <= times["crl_this_update"] <= times["not_after"]):
@@ -206,7 +215,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                             responder_revocation_result_sha256: str | None = None,
                             timestamp_result: dict[str, Any] | None = None,
                             timestamp_result_sha256: str | None = None) -> dict[str, Any]:
-    gen_whole_second, gen_fraction = parse_utc_parts(gen_time, "gen_time")
+    gen_whole_second, gen_fraction = parse_rfc3161_gen_time(gen_time, "gen_time")
     effective_second = gen_whole_second
     if any(digit != "0" for digit in gen_fraction):
         from datetime import timedelta
@@ -358,7 +367,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             raise ValueError("OCSP responder-chain validation times must be a list of Unix-second integers")
         historical_at_time = ocsp_result.get("historical_at_time")
         if scope == historical_scope:
-            gen_whole_second, gen_fraction = parse_utc_parts(gen_time, "gen_time")
+            gen_whole_second, gen_fraction = parse_rfc3161_gen_time(gen_time, "gen_time")
             if len(gen_fraction) > 6:
                 raise ValueError(
                     "historical OCSP cannot represent genTime with more than six fractional digits"
