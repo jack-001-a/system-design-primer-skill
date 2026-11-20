@@ -1048,5 +1048,83 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(operation.state, win32.OverlappedOperation.CLOSED)
 
 
+    def test_disconnect_proceeds_after_concurrent_event_close_failure(self):
+        entered_close = threading.Event()
+        release_close = threading.Event()
+        disconnect_started = threading.Event()
+        close_calls = []
+        close_errors = []
+        disconnect_calls = []
+        disconnect_results = []
+        disconnect_errors = []
+
+        def fail_first_event_close(handle):
+            close_calls.append(handle)
+            entered_close.set()
+            if len(close_calls) == 1 and not release_close.wait(2):
+                raise AssertionError("event close was not released")
+            return len(close_calls) > 1
+
+        operation, _ = self.make_operation(close=fail_first_event_close)
+        operation.mark_completed()
+        connection = win32.NamedPipeConnection(10)
+        connection.register_operation(operation)
+
+        fake = FakeKernel32()
+        fake.CloseHandle = lambda handle: 1
+        fake.DisconnectNamedPipe = lambda handle: disconnect_calls.append(handle) or 1
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+
+        def close_operation():
+            try:
+                operation.close()
+            except OSError as exc:
+                close_errors.append(exc)
+
+        def disconnect():
+            disconnect_started.set()
+            try:
+                disconnect_results.append(
+                    win32.disconnect_named_pipe(bindings, connection, operation)
+                )
+            except Exception as exc:
+                disconnect_errors.append(exc)
+
+        closer = threading.Thread(target=close_operation)
+        closer.start()
+        self.assertTrue(entered_close.wait(2))
+        disconnector = threading.Thread(target=disconnect)
+        disconnector.start()
+        self.assertTrue(disconnect_started.wait(2))
+        self.assertEqual(disconnect_calls, [])
+
+        release_close.set()
+        closer.join(2)
+        disconnector.join(2)
+        self.assertFalse(closer.is_alive())
+        self.assertFalse(disconnector.is_alive())
+        self.assertEqual(len(close_errors), 1)
+        self.assertEqual(disconnect_errors, [])
+        self.assertEqual(disconnect_results, [(True, None)])
+        self.assertEqual(disconnect_calls, [10])
+        self.assertEqual(operation.state, operation.COMPLETED)
+        self.assertEqual(operation.event_handle, 20)
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertIn(operation, connection._operations)
+
+        operation.close()
+        connection.unregister_operation(operation)
+        self.assertEqual(close_calls, [20, 20])
+        self.assertEqual(
+            win32.close_named_pipe(bindings, connection), (True, None)
+        )
+        self.assertEqual(connection.state, connection.CLOSED)
+
+
 if __name__ == "__main__":
     unittest.main()
