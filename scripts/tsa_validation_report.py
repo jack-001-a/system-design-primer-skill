@@ -54,11 +54,12 @@ def require_digest(value: Any, field: str) -> str:
 def _build_limitations(ocsp: dict[str, Any], responder: dict[str, Any]) -> list[str]:
     """Describe only the evidence gaps that remain for this report configuration."""
     limitations = [
-        "This report does not independently verify the RFC 3161 token or derive genTime; it binds the caller-supplied time to the pinned timestamp and CRL result files.",
+        "This report does not independently verify the RFC 3161 token or derive genTime; it only compares caller-supplied genTime with the timestamp and CRL result records.",
+        "genTime provenance is caller-asserted. This report does not authenticate the source of the supplied time or independently verify the timestamp token.",
         "The TSA CRL finding covers only the supplied certificate path and CRL. It does not prove that all applicable revocation sources, trust policies, or CRL partitions were supplied.",
         "The supported CRL verifier is limited to direct CRLs without certificate CRLDistributionPoints; delta, indirect, named issuing-distribution-point, and partial-reason coverage are not assessed.",
-        "Result JSON files are accepted only when their byte digests match independently supplied pins; a digest generated from the same untrusted file is not an authenticity guarantee.",
-        "The independent pins must be retained through a separate trusted channel. This report does not prove who produced the result JSON or which verifier binary executed.",
+        "Result JSON files are accepted only when their byte digests match caller-supplied pins; this report checks byte equality but does not authenticate the pin source.",
+        "A caller must obtain and retain each pin through a separately trusted channel. The report cannot establish that separation, identify who produced the result JSON, or prove which verifier binary executed.",
         "This report is an aggregation record, not a digital signature or an independent trust anchor.",
     ]
     if not ocsp.get("provided"):
@@ -365,12 +366,20 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "schema_version": 1,
         "report_type": "tsa_long_term_validation_evidence",
         "gen_time": gen_time,
-        "gen_time_source": "caller_supplied_from_independently_verified_rfc3161_token",
+        "gen_time_source": "caller_asserted_from_external_timestamp_verification",
+        "gen_time_provenance": {
+            "source": "caller_supplied_gen_time_argument",
+            "independently_verified_by_this_report": False,
+        },
         "tsa_certificate_sha256": certificate_digest,
         "timestamp_result_sha256": timestamp_result_sha256,
         "timestamp_verification_scope": timestamp_verification_scope,
         "timestamp_not_established": timestamp_not_established,
-        "result_digest_policy": "required_independent_sha256_pins_for_all_supplied_result_files",
+        "result_digest_policy": "caller_supplied_sha256_pins_checked_for_byte_equality_only",
+        "result_digest_pin_provenance": {
+            "source": "caller_supplied_command_line_arguments",
+            "independently_authenticated_by_this_report": False,
+        },
         "timestamp_signer_serial_number": timestamp_result.get("tsa_signer_serial_number"),
         "historical_revocation_assessment": {
             "source": "verified_crl",
@@ -381,7 +390,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                 "distribution_points": "not_evaluated",
                 "all_applicable_crl_sources": "not_established",
                 "all_chain_certificates": "not_assessed",
-                "complete_revocation_status": false,
+                "complete_revocation_status": False,
             },
             "validation_time": gen_time,
             "evaluation_time_upper_bound": expected_effective_at_time,
@@ -411,19 +420,20 @@ def write_report(output: Path, report: dict[str, Any]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--gen-time", required=True)
+    parser.add_argument("--gen-time", required=True,
+                        help="caller-asserted UTC genTime; obtain it from an independently verified RFC 3161 token")
     parser.add_argument("--timestamp-result", type=Path, required=True)
     parser.add_argument("--timestamp-result-sha256", required=True,
-                        help="independently recorded SHA-256 of timestamp result JSON")
+                        help="caller-supplied SHA-256 pin for timestamp result JSON; pin provenance is not authenticated here")
     parser.add_argument("--crl-result", type=Path, required=True)
     parser.add_argument("--crl-result-sha256", required=True,
-                        help="independently recorded SHA-256 of CRL result JSON")
+                        help="caller-supplied SHA-256 pin for CRL result JSON; pin provenance is not authenticated here")
     parser.add_argument("--ocsp-result", type=Path)
     parser.add_argument("--ocsp-result-sha256",
-                        help="independently recorded SHA-256 of OCSP result JSON")
+                        help="caller-supplied SHA-256 pin for OCSP result JSON; pin provenance is not authenticated here")
     parser.add_argument("--ocsp-responder-revocation-result", type=Path)
     parser.add_argument("--ocsp-responder-revocation-result-sha256",
-                        help="independently recorded SHA-256 of responder CRL result JSON")
+                        help="caller-supplied SHA-256 pin for responder CRL result JSON; pin provenance is not authenticated here")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     try:

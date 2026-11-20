@@ -108,6 +108,23 @@ class TsaValidationReportTests(unittest.TestCase):
         for limitation in self.timestamp["not_established"]:
             self.assertIn(limitation, report["limitations"])
 
+    def test_report_discloses_caller_asserted_gen_time_and_pin_provenance(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        self.assertEqual(report["gen_time_source"], "caller_asserted_from_external_timestamp_verification")
+        self.assertEqual(report["gen_time_provenance"], {
+            "source": "caller_supplied_gen_time_argument",
+            "independently_verified_by_this_report": False,
+        })
+        self.assertEqual(report["result_digest_policy"],
+                         "caller_supplied_sha256_pins_checked_for_byte_equality_only")
+        self.assertEqual(report["result_digest_pin_provenance"], {
+            "source": "caller_supplied_command_line_arguments",
+            "independently_authenticated_by_this_report": False,
+        })
+        joined = " ".join(report["limitations"]).lower()
+        self.assertIn("caller-asserted", joined)
+        self.assertIn("does not authenticate the pin source", joined)
+
     def test_rejects_timestamp_result_missing_scope(self):
         bad = dict(self.timestamp)
         bad.pop("verification_scope")

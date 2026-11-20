@@ -85,14 +85,29 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
     parse_utc(report["gen_time"], "gen_time")
     require_sha256(report["tsa_certificate_sha256"], "tsa_certificate_sha256")
     require_sha256(report["timestamp_result_sha256"], "timestamp_result_sha256")
-    if report["result_digest_policy"] != "required_independent_sha256_pins_for_all_supplied_result_files":
-        raise ValueError("TSA report does not declare the required independent result-digest pin policy")
+    if report["result_digest_policy"] != "caller_supplied_sha256_pins_checked_for_byte_equality_only":
+        raise ValueError("TSA report does not accurately describe caller-supplied digest-pin checking")
+    if report.get("gen_time_source") != "caller_asserted_from_external_timestamp_verification":
+        raise ValueError("TSA report genTime provenance must be explicitly caller-asserted")
+    if report.get("gen_time_provenance") != {
+        "source": "caller_supplied_gen_time_argument",
+        "independently_verified_by_this_report": False,
+    }:
+        raise ValueError("TSA report must not claim independent genTime verification")
+    if report.get("result_digest_pin_provenance") != {
+        "source": "caller_supplied_command_line_arguments",
+        "independently_authenticated_by_this_report": False,
+    }:
+        raise ValueError("TSA report must disclose that digest-pin provenance is not authenticated here")
     signer_serial = report["timestamp_signer_serial_number"]
     if not isinstance(signer_serial, str) or not signer_serial.strip() or len(signer_serial) > 128:
         raise ValueError("timestamp_signer_serial_number must be a non-empty string of at most 128 characters")
     historical = report["historical_revocation_assessment"]
     if not isinstance(historical, dict):
         raise ValueError("historical_revocation_assessment must be an object")
+    claim_scope = historical.get("claim_scope")
+    if not isinstance(claim_scope, dict) or claim_scope.get("complete_revocation_status") is not False:
+        raise ValueError("historical CRL claim scope must explicitly disclaim complete revocation status")
     if historical.get("source") != "verified_crl" or historical.get("status") != "not_revoked_at_gen_time":
         raise ValueError("historical CRL assessment must explicitly report verified non-revocation")
     if historical.get("validation_time") != report["gen_time"]:
@@ -206,7 +221,11 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
     if (not isinstance(limitations, list)
             or any(not isinstance(item, str) or not item.strip() for item in limitations)):
         raise ValueError("TSA report limitations must be a list of non-empty strings")
-    expected_limitations = _build_limitations(current, responder)
+    timestamp_not_established = report.get("timestamp_not_established")
+    if (not isinstance(timestamp_not_established, list) or not timestamp_not_established
+            or any(not isinstance(item, str) or not item.strip() for item in timestamp_not_established)):
+        raise ValueError("TSA report timestamp_not_established must be a non-empty list")
+    expected_limitations = _build_limitations(current, responder) + timestamp_not_established
     if limitations != expected_limitations:
         raise ValueError("TSA report limitations do not match the supplied OCSP/responder evidence scope")
     # The complete report, not a selected projection, is the canonical claim.
