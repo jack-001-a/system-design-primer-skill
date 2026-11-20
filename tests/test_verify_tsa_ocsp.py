@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import shutil
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -37,6 +38,7 @@ class TsaOcspTests(unittest.TestCase):
             .add_extension(x509.KeyUsage(digital_signature=False, content_commitment=False,
                 key_encipherment=False, data_encipherment=False, key_agreement=False,
                 key_cert_sign=True, crl_sign=True, encipher_only=False, decipher_only=False), critical=True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(self.root_key.public_key()), critical=False)
             .sign(self.root_key, hashes.SHA256()))
         self.roots.write_bytes(self.root_certificate.public_bytes(Encoding.PEM))
         target_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
@@ -366,12 +368,16 @@ Next Update: Nov 19 12:05:00 2026 GMT
                 .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
                     key_encipherment=False, data_encipherment=False, key_agreement=False,
                     key_cert_sign=False, crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
+                .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), critical=False)
+                .add_extension(x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(
+                    self.root_certificate.extensions.get_extension_for_class(x509.SubjectKeyIdentifier).value
+                ), critical=False)
                 .sign(self.root_key, hashes.SHA256()))
         response = (ocsp.OCSPResponseBuilder()
             .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
                           ocsp.OCSPCertStatus.GOOD, now - timedelta(minutes=1),
                           now + timedelta(minutes=5), None, None)
-            .responder_id(responder_encoding, cert).sign(key, hashes.SHA256()))
+            .responder_id(responder_encoding, cert).certificates([cert]).sign(key, hashes.SHA256()))
         self.responder.write_bytes(cert.public_bytes(Encoding.PEM))
         self.response.write_bytes(response.public_bytes(Encoding.DER))
         return hashlib.sha256(self.responder.read_bytes()).hexdigest()
@@ -421,7 +427,50 @@ Next Update: Nov 19 12:05:00 2026 GMT
             command = run.call_args_list[1].args[0]
             self.assertIn("-no_intern", command)
             self.assertIn("-verify_other", command)
+            self.assertNotIn("-issuer", command)
             self.assertEqual(result["responder_certificate_sha256"], digest)
+
+    def test_real_openssl_enforces_pinned_responder_key_for_same_name_certificate(self):
+        if shutil.which("openssl") is None:
+            self.skipTest("OpenSSL CLI is not installed")
+
+        digest = self.make_responder_response(ocsp.OCSPResponderEncoding.NAME)
+        valid = verify_ocsp_response(
+            self.cert, self.issuer, self.roots, self.response, self.pin(), now=self.now,
+            responder_certificate=self.responder,
+            expected_responder_certificate_sha256=digest,
+        )
+        self.assertEqual(valid["status"], "good")
+
+        actual_signer = x509.load_pem_x509_certificate(self.responder.read_bytes())
+        alternate_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        alternate = (x509.CertificateBuilder()
+            .subject_name(actual_signer.subject).issuer_name(self.root_name)
+            .public_key(alternate_key.public_key()).serial_number(x509.random_serial_number())
+            .not_valid_before(self.now - timedelta(days=1))
+            .not_valid_after(self.now + timedelta(days=30))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .add_extension(x509.ExtendedKeyUsage([x509.oid.ExtendedKeyUsageOID.OCSP_SIGNING]), critical=False)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=False, crl_sign=False, encipher_only=False, decipher_only=False), critical=True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(alternate_key.public_key()), critical=False)
+            .add_extension(x509.AuthorityKeyIdentifier.from_issuer_subject_key_identifier(
+                self.root_certificate.extensions.get_extension_for_class(x509.SubjectKeyIdentifier).value
+            ), critical=False)
+            .sign(self.root_key, hashes.SHA256()))
+        self.responder.write_bytes(alternate.public_bytes(Encoding.PEM))
+        alternate_digest = hashlib.sha256(self.responder.read_bytes()).hexdigest()
+
+        # ResponderID byName matches both certificates. The OpenSSL signature
+        # check must still fail when the pinned certificate has the wrong key.
+        bind_responder_certificate(self.response, self.responder, alternate_digest)
+        with self.assertRaisesRegex(ValueError, "OpenSSL OCSP verification failed"):
+            verify_ocsp_response(
+                self.cert, self.issuer, self.roots, self.response, self.pin(), now=self.now,
+                responder_certificate=self.responder,
+                expected_responder_certificate_sha256=alternate_digest,
+            )
 
     def test_verification_uses_immutable_snapshots_of_all_evidence_inputs(self):
         responder_digest = self.make_responder_response(ocsp.OCSPResponderEncoding.NAME)
