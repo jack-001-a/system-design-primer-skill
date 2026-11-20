@@ -306,7 +306,7 @@ class TsaRevocationTests(unittest.TestCase):
         legacy_certificate = Mock()
         legacy_certificate.issuer = self.listing.issuer
         legacy_certificate.version = x509.Version.v1
-        legacy_certificate.extensions.get_extension_for_oid.side_effect = x509.ExtensionNotFound("missing")
+        legacy_certificate.extensions.get_extension_for_oid.side_effect = x509.ExtensionNotFound("missing", x509.oid.ExtensionOID.BASIC_CONSTRAINTS)
         with self.assertRaisesRegex(ValueError, "cannot cover X.509 v1/v2"):
             validate_direct_crl_scope(legacy_certificate, [self.issuer], self.listing, NOW, NOW)
 
