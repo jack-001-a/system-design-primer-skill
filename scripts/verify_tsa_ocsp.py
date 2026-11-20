@@ -23,7 +23,7 @@ HEX256 = re.compile(r"^[0-9a-f]{64}$")
 MAX_OCSP_RESPONSE_BYTES = 16 * 1024 * 1024
 MAX_DER_DEPTH = 64
 MAX_DER_NODES = 200_000
-MAX_DER_CHILDREN = 100_000
+MAX_DER_CHILDREN = 50_000
 def parse_historical_at_time(value: str) -> datetime:
     """Parse UTC historical targets without silently truncating sub-microsecond precision."""
     match = re.fullmatch(
@@ -193,7 +193,12 @@ def _validate_generalized_time_tree(data: bytes | memoryview) -> None:
 
 
 def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
-    """Enforce RFC 5280 time syntax for core and standard extension times in BasicOCSPResponse."""
+    """Enforce bounded RFC 5280 time syntax for BasicOCSPResponse fields."""
+    if len(response_der) > MAX_OCSP_RESPONSE_BYTES:
+        raise ValueError(
+            "OCSP response exceeds the maximum supported size of "
+            + str(MAX_OCSP_RESPONSE_BYTES) + " bytes"
+        )
     response_content = _require_single_der_value(
         response_der, 0x30, "OCSPResponse"
     )
@@ -321,18 +326,32 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
     with tempfile.TemporaryDirectory(prefix="tsa-ocsp-inputs-") as temporary:
         snapshot_dir = Path(temporary)
 
-        def snapshot(name: str, source: Path | None) -> Path | None:
+        def snapshot(
+            name: str, source: Path | None, max_bytes: int | None = None
+        ) -> Path | None:
             if source is None:
                 return None
             destination = snapshot_dir / name
-            destination.write_bytes(source.read_bytes())
+            if max_bytes is None:
+                raw = source.read_bytes()
+            else:
+                # Read at most one byte beyond the limit so a hostile oversized
+                # file is rejected without first allocating the entire input.
+                with source.open("rb") as stream:
+                    raw = stream.read(max_bytes + 1)
+                if len(raw) > max_bytes:
+                    raise ValueError(
+                        "OCSP response exceeds the maximum supported size of "
+                        + str(max_bytes) + " bytes"
+                    )
+            destination.write_bytes(raw)
             return destination
 
         return _verify_ocsp_response_snapshot(
             snapshot("target-certificate", certificate),
             snapshot("issuer-certificate", issuer),
             snapshot("issuer-roots", roots),
-            snapshot("ocsp-response.der", response),
+            snapshot("ocsp-response.der", response, MAX_OCSP_RESPONSE_BYTES),
             expected_roots_sha256,
             snapshot("intermediates.pem", intermediates),
             now=now,
