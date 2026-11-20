@@ -141,7 +141,8 @@ def validate_direct_crl_scope(
     certificate: x509.Certificate,
     issuer_certificates: list[x509.Certificate],
     crl: x509.CertificateRevocationList,
-    at_time: datetime,
+    target_time: datetime,
+    evaluation_time: datetime,
 ) -> tuple[str, dict[str, Any]]:
     """Validate supported CRL applicability; OpenSSL subsequently verifies signatures/path."""
     if certificate.issuer != crl.issuer:
@@ -234,9 +235,9 @@ def validate_direct_crl_scope(
             if len(directory_names) != 1 or directory_names[0] != signer.issuer or serial != signer.serial_number:
                 raise ValueError("CRL AKI authority certificate identity does not match issuer certificate")
 
-    if crl.last_update_utc > at_time:
+    if crl.last_update_utc > target_time:
         raise ValueError("CRL thisUpdate is later than the historical validation time")
-    if crl.next_update_utc is None or crl.next_update_utc < at_time:
+    if crl.next_update_utc is None or crl.next_update_utc < evaluation_time:
         raise ValueError("CRL nextUpdate does not cover the historical validation time")
 
     validate_crl_signature_policy(crl, signer)
@@ -253,6 +254,7 @@ def verify_crl_status(
     expected_crl_sha256: str | None = None,
 ) -> dict[str, Any]:
     epoch = parse_utc_epoch(at_time)
+    target_instant = datetime.fromisoformat(at_time[:-1] + "+00:00")
     instant = datetime.fromtimestamp(epoch, timezone.utc)
     effective_at_time = instant.isoformat(timespec="seconds").replace("+00:00", "Z")
     if not isinstance(expected_roots_sha256, str) or not HEX256.fullmatch(expected_roots_sha256):
@@ -281,7 +283,7 @@ def verify_crl_status(
         if intermediates is not None:
             issuer_certs.extend(load_certificates(intermediates))
         parsed_crl = load_crl(crl)
-        signer_digest, issuer_validity = validate_direct_crl_scope(cert, issuer_certs, parsed_crl, instant)
+        signer_digest, issuer_validity = validate_direct_crl_scope(cert, issuer_certs, parsed_crl, target_instant, instant)
         entry_assessment = assess_crl_entry(cert, parsed_crl, instant)
         if entry_assessment["status_at_time"] == "revoked":
             raise ValueError("target certificate is revoked at the historical validation time")
