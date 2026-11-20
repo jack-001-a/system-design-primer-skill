@@ -517,10 +517,13 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not authorized for cRLSign"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
-    def test_rejects_crl_issuer_without_key_usage_extension(self):
+    def test_rejects_trust_anchor_crl_issuer_without_key_usage_extension(self):
+        # This fixture makes the CRL issuer the self-issued trust anchor, so
+        # trust-anchor preflight rejects the missing extension before the
+        # lower-level direct-CRL signer check is reached.
         self.issuer, self.leaf, self.listing = make_material(include_key_usage=False)
         self.write_material()
-        with self.assertRaisesRegex(ValueError, "lacks explicit keyUsage with cRLSign"):
+        with self.assertRaisesRegex(ValueError, "trust-anchor certificate lacks explicit keyUsage with keyCertSign"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_fractional_gen_time_rejects_crl_issued_at_ceil_second(self):
