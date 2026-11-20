@@ -588,11 +588,11 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "applicability preflight failed"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
-    def test_rejects_invalidity_date_after_revocation_date(self):
+    def test_later_invalidity_date_does_not_override_revocation_date(self):
         entry = self.make_entry(NOW-timedelta(minutes=1), invalidity=NOW+timedelta(minutes=1))
         self.issuer, self.leaf, self.listing = make_material(entry=entry)
         self.write_material()
-        with self.assertRaisesRegex(ValueError, "must not be later"):
+        with self.assertRaisesRegex(ValueError, "target certificate is revoked"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_openssl_failure(self):
