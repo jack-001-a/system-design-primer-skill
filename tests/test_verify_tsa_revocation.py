@@ -48,6 +48,7 @@ def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_befo
             authority_cert_issuer=[x509.DirectoryName(name)],
             authority_cert_serial_number=1,
         ), False)
+        .add_extension(x509.CRLNumber(1), False)
     )
     if delta:
         builder = builder.add_extension(x509.DeltaCRLIndicator(1), True)
@@ -222,11 +223,33 @@ class TsaRevocationTests(unittest.TestCase):
             authority_cert_issuer=None, authority_cert_serial_number=None)
         self.listing = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
             .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
-            .add_extension(aki_only, False).sign(
+            .add_extension(aki_only, False).add_extension(x509.CRLNumber(2), False).sign(
                 rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256()))
         self.crl.write_bytes(self.listing.public_bytes(serialization.Encoding.PEM))
         with self.assertRaisesRegex(ValueError, "exactly one supplied certificate after AKI matching"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(), intermediates=self.intermediates)
+
+    def test_rejects_crl_without_authority_key_identifier(self):
+        builder = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
+            .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
+            .add_extension(x509.CRLNumber(3), False))
+        self.listing = builder.sign(self.issuer.public_key() if False else
+            rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256())
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "mandatory AuthorityKeyIdentifier"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_rejects_crl_without_crl_number(self):
+        builder = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
+            .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
+            .add_extension(x509.AuthorityKeyIdentifier(
+                key_identifier=x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()).digest,
+                authority_cert_issuer=[x509.DirectoryName(self.issuer.issuer)],
+                authority_cert_serial_number=self.issuer.serial_number), False))
+        self.listing = builder.sign(rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256())
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "mandatory CRLNumber"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_mismatched_crl_issuer(self):
         other = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "other issuer")])
