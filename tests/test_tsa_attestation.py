@@ -562,6 +562,7 @@ class TsaAttestationTests(unittest.TestCase):
         gen_time = "2026-11-19T23:59:59.9999999Z"
         report = json.loads(self.report.read_text())
         report["gen_time"] = gen_time
+        report["timestamp_chain_validation"]["validation_time"] = gen_time
         historical = report["historical_revocation_assessment"]
         historical["validation_time"] = gen_time
         historical["evaluation_time_upper_bound"] = "2026-11-20T00:00:00Z"
