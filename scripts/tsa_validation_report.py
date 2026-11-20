@@ -195,7 +195,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
     ):
         raise ValueError("timestamp verification method provenance is missing or unsupported")
     if timestamp_result.get("tsa_chain_valid_at_gen_time") is not True:
-        raise ValueError("timestamp TSA chain is not explicitly verified at genTime")
+        raise ValueError("timestamp TSA chain validation is not explicitly verified at genTime")
     if timestamp_result.get("tsa_chain_validation_time") != gen_time:
         raise ValueError("timestamp TSA chain validation time does not exactly match genTime")
     if timestamp_result.get("tsa_chain_validation_scope") != (
