@@ -116,42 +116,36 @@ def _validate_generalized_time_value(value: bytes) -> None:
 
 
 def _validate_generalized_time_tree(data: bytes) -> None:
-    """Validate GeneralizedTime nodes while preserving their constructed-node context."""
+    """Validate direct GeneralizedTime fields and known OCSP time-bearing extensions."""
     archive_cutoff_oid = bytes.fromhex("2b0601050507300106")  # id-pkix-ocsp-archive-cutoff
     crl_id_oid = bytes.fromhex("2b0601050507300103")  # id-pkix-ocsp-crl
+    children = list(_der_children(data))
 
-    def visit(tag: int, value: bytes) -> None:
+    # data is the contents of the parent constructed value. When that parent
+    # is an Extension SEQUENCE, its contents are OID, optional critical BOOLEAN,
+    # and extnValue OCTET STRING. Match the known time-bearing extension OIDs
+    # here because recursion deliberately strips the enclosing SEQUENCE tag.
+    if (len(children) in (2, 3) and children[0][0] == 0x06
+            and children[-1][0] == 0x04
+            and (len(children) == 2 or children[1][0] == 0x01)):
+        extension_oid = children[0][1]
+        extension_value = children[-1][1]
+        if extension_oid == archive_cutoff_oid:
+            generalized_time = _require_single_der_value(
+                extension_value, 0x18, "OCSP archiveCutoff"
+            )
+            _validate_generalized_time_value(generalized_time)
+        elif extension_oid == crl_id_oid:
+            crl_id = _require_single_der_value(
+                extension_value, 0x30, "OCSP CrlID"
+            )
+            _validate_generalized_time_tree(crl_id)
+
+    for tag, value in children:
         if tag == 0x18:
             _validate_generalized_time_value(value)
-            return
-        if not tag & 0x20:
-            return
-
-        children = list(_der_children(value))
-        if tag == 0x30 and len(children) in (2, 3):
-            # Extension ::= SEQUENCE { extnID, critical DEFAULT FALSE, extnValue }
-            if (children[0][0] == 0x06 and children[-1][0] == 0x04
-                    and (len(children) == 2 or children[1][0] == 0x01)):
-                extension_oid = children[0][1]
-                extension_value = children[-1][1]
-                if extension_oid == archive_cutoff_oid:
-                    generalized_time = _require_single_der_value(
-                        extension_value, 0x18, "OCSP archiveCutoff"
-                    )
-                    _validate_generalized_time_value(generalized_time)
-                elif extension_oid == crl_id_oid:
-                    crl_id = _require_single_der_value(
-                        extension_value, 0x30, "OCSP CrlID"
-                    )
-                    # The OCTET STRING contains a second DER value, so restore
-                    # its SEQUENCE tag before walking its explicitly tagged time.
-                    visit(0x30, crl_id)
-
-        for child_tag, child_value in children:
-            visit(child_tag, child_value)
-
-    for child_tag, child_value in _der_children(data):
-        visit(child_tag, child_value)
+        elif tag & 0x20:
+            _validate_generalized_time_tree(value)
 
 
 def validate_ocsp_generalized_time_profile(response_der: bytes) -> None:
