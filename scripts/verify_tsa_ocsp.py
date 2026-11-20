@@ -17,13 +17,15 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.x509 import ocsp
 
 HEX256 = re.compile(r"^[0-9a-f]{64}$")
-DATE_FORMAT = "%b %d %H:%M:%S %Y GMT"
-
-def parse_openssl_time(value: str) -> datetime:
+def load_certificate(path: Path, description: str) -> x509.Certificate:
+    raw = path.read_bytes()
     try:
-        return datetime.strptime(value.strip(), DATE_FORMAT).replace(tzinfo=timezone.utc)
-    except ValueError as exc:
-        raise ValueError("unrecognized OpenSSL OCSP time: " + value) from exc
+        return x509.load_pem_x509_certificate(raw)
+    except ValueError:
+        try:
+            return x509.load_der_x509_certificate(raw)
+        except ValueError as exc:
+            raise ValueError("could not parse " + description) from exc
 
 
 def _der_tlv(data: bytes, offset: int = 0) -> tuple[int, bytes, int]:
@@ -176,20 +178,10 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
         raise ValueError("OpenSSL did not confirm OCSP response signature and responder-chain verification")
     try:
         parsed_response = ocsp.load_der_ocsp_response(response.read_bytes())
-        target_certificate = x509.load_pem_x509_certificate(certificate.read_bytes())
-    except ValueError:
-        try:
-            target_certificate = x509.load_der_x509_certificate(certificate.read_bytes())
-        except ValueError as exc:
-            raise ValueError("could not parse target certificate or OCSP response") from exc
-        parsed_response = ocsp.load_der_ocsp_response(response.read_bytes())
-    try:
-        issuer_certificate = x509.load_pem_x509_certificate(issuer.read_bytes())
-    except ValueError:
-        try:
-            issuer_certificate = x509.load_der_x509_certificate(issuer.read_bytes())
-        except ValueError as exc:
-            raise ValueError("could not parse OCSP issuer certificate") from exc
+    except ValueError as exc:
+        raise ValueError("could not parse OCSP response") from exc
+    target_certificate = load_certificate(certificate, "target certificate")
+    issuer_certificate = load_certificate(issuer, "OCSP issuer certificate")
     if parsed_response.response_status is not ocsp.OCSPResponseStatus.SUCCESSFUL:
         raise ValueError("OCSP response status is not successful")
     matching_responses = []
