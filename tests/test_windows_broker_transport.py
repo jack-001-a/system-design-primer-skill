@@ -27,7 +27,7 @@ class FakeBackend:
             buffer[:min(len(buffer), len(self.read_data))] = self.read_data[:len(buffer)]
         return {"operation": operation, "buffer": buffer}, self.immediate
 
-    def wait(self, token, timeout_ms):
+    def wait(self, token, timeout_ms, cancel_event):
         self.events.append(("wait", timeout_ms))
         if self.fail_wait is not None:
             raise self.fail_wait
@@ -61,6 +61,25 @@ class WindowsBrokerTransportTests(unittest.TestCase):
         count = OverlappedIO(backend).perform("write", 12, b"data", timeout=2)
         self.assertEqual(count, 4)
         self.assertEqual(backend.events, ["start", ("wait", 2000), "complete", "close"])
+
+    def test_connect_accepts_inline_pipe_connected_translation(self):
+        backend = FakeBackend(immediate=0)
+        OverlappedIO(backend).connect(12, timeout=2)
+        self.assertEqual(backend.events, ["start", "close"])
+
+    def test_cancel_event_that_wins_native_wait_is_drained(self):
+        backend = FakeBackend(waits=[False])
+        cancel = threading.Event()
+
+        def set_cancel():
+            cancel.set()
+
+        backend.wait = lambda token, timeout_ms, cancel_event: (set_cancel() or False)
+        with self.assertRaises(TransportCancelled):
+            OverlappedIO(backend).perform(
+                "read", 12, bytearray(4), timeout=2, cancel_event=cancel
+            )
+        self.assertEqual(backend.events, ["start", "cancel", "drain", "close"])
 
     def test_inline_completion_does_not_wait(self):
         backend = FakeBackend(immediate=3)
@@ -120,6 +139,8 @@ class WindowsBrokerTransportTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             stream.read()
+        with self.assertRaises(ValueError):
+            stream.read(1024 * 1024 + 5)
         stream.close()
         stream.close()
         self.assertTrue(stream.closed)

@@ -11,6 +11,8 @@ import threading
 import time
 from typing import Any, Protocol
 
+MAX_PIPE_IO_BYTES = 1024 * 1024 + 4
+
 
 class TransportError(OSError):
     """The broker transport could not complete an operation."""
@@ -47,7 +49,9 @@ class OverlappedBackend(Protocol):
     def start(self, operation: str, handle: Any, buffer: bytearray | bytes) -> tuple[Any, int | None]:
         ...
 
-    def wait(self, token: Any, timeout_ms: int) -> bool:
+    def wait(
+        self, token: Any, timeout_ms: int, cancel_event: threading.Event | None
+    ) -> bool:
         ...
 
     def complete(self, token: Any) -> int:
@@ -123,15 +127,14 @@ class OverlappedIO:
                     self._cancel_and_drain(token)
                     safe_to_close = True
                     raise TransportTimeout(f"{operation} operation timed out")
-                if self._backend.wait(token, remaining):
+                if self._backend.wait(token, remaining, cancel_event):
                     safe_to_close = True
                     return self._validate_count(
                         self._backend.complete(token), len(buffer), operation
                     )
-                cancellation_attempted = True
-                self._cancel_and_drain(token)
-                safe_to_close = True
-                raise TransportTimeout(f"{operation} operation timed out")
+                # A false wait can mean either the deadline elapsed or the
+                # cancellation event won the native wait race. Re-check both
+                # conditions at the top of the loop before deciding.
         except (TransportCancelled, TransportTimeout):
             raise
         except BaseException:
@@ -143,6 +146,18 @@ class OverlappedIO:
         finally:
             if safe_to_close:
                 self._backend.close(token)
+
+    def connect(
+        self,
+        handle: Any,
+        *,
+        timeout: float,
+        cancel_event: threading.Event | None = None,
+    ) -> None:
+        """Wait for ConnectNamedPipe; the backend handles ERROR_PIPE_CONNECTED."""
+        self.perform(
+            "connect", handle, b"", timeout=timeout, cancel_event=cancel_event
+        )
 
     def _cancel_and_drain(self, token: Any) -> None:
         try:
@@ -207,8 +222,10 @@ class NamedPipeByteStream:
 
     def read(self, size: int = -1) -> bytes:
         self._ensure_open()
-        if size < 0:
-            raise ValueError("unbounded reads are not supported by the named-pipe transport")
+        if type(size) is not int or size < 0:
+            raise ValueError("read size must be a non-negative integer")
+        if size > MAX_PIPE_IO_BYTES:
+            raise ValueError("read size exceeds the bounded pipe I/O limit")
         if size == 0:
             return b""
         buffer = bytearray(size)
@@ -221,6 +238,8 @@ class NamedPipeByteStream:
     def write(self, data: bytes | bytearray | memoryview) -> int:
         self._ensure_open()
         raw = bytes(data)
+        if len(raw) > MAX_PIPE_IO_BYTES:
+            raise ValueError("write size exceeds the bounded pipe I/O limit")
         if not raw:
             return 0
         return self._io.perform(
