@@ -22,6 +22,20 @@ class TsaAttestationTests(unittest.TestCase):
             "gen_time": "2026-11-19T12:00:00Z",
             "tsa_certificate_sha256": h(b"cert"),
             "timestamp_result_sha256": h(b"timestamp"),
+            "timestamp_chain_validation": {
+                "status": "verified",
+                "validation_time": "2026-11-19T12:00:00Z",
+                "scope": (
+                    "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; "
+                    "RFC 3161 Accuracy is reported separately and does not widen the -attime interval"
+                ),
+                "policy": (
+                    "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, "
+                    "-auth_level 2, -purpose timestampsign, and -x509_strict at the exact floor/ceiling "
+                    "Unix-second bound(s) of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL"
+                ),
+                "intermediates_sha256": None,
+            },
             "result_digest_policy": "caller_supplied_sha256_pins_checked_for_byte_equality_only",
             "gen_time_source": "caller_asserted_from_external_timestamp_verification",
             "gen_time_provenance": {
@@ -165,6 +179,29 @@ class TsaAttestationTests(unittest.TestCase):
             create_attestation(self.report, self.private, "tsa-attester",
                 hashlib.sha256(b"verifier package").hexdigest(),
                 "system-design-primer TSA verifier release")
+
+    def test_attestation_rejects_missing_or_malformed_timestamp_chain_provenance(self):
+        original = json.loads(self.report.read_text(encoding="utf-8"))
+        cases = (
+            ("missing", None),
+            ("invalid_digest", "not-a-sha256-digest"),
+        )
+        for name, digest in cases:
+            report = json.loads(json.dumps(original))
+            if name == "missing":
+                report.pop("timestamp_chain_validation")
+            else:
+                report["timestamp_chain_validation"]["intermediates_sha256"] = digest
+            self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
+            with self.subTest(name=name), self.assertRaisesRegex(
+                ValueError, "timestamp_chain_validation"
+            ):
+                create_attestation(
+                    self.report, self.private, "tsa-attester",
+                    hashlib.sha256(b"verifier package").hexdigest(),
+                    "system-design-primer TSA verifier release",
+                )
+        self.report.write_text(json.dumps(original, sort_keys=True), encoding="utf-8")
 
     def test_attestation_rejects_invalid_timestamp_signer_serial(self):
         report = json.loads(self.report.read_text(encoding="utf-8"))
