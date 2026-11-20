@@ -1181,12 +1181,13 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
     def test_bounded_drain_rejects_invalid_timeout(self):
         operation, _ = self.make_operation()
         operation.mark_pending()
-        with self.assertRaises(ValueError):
-            operation.cancel_and_drain(
-                cancel_io_ex=lambda *_: (True, 0),
-                get_overlapped_result_ex=lambda *_: (True, 0, None),
-                timeout_ms=-1,
-            )
+        for invalid_timeout in (-1, win32.INFINITE):
+            with self.subTest(timeout_ms=invalid_timeout), self.assertRaises(ValueError):
+                operation.cancel_and_drain(
+                    cancel_io_ex=lambda *_: (True, 0),
+                    get_overlapped_result_ex=lambda *_: (True, 0, None),
+                    timeout_ms=invalid_timeout,
+                )
 
     def test_cancel_error_still_requires_and_performs_drain(self):
         operation, _ = self.make_operation()

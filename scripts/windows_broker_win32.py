@@ -194,8 +194,8 @@ def get_overlapped_result_ex_wait(
     """Read completion status with a finite timeout and no alertable wait."""
     if not isinstance(timeout_ms, int) or isinstance(timeout_ms, bool):
         raise TypeError("timeout_ms must be an integer")
-    if timeout_ms < 0 or timeout_ms > MAX_DWORD:
-        raise ValueError("timeout_ms must fit an unsigned Win32 DWORD")
+    if timeout_ms < 0 or timeout_ms >= INFINITE:
+        raise ValueError("timeout_ms must be a finite unsigned Win32 timeout")
     transferred = DWORD(0)
     succeeded = bool(bindings.GetOverlappedResultEx(
         file_handle, ctypes.byref(overlapped), ctypes.byref(transferred),
@@ -423,7 +423,7 @@ class OverlappedOperation:
     """Own one event, OVERLAPPED object and buffer until I/O is truly complete.
 
     Callbacks return (success, error_code) for CancelIoEx and
-    (success, bytes_transferred, error_code) for GetOverlappedResult. The latter
+    (success, bytes_transferred, error_code) for GetOverlappedResultEx. The latter
     must be invoked with wait=True so a terminal result is obtained before the
     operation releases any memory. ERROR_NOT_FOUND from cancellation is treated
     as a completion race, never as proof that the OVERLAPPED can be freed.
