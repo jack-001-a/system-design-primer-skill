@@ -122,7 +122,13 @@ def _copy_regular_file_snapshot(source: Path, destination: Path, label: str) -> 
 
 
 def _create_windows_job(process: subprocess.Popen[bytes]):
-    """Assign the CLI to a kill-on-close Job Object so descendants cannot outlive it."""
+    """Assign an already-running CLI to a kill-on-close Job Object.
+
+    This contains descendants created after assignment, but cannot close the
+    startup race between Popen returning and AssignProcessToJobObject. Strict
+    containment requires creation-time Job Object association via a native
+    STARTUPINFOEX/PROC_THREAD_ATTRIBUTE_JOB_LIST launch path.
+    """
     if os.name != "nt":
         return None
 
