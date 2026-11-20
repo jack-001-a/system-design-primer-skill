@@ -76,22 +76,26 @@ def _copy_regular_file_snapshot(source: Path, destination: Path, label: str) -> 
             pass
         raise
 
+    destination_created = False
     try:
         with source_stream:
             opened = os.fstat(source_stream.fileno())
             if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
                 raise ValueError(f"{label} changed identity while being opened")
-            with destination.open("xb") as destination_stream:
+            destination_stream = destination.open("xb")
+            destination_created = True
+            with destination_stream:
                 shutil.copyfileobj(source_stream, destination_stream)
             after = os.fstat(source_stream.fileno())
             stable_fields = ("st_size", "st_mtime_ns", "st_ctime_ns")
             if any(getattr(opened, field, None) != getattr(after, field, None) for field in stable_fields):
                 raise ValueError(f"{label} changed while being snapshotted")
     except Exception:
-        try:
-            destination.unlink()
-        except FileNotFoundError:
-            pass
+        if destination_created:
+            try:
+                destination.unlink()
+            except FileNotFoundError:
+                pass
         raise
 
 

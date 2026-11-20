@@ -261,6 +261,15 @@ class BuildProvenanceTests(unittest.TestCase):
         _copy_regular_file_snapshot(source, snapshot, "source")
         self.assertEqual(snapshot.read_bytes(), b"stable input")
 
+    def test_descriptor_snapshot_preserves_existing_destination(self):
+        source = Path(self.temp.name) / "source.bin"
+        snapshot = Path(self.temp.name) / "snapshot.bin"
+        source.write_bytes(b"input")
+        snapshot.write_bytes(b"pre-existing")
+        with self.assertRaises(FileExistsError):
+            _copy_regular_file_snapshot(source, snapshot, "source")
+        self.assertEqual(snapshot.read_bytes(), b"pre-existing")
+
     def test_descriptor_snapshot_closes_fd_if_fdopen_fails(self):
         source = Path(self.temp.name) / "source.bin"
         snapshot = Path(self.temp.name) / "snapshot.bin"
