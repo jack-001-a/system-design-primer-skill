@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import stat
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -96,7 +97,7 @@ class BuildProvenanceTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "GitHub CLI"):
             verify_build_provenance(self.artifact, **self.policy)
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_vulnerable_gh_versions_are_rejected_before_verification(self, which, run):
         run.return_value = __import__("subprocess").CompletedProcess(["gh", "version"], 0, "gh version 2.101.0", "")
@@ -104,7 +105,7 @@ class BuildProvenanceTests(unittest.TestCase):
             verify_build_provenance(self.artifact, **self.policy)
         self.assertEqual(run.call_count, 1)
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_cli_version_timeout_is_reported_as_runtime_error(self, which, run):
         import subprocess
@@ -114,7 +115,7 @@ class BuildProvenanceTests(unittest.TestCase):
             verify_build_provenance(self.artifact, **self.policy)
         self.assertEqual(run.call_args.kwargs["timeout"], 30)
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_cli_verification_timeout_is_reported_and_bounded(self, which, run):
         import subprocess
@@ -128,17 +129,17 @@ class BuildProvenanceTests(unittest.TestCase):
         self.assertEqual(run.call_args_list[0].kwargs["timeout"], 30)
         self.assertEqual(run.call_args_list[1].kwargs["timeout"], 300)
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_cli_verification_failure_is_not_overridden(self, which, run):
         run.side_effect = [
-            type("Completed", (), {"returncode": 0, "stdout": "gh version 2.102.0", "stderr": ""})(),
+            __import__("subprocess").CompletedProcess(["gh", "version"], 0, "gh version 2.102.0", ""),
             __import__("subprocess").CompletedProcess(["gh"], 1, "", "certificate identity mismatch"),
         ]
         with self.assertRaisesRegex(RuntimeError, "certificate identity mismatch"):
             verify_build_provenance(self.artifact, **self.policy)
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_subject_and_predicate_are_checked_after_crypto_verification(self, which, run):
         cases = [
@@ -160,7 +161,7 @@ class BuildProvenanceTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     verify_build_provenance(self.artifact, **self.policy)
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_every_verified_attestation_must_match_artifact_and_repository(self, which, run):
         import copy
@@ -189,19 +190,19 @@ class BuildProvenanceTests(unittest.TestCase):
                 trusted_root=root, repository_id=1462786926,
             )
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_empty_or_malformed_cli_result_fails_closed(self, which, run):
         for stdout in ("[]", "not-json", '[{"unexpected": true}]'):
             with self.subTest(stdout=stdout):
                 run.side_effect = [
-                    type("Completed", (), {"returncode": 0, "stdout": "gh version 2.102.0", "stderr": ""})(),
+                    __import__("subprocess").CompletedProcess(["gh", "version"], 0, "gh version 2.102.0", ""),
                     __import__("subprocess").CompletedProcess(["gh"], 0, stdout, ""),
                 ]
                 with self.assertRaises(RuntimeError):
                     verify_build_provenance(self.artifact, **self.policy)
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_uses_explicit_bundle_and_trusted_root(self, which, run):
         bundle = Path(self.temp.name) / "attestations.jsonl"
@@ -240,7 +241,7 @@ class BuildProvenanceTests(unittest.TestCase):
                 self.artifact, **self.policy, bundle=bundle, repository_id=1462786926
             )
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_offline_bundle_rejects_repository_id_mismatch(self, which, run):
         bundle = Path(self.temp.name) / "attestations.jsonl"
@@ -254,7 +255,7 @@ class BuildProvenanceTests(unittest.TestCase):
                 trusted_root=root, repository_id=999,
             )
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_offline_bundle_requires_repository_id(self, which, run):
         bundle = Path(self.temp.name) / "attestations.jsonl"
@@ -274,6 +275,36 @@ class BuildProvenanceTests(unittest.TestCase):
         root.write_text("{}\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "only be used with an offline bundle"):
             verify_build_provenance(self.artifact, **self.policy, trusted_root=root)
+
+    def test_cli_stdout_limit_rejects_oversized_output(self):
+        command = [
+            sys.executable, "-c",
+            "import sys; sys.stdout.write('x' * 10000)",
+        ]
+        with self.assertRaisesRegex(RuntimeError, "stdout exceeded"):
+            _run_cli_bounded(
+                command, timeout=5, output_dir=Path(self.temp.name),
+                stdout_limit=128,
+            )
+
+    def test_cli_stderr_limit_rejects_oversized_output(self):
+        command = [
+            sys.executable, "-c",
+            "import sys; sys.stderr.write('x' * 10000)",
+        ]
+        with self.assertRaisesRegex(RuntimeError, "stderr exceeded"):
+            _run_cli_bounded(
+                command, timeout=5, output_dir=Path(self.temp.name),
+                stdout_limit=128, stderr_limit=128,
+            )
+
+    def test_cli_timeout_kills_and_reaps_process(self):
+        command = [sys.executable, "-c", "import time; time.sleep(5)"]
+        with self.assertRaises(__import__("subprocess").TimeoutExpired):
+            _run_cli_bounded(
+                command, timeout=0, output_dir=Path(self.temp.name),
+                stdout_limit=128,
+            )
 
     def test_sha256_file_hashes_large_files_incrementally(self):
         artifact = Path(self.temp.name) / "large-artifact.bin"
