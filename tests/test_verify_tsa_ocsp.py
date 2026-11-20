@@ -65,15 +65,6 @@ Next Update: Nov 19 12:05:00 2026 GMT
     def tearDown(self): self.temp.cleanup()
     def pin(self): return hashlib.sha256(self.roots.read_bytes()).hexdigest()
     def run_valid(self, output=None):
-        if output is not None and "Cert Status: revoked" in output:
-            revoked_response = (ocsp.OCSPResponseBuilder()
-                .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
-                    ocsp.OCSPCertStatus.REVOKED, self.now - timedelta(minutes=2),
-                    self.now + timedelta(minutes=5), self.now - timedelta(hours=1),
-                    x509.ReasonFlags.key_compromise)
-                .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
-                .sign(self.root_key, hashes.SHA256()))
-            self.response.write_bytes(revoked_response.public_bytes(Encoding.DER))
         with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
             request_result = Mock(returncode=0, stdout="", stderr="")
             response_result = Mock(returncode=0, stdout=self.output if output is None else output, stderr="")
@@ -93,6 +84,14 @@ Next Update: Nov 19 12:05:00 2026 GMT
         self.assertIn("-no-CAstore", command)
         self.assertIn("-x509_strict", command)
     def test_reports_revoked_status_without_calling_it_good(self):
+        revoked_response = (ocsp.OCSPResponseBuilder()
+            .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
+                ocsp.OCSPCertStatus.REVOKED, self.now - timedelta(minutes=2),
+                self.now + timedelta(minutes=5), self.now - timedelta(hours=1),
+                x509.ReasonFlags.key_compromise)
+            .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
+            .sign(self.root_key, hashes.SHA256()))
+        self.response.write_bytes(revoked_response.public_bytes(Encoding.DER))
         output = self.output.replace("Cert Status: good", "Cert Status: revoked")
         result, _, _ = self.run_valid(output)
         self.assertEqual(result["status"], "revoked")
@@ -116,7 +115,8 @@ Next Update: Nov 19 12:05:00 2026 GMT
             .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
             .sign(self.root_key, hashes.SHA256()))
         self.response.write_bytes(multi.public_bytes(Encoding.DER))
-        result, _, _ = self.run_valid()
+        misleading_text = self.output.replace("Cert Status: good", "Cert Status: revoked")
+        result, _, _ = self.run_valid(misleading_text)
         self.assertEqual(result["status"], "good")
         self.assertEqual(result["this_update"], (self.now - timedelta(minutes=2)).isoformat().replace("+00:00", "Z"))
 
@@ -156,16 +156,36 @@ Next Update: Nov 19 12:05:00 2026 GMT
         with self.assertRaisesRegex(ValueError, "did not confirm"):
             self.run_valid(self.output.replace("Response verify OK", "Response verify failure"))
     def test_rejects_stale_response(self):
-        output = self.output.replace("Nov 19 12:05:00 2026 GMT", "Nov 19 11:50:00 2026 GMT")
+        stale = (ocsp.OCSPResponseBuilder()
+            .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
+                ocsp.OCSPCertStatus.GOOD, self.now - timedelta(minutes=20),
+                self.now - timedelta(minutes=10), None, None)
+            .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
+            .sign(self.root_key, hashes.SHA256()))
+        self.response.write_bytes(stale.public_bytes(Encoding.DER))
         with self.assertRaisesRegex(ValueError, "stale"):
-            self.run_valid(output)
+            self.run_valid()
     def test_rejects_missing_next_update(self):
-        with self.assertRaisesRegex(ValueError, "lacks an unambiguous"):
-            self.run_valid(self.output.replace("Next Update: Nov 19 12:05:00 2026 GMT\n", ""))
+        missing = (ocsp.OCSPResponseBuilder()
+            .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
+                ocsp.OCSPCertStatus.GOOD, self.now - timedelta(minutes=2),
+                None, None, None)
+            .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
+            .sign(self.root_key, hashes.SHA256()))
+        self.response.write_bytes(missing.public_bytes(Encoding.DER))
+        with self.assertRaisesRegex(ValueError, "lacks nextUpdate"):
+            self.run_valid()
     def test_rejects_future_produced_at(self):
-        output = self.output.replace("Nov 19 11:59:00 2026 GMT", "Nov 19 12:10:00 2026 GMT")
-        with self.assertRaisesRegex(ValueError, "future"):
-            self.run_valid(output)
+        from types import SimpleNamespace
+        single = next(iter(ocsp.load_der_ocsp_response(self.response.read_bytes()).responses))
+        parsed = SimpleNamespace(
+            response_status=ocsp.OCSPResponseStatus.SUCCESSFUL,
+            responses=[single],
+            produced_at=self.now + timedelta(minutes=10),
+        )
+        with patch("scripts.verify_tsa_ocsp.ocsp.load_der_ocsp_response", return_value=parsed):
+            with self.assertRaisesRegex(ValueError, "future"):
+                self.run_valid()
 
     def test_rejects_non_self_issued_intermediate_in_root_bundle(self):
         intermediate = (x509.CertificateBuilder()
