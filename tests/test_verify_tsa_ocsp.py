@@ -26,7 +26,7 @@ class TsaOcspTests(unittest.TestCase):
         self.responder = self.root / "responder.pem"
         for path, data in ((self.cert,b"cert"),(self.issuer,b"issuer"),(self.response,b"response"),(self.responder,b"responder")):
             path.write_bytes(data)
-        self.now = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
+        self.now = datetime.now(timezone.utc).replace(microsecond=0)
         self.root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         self.root_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "OCSP test trust anchor")])
         self.root_certificate = (x509.CertificateBuilder().subject_name(self.root_name)
@@ -96,12 +96,61 @@ Next Update: Nov 19 12:05:00 2026 GMT
         output = self.output.replace("Cert Status: good", "Cert Status: revoked")
         result, _, _ = self.run_valid(output)
         self.assertEqual(result["status"], "revoked")
+    def test_selects_target_certid_when_response_contains_multiple_certificates(self):
+        other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        other_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Other certificate")])
+        other_certificate = (x509.CertificateBuilder().subject_name(other_name)
+            .issuer_name(self.root_name).public_key(other_key.public_key())
+            .serial_number(201).not_valid_before(self.now - timedelta(days=1))
+            .not_valid_after(self.now + timedelta(days=30))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .sign(self.root_key, hashes.SHA256()))
+        multi = (ocsp.OCSPResponseBuilder()
+            .add_response(other_certificate, self.root_certificate, hashes.SHA1(),
+                ocsp.OCSPCertStatus.REVOKED, self.now - timedelta(minutes=4),
+                self.now + timedelta(minutes=5), self.now - timedelta(hours=1),
+                x509.ReasonFlags.key_compromise)
+            .add_response(self.target_certificate, self.root_certificate, hashes.SHA1(),
+                ocsp.OCSPCertStatus.GOOD, self.now - timedelta(minutes=2),
+                self.now + timedelta(minutes=5), None, None)
+            .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
+            .sign(self.root_key, hashes.SHA256()))
+        self.response.write_bytes(multi.public_bytes(Encoding.DER))
+        result, _, _ = self.run_valid()
+        self.assertEqual(result["status"], "good")
+        self.assertEqual(result["this_update"], (self.now - timedelta(minutes=2)).isoformat().replace("+00:00", "Z"))
+
+    def test_rejects_response_without_target_certid(self):
+        other_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        other_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Unrelated certificate")])
+        other_certificate = (x509.CertificateBuilder().subject_name(other_name)
+            .issuer_name(self.root_name).public_key(other_key.public_key())
+            .serial_number(202).not_valid_before(self.now - timedelta(days=1))
+            .not_valid_after(self.now + timedelta(days=30))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+            .sign(self.root_key, hashes.SHA256()))
+        unrelated = (ocsp.OCSPResponseBuilder()
+            .add_response(other_certificate, self.root_certificate, hashes.SHA1(),
+                ocsp.OCSPCertStatus.GOOD, self.now - timedelta(minutes=2),
+                self.now + timedelta(minutes=5), None, None)
+            .responder_id(ocsp.OCSPResponderEncoding.NAME, self.root_certificate)
+            .sign(self.root_key, hashes.SHA256()))
+        self.response.write_bytes(unrelated.public_bytes(Encoding.DER))
+        with self.assertRaisesRegex(ValueError, "exactly one unambiguous CertID match"):
+            self.run_valid()
+
     def test_accepts_preproduced_response_before_this_update(self):
-        output = self.output.replace("Nov 19 11:59:00 2026 GMT", "Nov 19 11:57:00 2026 GMT")
-        result, _, _ = self.run_valid(output)
+        from types import SimpleNamespace
+        single = next(iter(ocsp.load_der_ocsp_response(self.response.read_bytes()).responses))
+        parsed = SimpleNamespace(
+            response_status=ocsp.OCSPResponseStatus.SUCCESSFUL,
+            responses=[single],
+            produced_at=self.now - timedelta(minutes=3),
+        )
+        with patch("scripts.verify_tsa_ocsp.ocsp.load_der_ocsp_response", return_value=parsed):
+            result, _, _ = self.run_valid()
         self.assertTrue(result["verified"])
-        self.assertEqual(result["produced_at"], "2026-11-19T11:57:00Z")
-        self.assertEqual(result["this_update"], "2026-11-19T11:58:00Z")
+        self.assertLess(result["produced_at"], result["this_update"])
 
     def test_rejects_missing_signature_verification(self):
         with self.assertRaisesRegex(ValueError, "did not confirm"):
@@ -204,11 +253,11 @@ Next Update: Nov 19 12:05:00 2026 GMT
         with self.assertRaisesRegex(ValueError, "pin mismatch"):
             verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,"0"*64,now=self.now)
     def test_historical_mode_uses_target_time_for_responder_chain_and_status_window(self):
-        target = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
+        target = self.now + timedelta(minutes=1)
         result, _, command = self.run_historical(target)
         self.assertTrue(result["verified"])
         self.assertEqual(result["scope"], "historical OCSP status validation at the supplied target time")
-        self.assertEqual(result["historical_at_time"], "2026-11-19T12:00:00Z")
+        self.assertEqual(result["historical_at_time"], target.isoformat().replace("+00:00", "Z"))
         self.assertIn("-attime", command)
         self.assertIn(str(int(target.timestamp())), command)
 
@@ -220,7 +269,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
             return result, run.call_args_list[0].args[0], run.call_args_list[1].args[0]
 
     def test_historical_mode_rejects_target_outside_signed_interval(self):
-        target = datetime(2026, 11, 19, 12, 11, tzinfo=timezone.utc)
+        target = self.now + timedelta(minutes=11)
         with self.assertRaisesRegex(ValueError, "stale"):
             self.run_historical(target)
 
