@@ -149,7 +149,14 @@ class TsaValidationReportTests(unittest.TestCase):
 
     def test_crl_alone_produces_historical_assessment(self):
         report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
-        self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")
+        assessment = report["historical_revocation_assessment"]
+        self.assertEqual(assessment["status"], "not_revoked_at_gen_time")
+        self.assertEqual(assessment["claim_scope"]["crl_coverage"], "supplied_crl_only")
+        self.assertEqual(assessment["claim_scope"]["distribution_points"], "not_evaluated")
+        self.assertEqual(assessment["claim_scope"]["all_applicable_crl_sources"], "not_established")
+        self.assertEqual(assessment["claim_scope"]["all_chain_certificates"], "not_assessed")
+        self.assertIs(assessment["claim_scope"]["complete_revocation_status"], False)
+        self.assertIn("single supplied", assessment["claim_scope"]["meaning"])
         self.assertEqual(report["current_ocsp_assessment"]["assessment"], "not_provided")
     def test_overall_assessment_distinguishes_historical_ocsp_revoked(self):
         historical = dict(self.ocsp, status="revoked",
