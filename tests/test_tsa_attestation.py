@@ -513,7 +513,6 @@ class TsaAttestationTests(unittest.TestCase):
     @patch("scripts.tsa_attestation.verify_timestamp")
     def test_submicrosecond_gen_time_and_accuracy_are_compared_exactly(self, timestamp):
         import base64
-        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         gen_time = "2026-11-19T23:59:59.9999999Z"
         report = json.loads(self.report.read_text())
         report["gen_time"] = gen_time
@@ -527,6 +526,7 @@ class TsaAttestationTests(unittest.TestCase):
             "system-design-primer TSA verifier release",
         )
         self.attestation.write_text(json.dumps(envelope), encoding="utf-8")
+        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
 
         timestamp.return_value = {
             "verified": True, "verification_scope": {
