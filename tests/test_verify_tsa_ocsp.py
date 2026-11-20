@@ -20,6 +20,7 @@ from scripts.verify_tsa_ocsp import bind_responder_certificate
 from scripts.verify_tsa_ocsp import (
     verify_ocsp_response, validate_trust_anchor_bundle, verification_time_bounds,
     parse_historical_at_time, validate_ocsp_generalized_time_profile,
+    load_certificate,
     MAX_OCSP_RESPONSE_BYTES, MAX_OCSP_INPUT_BYTES,
     MAX_DER_DEPTH, MAX_DER_CHILDREN, MAX_DER_NODES,
     _validate_der_primitive, _der_children, _require_single_der_value,
@@ -601,6 +602,18 @@ Next Update: Nov 19 12:05:00 2026 GMT
                 verify_ocsp_response(
                     self.cert, self.issuer, self.roots, self.response, self.pin(), now=self.now
                 )
+
+    def test_direct_ocsp_helper_inputs_use_the_same_size_limit(self):
+        oversized = self.root / "oversized-helper-input"
+        with oversized.open("wb") as stream:
+            stream.truncate(MAX_OCSP_INPUT_BYTES + 1)
+
+        with self.assertRaisesRegex(ValueError, "maximum supported size"):
+            load_certificate(oversized, "test certificate")
+        with self.assertRaisesRegex(ValueError, "maximum supported size"):
+            validate_trust_anchor_bundle(oversized)
+        with self.assertRaisesRegex(ValueError, "maximum supported size"):
+            bind_responder_certificate(self.response, oversized, "a" * 64)
 
     def test_rejects_oversized_non_response_ocsp_input_before_openssl(self):
         oversized = self.root / "oversized-intermediates.pem"
