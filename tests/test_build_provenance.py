@@ -525,5 +525,55 @@ class BuildProvenanceTests(unittest.TestCase):
                 verify_build_provenance(self.artifact, **policy)
 
 
+
+    @unittest.skipUnless(os.name == "nt", "Win32 Job Object API is Windows-specific")
+    def test_windows_job_open_process_failure_terminates_and_closes_job(self):
+        from unittest.mock import MagicMock
+        from scripts.verify_build_provenance import _create_windows_job
+        kernel32 = MagicMock()
+        kernel32.CreateJobObjectW.return_value = 101
+        kernel32.SetInformationJobObject.return_value = True
+        kernel32.OpenProcess.return_value = None
+        with patch("ctypes.WinDLL", return_value=kernel32), patch("ctypes.get_last_error", return_value=5):
+            process = type("Process", (), {"pid": 4242})()
+            with self.assertRaises(OSError):
+                _create_windows_job(process)
+        kernel32.TerminateJobObject.assert_called_once_with(101, 1)
+        kernel32.CloseHandle.assert_called_once_with(101)
+        kernel32.AssignProcessToJobObject.assert_not_called()
+
+    @unittest.skipUnless(os.name == "nt", "Win32 Job Object API is Windows-specific")
+    def test_windows_job_assignment_failure_closes_process_and_job_handles(self):
+        from unittest.mock import MagicMock
+        from scripts.verify_build_provenance import _create_windows_job
+        kernel32 = MagicMock()
+        kernel32.CreateJobObjectW.return_value = 101
+        kernel32.SetInformationJobObject.return_value = True
+        kernel32.OpenProcess.return_value = 202
+        kernel32.AssignProcessToJobObject.return_value = False
+        with patch("ctypes.WinDLL", return_value=kernel32), patch("ctypes.get_last_error", return_value=5):
+            process = type("Process", (), {"pid": 4242})()
+            with self.assertRaises(OSError):
+                _create_windows_job(process)
+        kernel32.AssignProcessToJobObject.assert_called_once_with(101, 202)
+        kernel32.TerminateJobObject.assert_called_once_with(101, 1)
+        self.assertEqual([call.args[0] for call in kernel32.CloseHandle.call_args_list], [101, 202])
+
+    @unittest.skipUnless(os.name == "nt", "Win32 Job Object API is Windows-specific")
+    def test_windows_job_success_closes_temporary_process_handle(self):
+        from unittest.mock import MagicMock
+        from scripts.verify_build_provenance import _create_windows_job
+        kernel32 = MagicMock()
+        kernel32.CreateJobObjectW.return_value = 101
+        kernel32.SetInformationJobObject.return_value = True
+        kernel32.OpenProcess.return_value = 202
+        kernel32.AssignProcessToJobObject.return_value = True
+        with patch("ctypes.WinDLL", return_value=kernel32):
+            process = type("Process", (), {"pid": 4242})()
+            job = _create_windows_job(process)
+        self.assertEqual(job, 101)
+        kernel32.AssignProcessToJobObject.assert_called_once_with(101, 202)
+        kernel32.CloseHandle.assert_called_once_with(202)
+
 if __name__ == "__main__":
     unittest.main()
