@@ -343,7 +343,7 @@ def verify_crl_status(
         "certificate_sha256": hashlib.sha256(cert_bytes).hexdigest(),
         "issuer_roots_sha256": roots_digest,
         "issuer_intermediates_sha256": hashlib.sha256(intermediates.read_bytes()).hexdigest() if intermediates is not None else None,
-        "trust_anchor_policy": "issuer-roots bundle contains only self-issued CA certificates with keyCertSign; intermediates are supplied separately via -untrusted",
+        "trust_anchor_policy": "issuer-roots bundle contains only self-issued trust-anchor certificates; CRL issuer CA/keyCertSign/cRLSign are checked independently; intermediates are supplied separately via -untrusted",
         "crl_sha256": crl_digest,
         "crl_issuer_certificate_sha256": signer_digest,
         "crl_issuer_certificate_validity": issuer_validity,
