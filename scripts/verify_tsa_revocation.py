@@ -664,13 +664,26 @@ def verify_crl_status(
     expected_crl_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Verify one immutable CRL snapshot for both preflight and OpenSSL."""
-    crl_bytes = crl.read_bytes()
-    with tempfile.TemporaryDirectory(prefix="tsa-crl-") as directory:
-        snapshot = Path(directory) / "input.crl"
-        snapshot.write_bytes(crl_bytes)
+    # Snapshot every file consumed by Python preflight or the OpenSSL child.
+    # This binds the pinned/parsed objects to the exact paths OpenSSL receives.
+    with tempfile.TemporaryDirectory(prefix="tsa-inputs-") as directory:
+        snapshot_dir = Path(directory)
+
+        def snapshot_input(source: Path, label: str) -> Path:
+            target = snapshot_dir / f"{label}{source.suffix}"
+            target.write_bytes(source.read_bytes())
+            return target
+
+        certificate_snapshot = snapshot_input(certificate, "certificate")
+        roots_snapshot = snapshot_input(issuer_roots, "issuer-roots")
+        crl_snapshot = snapshot_input(crl, "crl")
+        intermediates_snapshot = (
+            snapshot_input(intermediates, "intermediates") if intermediates is not None else None
+        )
         return _verify_crl_status_with_snapshot(
-            certificate, issuer_roots, snapshot, at_time, expected_roots_sha256,
-            intermediates=intermediates, expected_crl_sha256=expected_crl_sha256,
+            certificate_snapshot, roots_snapshot, crl_snapshot, at_time,
+            expected_roots_sha256, intermediates=intermediates_snapshot,
+            expected_crl_sha256=expected_crl_sha256,
         )
 
 
