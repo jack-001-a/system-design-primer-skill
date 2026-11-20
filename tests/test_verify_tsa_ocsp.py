@@ -18,6 +18,7 @@ from scripts.verify_tsa_ocsp import (
     verify_ocsp_response, validate_trust_anchor_bundle, verification_time_bounds,
     parse_historical_at_time, validate_ocsp_generalized_time_profile,
     MAX_OCSP_RESPONSE_BYTES, MAX_DER_DEPTH, MAX_DER_CHILDREN, MAX_DER_NODES,
+    _validate_der_primitive,
 )
 
 
@@ -136,6 +137,56 @@ Next Update: Nov 19 12:05:00 2026 GMT
             run.side_effect = [request_result, response_result]
             result = verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,self.pin(),now=self.now)
             return result, run.call_args_list[0].args[0], run.call_args_list[1].args[0]
+
+    def test_der_primitive_validator_accepts_canonical_values(self):
+        valid = (
+            (0x01, b"\\x00"),  # FALSE
+            (0x01, b"\\xff"),  # TRUE
+            (0x02, b"\\x00"),
+            (0x02, b"\\x00\\x80"),  # Positive 128 requires sign padding.
+            (0x02, b"\\xff\\x7f"),  # Negative 129 requires sign extension.
+            (0x03, b"\\x00"),  # Empty BIT STRING.
+            (0x03, b"\\x03\\xa0"),  # Five meaningful bits.
+            (0x04, b"\\x00"),  # OCTET STRING contents remain opaque.
+            (0x05, b""),  # NULL
+            (0x06, bytes.fromhex("2b0601050507300101")),  # id-pkix-ocsp-basic
+            (0x0A, b"\\x00"),  # ENUMERATED successful
+            (0x18, b"20261120120000Z"),
+            (0x30, der_value(0x05, b"")),  # Constructed SEQUENCE.
+            (0x31, der_value(0x05, b"")),  # Constructed SET.
+        )
+        for tag, value in valid:
+            with self.subTest(tag=hex(tag), value=value):
+                _validate_der_primitive(tag, value)
+
+    def test_der_primitive_validator_rejects_noncanonical_values(self):
+        invalid = (
+            (0x21, b"\\xff", "constructed encoding"),  # Constructed BOOLEAN.
+            (0x01, b"", "one octet"),  # Empty BOOLEAN.
+            (0x01, b"\\x01", "00 or FF"),  # BER TRUE, but not DER TRUE.
+            (0x02, b"", "at least one octet"),
+            (0x02, b"\\x00\\x7f", "redundant sign octets"),
+            (0x02, b"\\xff\\x80", "redundant sign octets"),
+            (0x0A, b"\\x00\\x00", "redundant sign octets"),
+            (0x23, b"\\x00\\x80", "constructed encoding"),  # Constructed BIT STRING.
+            (0x03, b"", "unused-bit count"),
+            (0x03, b"\\x08\\x00", "between 0 and 7"),
+            (0x03, b"\\x03", "zero unused bits"),
+            (0x03, b"\\x03\\xa7", "non-zero padding bits"),
+            (0x24, b"abc", "constructed encoding"),  # Constructed OCTET STRING.
+            (0x05, b"\\x00", "empty contents"),
+            (0x06, b"", "at least one subidentifier"),
+            (0x06, b"\\x80\\x2b", "non-minimal subidentifier"),
+            (0x06, b"\\x81", "unterminated subidentifier"),
+            (0x18, b"20261120120000.1Z", "no fractional seconds"),
+            (0x10, b"", "constructed encoding"),  # Primitive SEQUENCE.
+            (0x11, b"", "constructed encoding"),  # Primitive SET.
+            (0x00, b"", "end-of-contents"),
+        )
+        for tag, value, message in invalid:
+            with self.subTest(tag=hex(tag), value=value, message=message):
+                with self.assertRaisesRegex(ValueError, message):
+                    _validate_der_primitive(tag, value)
 
     def test_ocsp_generalized_time_profile_accepts_whole_second_utc_values(self):
         response = synthetic_ocsp_response(
