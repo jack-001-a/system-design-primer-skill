@@ -435,7 +435,6 @@ class TsaAttestationTests(unittest.TestCase):
 
 
     @patch("scripts.tsa_attestation.verify_timestamp")
-    @patch("scripts.tsa_attestation.verify_timestamp")
     def test_reverification_requires_consistent_optional_intermediate_chain_digest(self, timestamp):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text(encoding="utf-8"))["signature"])
@@ -492,6 +491,7 @@ class TsaAttestationTests(unittest.TestCase):
                 request, response, ca, ca_pin,
             )
 
+    @patch("scripts.tsa_attestation.verify_timestamp")
     def test_rfc3161_timestamp_binds_exact_signature_and_proves_pre_revocation_existence(self, timestamp):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
