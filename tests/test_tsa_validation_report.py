@@ -20,10 +20,17 @@ class TsaValidationReportTests(unittest.TestCase):
             "crl_sha256": hashlib.sha256(b"crl").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"crl roots").hexdigest(),
             "crl_issuer_certificate_sha256": hashlib.sha256(b"crl issuer").hexdigest(),
+            "crl_issuer_certificate_validity": {
+                "crl_this_update": "2026-11-19T11:00:00Z",
+                "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
+                "valid_at_this_update": True, "basic_constraints_ca": True,
+                "key_cert_sign": True, "crl_sign": True,
+                "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
+            },
             "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
             "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
             "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
-            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
             "revocation_entry": {"present": False, "status_at_time": "not_listed"},
         }
         self.ocsp = {
@@ -188,10 +195,17 @@ class TsaValidationReportTests(unittest.TestCase):
             "crl_sha256": hashlib.sha256(b"responder crl").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"responder roots").hexdigest(),
             "crl_issuer_certificate_sha256": hashlib.sha256(b"responder issuer").hexdigest(),
+            "crl_issuer_certificate_validity": {
+                "crl_this_update": "2026-11-19T11:00:00Z",
+                "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
+                "valid_at_this_update": True, "basic_constraints_ca": True,
+                "key_cert_sign": True, "crl_sign": True,
+                "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
+            },
             "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
             "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
             "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
-            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
             "revocation_entry": {"present": False, "status_at_time": "not_listed"},
         }
         value.update(overrides)

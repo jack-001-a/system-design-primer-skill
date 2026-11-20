@@ -20,6 +20,21 @@ def parse_utc(value: str, field: str) -> datetime:
     except ValueError as exc:
         raise ValueError(field + " is not a valid UTC timestamp") from exc
 
+def validate_crl_issuer_validity(value: Any, field: str, gen_time: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(field + " evidence is missing")
+    required = ("crl_this_update", "not_before", "not_after")
+    times = {name: parse_utc(value.get(name), field + "." + name) for name in required}
+    if not (times["not_before"] <= times["crl_this_update"] <= times["not_after"]):
+        raise ValueError(field + " does not establish issuer validity at CRL thisUpdate")
+    if times["crl_this_update"] > parse_utc(gen_time, "gen_time"):
+        raise ValueError(field + " CRL thisUpdate is later than the historical target time")
+    for flag in ("valid_at_this_update", "basic_constraints_ca", "key_cert_sign", "crl_sign"):
+        if value.get(flag) is not True:
+            raise ValueError(field + " must affirm " + flag)
+    if value.get("time_basis") != "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime":
+        raise ValueError(field + " time-basis declaration is missing or unsupported")
+    return value
 def load_json(path: Path, expected_sha256: str) -> tuple[dict[str, Any], str]:
     raw = path.read_bytes()
     digest = hashlib.sha256(raw).hexdigest()
@@ -179,8 +194,10 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         raise ValueError("CRL signature algorithm identity is missing")
     if crl_result.get("crl_signature_policy") != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
         raise ValueError("CRL signature policy evidence is missing or unsupported")
-    if crl_result.get("verification") != "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight":
+    if crl_result.get("verification") != "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight":
         raise ValueError("CRL verification provenance is missing or unsupported")
+    crl_issuer_validity = validate_crl_issuer_validity(
+        crl_result.get("crl_issuer_certificate_validity"), "CRL issuer validity", gen_time)
     entry = crl_result.get("revocation_entry")
     if not isinstance(entry, dict) or entry.get("status_at_time") not in ("not_listed", "not_yet_revoked"):
         raise ValueError("CRL entry evidence does not establish a non-revoked status at genTime")
@@ -280,8 +297,10 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         responder_crl_policy = responder_revocation_result.get("crl_signature_policy")
         if responder_crl_policy != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
             raise ValueError("OCSP responder CRL signature policy evidence is missing or unsupported")
-        if responder_revocation_result.get("verification") != "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight":
+        if responder_revocation_result.get("verification") != "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight":
             raise ValueError("OCSP responder CRL verification provenance is missing or unsupported")
+        responder_issuer_validity = validate_crl_issuer_validity(
+            responder_revocation_result.get("crl_issuer_certificate_validity"), "OCSP responder CRL issuer validity", gen_time)
         responder_entry = responder_revocation_result.get("revocation_entry")
         if not isinstance(responder_entry, dict) or responder_entry.get("status_at_time") not in ("not_listed", "not_yet_revoked"):
             raise ValueError("OCSP responder CRL entry evidence does not establish non-revocation")
@@ -296,6 +315,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "crl_sha256": require_digest(responder_revocation_result.get("crl_sha256"), "responder CRL crl_sha256"),
             "issuer_roots_sha256": require_digest(responder_revocation_result.get("issuer_roots_sha256"), "responder CRL issuer_roots_sha256"),
             "crl_issuer_certificate_sha256": responder_crl_issuer_digest,
+            "crl_issuer_certificate_validity": responder_issuer_validity,
             "crl_signature_algorithm_oid": responder_crl_algorithm,
             "crl_signature_policy": responder_crl_policy,
             "revocation_entry": responder_entry,
@@ -320,6 +340,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             "crl_sha256": crl_digest,
             "issuer_roots_sha256": crl_roots_digest,
             "crl_issuer_certificate_sha256": crl_signer_digest,
+            "crl_issuer_certificate_validity": crl_issuer_validity,
             "crl_signature_algorithm_oid": crl_result["crl_signature_algorithm_oid"],
             "crl_signature_policy": crl_result["crl_signature_policy"],
             "verification": crl_result["verification"],

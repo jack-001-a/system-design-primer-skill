@@ -25,8 +25,15 @@ class TsaAttestationTests(unittest.TestCase):
                 "source": "verified_crl", "status": "not_revoked_at_gen_time",
                 "validation_time": "2026-11-19T12:00:00Z", "evaluation_time_upper_bound": "2026-11-19T12:00:00Z", "crl_sha256": h(b"crl"),
                 "issuer_roots_sha256": h(b"roots"), "crl_issuer_certificate_sha256": h(b"issuer"),
+                "crl_issuer_certificate_validity": {
+                    "crl_this_update": "2026-11-19T11:00:00Z",
+                    "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
+                    "valid_at_this_update": True, "basic_constraints_ca": True,
+                    "key_cert_sign": True, "crl_sign": True,
+                    "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
+                },
                 "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
-                "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed", "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+                "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed", "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
                 "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": h(b"crl-result")
             },
             "current_ocsp_assessment": {"provided": False, "assessment": "not_provided", "historical_status_claim": False},
@@ -155,9 +162,16 @@ class TsaAttestationTests(unittest.TestCase):
             "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
             "responder_certificate_sha256": "e" * 64, "crl_sha256": "f" * 64,
             "issuer_roots_sha256": "1" * 64, "crl_issuer_certificate_sha256": "3" * 64,
+            "crl_issuer_certificate_validity": {
+                "crl_this_update": "2026-11-19T11:00:00Z",
+                "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
+                "valid_at_this_update": True, "basic_constraints_ca": True,
+                "key_cert_sign": True, "crl_sign": True,
+                "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
+            },
             "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
             "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
-            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
             "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": "2" * 64
         }
         self.report.write_text(json.dumps(report, sort_keys=True), encoding="utf-8")
@@ -174,8 +188,15 @@ class TsaAttestationTests(unittest.TestCase):
             "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
             "responder_certificate_sha256": "d" * 64, "crl_sha256": "e" * 64,
             "issuer_roots_sha256": "f" * 64, "crl_issuer_certificate_sha256": "2" * 64,
+            "crl_issuer_certificate_validity": {
+                "crl_this_update": "2026-11-19T11:00:00Z",
+                "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
+                "valid_at_this_update": True, "basic_constraints_ca": True,
+                "key_cert_sign": True, "crl_sign": True,
+                "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
+            },
             "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
-            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
             "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": "1" * 64
         }
         report["historical_ocsp_responder_revocation_assessment"] = responder
@@ -193,9 +214,16 @@ class TsaAttestationTests(unittest.TestCase):
             "status": "not_revoked_at_gen_time", "validation_time": "2026-11-19T12:00:00Z",
             "responder_certificate_sha256": "d" * 64, "crl_sha256": "e" * 64,
             "issuer_roots_sha256": "f" * 64, "crl_issuer_certificate_sha256": "2" * 64,
+            "crl_issuer_certificate_validity": {
+                "crl_this_update": "2026-11-19T11:00:00Z",
+                "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
+                "valid_at_this_update": True, "basic_constraints_ca": True,
+                "key_cert_sign": True, "crl_sign": True,
+                "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
+            },
             "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
             "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
-            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
             "revocation_entry": {"status_at_time": "not_listed"}, "result_file_sha256": "1" * 64
         }
         report["limitations"] = _build_limitations(
