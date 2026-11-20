@@ -17,7 +17,7 @@ NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
 
 
-def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_before=None, issuer_not_after=None, last_update=None, future=False, delta=False, indirect=False, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
+def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_before=None, issuer_not_after=None, last_update=None, future=False, delta=False, indirect=False, empty_idp=False, idp_critical=True, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
     key = rsa.generate_private_key(public_exponent=65537, key_size=key_size)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "CRL issuer")])
     issuer = (
@@ -52,11 +52,11 @@ def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_befo
     )
     if delta:
         builder = builder.add_extension(x509.DeltaCRLIndicator(1), True)
-    if indirect:
+    if indirect or empty_idp:
         builder = builder.add_extension(x509.IssuingDistributionPoint(
             full_name=None, relative_name=None, only_contains_user_certs=False,
             only_contains_ca_certs=False, only_some_reasons=None,
-            indirect_crl=True, only_contains_attribute_certs=False), True)
+            indirect_crl=indirect, only_contains_attribute_certs=False), idp_critical)
     if entry is not None:
         builder = builder.add_revoked_certificate(entry)
     return issuer, leaf, builder.sign(key, hash_algorithm)
@@ -293,6 +293,18 @@ class TsaRevocationTests(unittest.TestCase):
         self.issuer, self.leaf, self.listing = make_material(delta=True)
         self.write_material()
         with self.assertRaisesRegex(ValueError, "delta CRLs are unsupported"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_rejects_empty_issuing_distribution_point(self):
+        self.issuer, self.leaf, self.listing = make_material(empty_idp=True)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "must not be an empty scope"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
+    def test_rejects_noncritical_issuing_distribution_point(self):
+        self.issuer, self.leaf, self.listing = make_material(indirect=True, idp_critical=False)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "must be critical"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_indirect_crl(self):
