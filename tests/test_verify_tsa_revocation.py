@@ -178,6 +178,17 @@ class TsaRevocationTests(unittest.TestCase):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(),
                               expected_crl_sha256="0"*64)
 
+    def test_crl_der_rejects_non_zulu_revocation_date(self):
+        entry = x509.RevokedCertificateBuilder().serial_number(self.leaf.serial_number).revocation_date(
+            NOW-timedelta(minutes=1)).build()
+        _, _, crl = make_material(entry=entry)
+        der = crl.public_bytes(serialization.Encoding.DER)
+        encoded_time = b"261119115900Z"
+        self.assertIn(encoded_time, der)
+        malformed = der.replace(encoded_time, b"26111911590+0", 1)
+        with self.assertRaisesRegex(ValueError, "revocationDate must use UTC time"):
+            validate_crl_der_profile(malformed, crl)
+
     def test_crl_der_rejects_non_zulu_invalidity_date(self):
         entry = x509.RevokedCertificateBuilder().serial_number(self.leaf.serial_number).revocation_date(
             NOW-timedelta(minutes=1)).add_extension(x509.InvalidityDate(NOW-timedelta(minutes=2)), critical=False).build()
