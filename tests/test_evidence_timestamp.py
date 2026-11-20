@@ -195,5 +195,39 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertIn("cms", calls[1])
         self.assertIn("-signer", calls[1])
 
+
+    def test_rejects_noncritical_tsa_signer_key_usage(self):
+        from datetime import datetime, timedelta, timezone
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import NameOID, ExtendedKeyUsageOID
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        now = datetime.now(timezone.utc)
+        subject = issuer = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "TSA signer")])
+        cert = (x509.CertificateBuilder().subject_name(subject).issuer_name(issuer)
+            .public_key(key.public_key()).serial_number(1235)
+            .not_valid_before(now - timedelta(days=1)).not_valid_after(now + timedelta(days=1))
+            .add_extension(x509.ExtendedKeyUsage([ExtendedKeyUsageOID.TIME_STAMPING]), critical=True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=False, crl_sign=False, encipher_only=False, decipher_only=False), critical=False)
+            .sign(key, hashes.SHA256()))
+        pem = cert.public_bytes(serialization.Encoding.PEM)
+        def fake_run(command, **kwargs):
+            if "ts" in command and "-token_out" in command:
+                Path(command[command.index("-out") + 1]).write_bytes(b"CMS token")
+                return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+            if "cms" in command and "-signer" in command:
+                Path(command[command.index("-signer") + 1]).write_bytes(pem)
+                Path(command[command.index("-out") + 1]).write_bytes(b"content")
+                return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
+            raise AssertionError(command)
+        with patch("scripts.evidence_timestamp.openssl_path", return_value="openssl"), patch(
+            "scripts.evidence_timestamp.subprocess.run", side_effect=fake_run
+        ):
+            with self.assertRaisesRegex(ValueError, "KeyUsage must be critical"):
+                inspect_tsa_signer_certificate(self.response, now.isoformat().replace("+00:00", "Z"))
+
 if __name__ == "__main__":
     unittest.main()

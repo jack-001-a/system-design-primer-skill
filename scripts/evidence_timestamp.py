@@ -149,10 +149,13 @@ def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[s
     if not eku_ext.critical or list(eku_ext.value) != [ExtendedKeyUsageOID.TIME_STAMPING]:
         raise ValueError("TSA signer certificate must have a critical, exclusive timeStamping EKU")
     try:
-        key_usage = certificate.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE).value
+        key_usage_ext = certificate.extensions.get_extension_for_oid(ExtensionOID.KEY_USAGE)
     except x509.ExtensionNotFound:
-        key_usage = None
-    if key_usage is not None:
+        key_usage_ext = None
+    if key_usage_ext is not None:
+        if not key_usage_ext.critical:
+            raise ValueError("TSA signer KeyUsage must be critical when present")
+        key_usage = key_usage_ext.value
         permitted = key_usage.digital_signature or key_usage.content_commitment
         prohibited = any((key_usage.key_encipherment, key_usage.data_encipherment,
                           key_usage.key_agreement, key_usage.key_cert_sign, key_usage.crl_sign))
