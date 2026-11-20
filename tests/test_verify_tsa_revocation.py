@@ -178,6 +178,28 @@ class TsaRevocationTests(unittest.TestCase):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(),
                               expected_crl_sha256="0"*64)
 
+    def test_crl_der_rejects_non_zulu_invalidity_date(self):
+        entry = x509.RevokedCertificateBuilder().serial_number(self.leaf.serial_number).revocation_date(
+            NOW-timedelta(minutes=1)).add_extension(x509.InvalidityDate(NOW-timedelta(minutes=2)), critical=False).build()
+        _, _, crl = make_material(entry=entry)
+        der = crl.public_bytes(serialization.Encoding.DER)
+        encoded_time = b"20261119115800Z"
+        self.assertIn(encoded_time, der)
+        malformed = der.replace(encoded_time, b"20261119115800+", 1)
+        with self.assertRaisesRegex(ValueError, "invalidityDate must be GeneralizedTime"):
+            validate_crl_der_profile(malformed, crl)
+
+    def test_crl_der_rejects_fractional_invalidity_date(self):
+        entry = x509.RevokedCertificateBuilder().serial_number(self.leaf.serial_number).revocation_date(
+            NOW-timedelta(minutes=1)).add_extension(x509.InvalidityDate(NOW-timedelta(minutes=2)), critical=False).build()
+        _, _, crl = make_material(entry=entry)
+        der = crl.public_bytes(serialization.Encoding.DER)
+        encoded_time = b"20261119115800Z"
+        self.assertIn(encoded_time, der)
+        malformed = der.replace(encoded_time, b"2026111911580.Z", 1)
+        with self.assertRaisesRegex(ValueError, "invalidityDate must be GeneralizedTime"):
+            validate_crl_der_profile(malformed, crl)
+
     def test_crl_der_requires_matching_inner_and_outer_signature_algorithms(self):
         der = self.listing.public_bytes(serialization.Encoding.DER)
         validate_crl_der_profile(der, self.listing)
