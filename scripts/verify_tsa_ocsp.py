@@ -119,6 +119,7 @@ def _validate_generalized_time_tree(data: bytes) -> None:
     """Validate direct GeneralizedTime fields and known OCSP time-bearing extensions."""
     archive_cutoff_oid = bytes.fromhex("2b0601050507300106")  # id-pkix-ocsp-archive-cutoff
     crl_id_oid = bytes.fromhex("2b0601050507300103")  # id-pkix-ocsp-crl
+    invalidity_date_oid = bytes.fromhex("551d18")  # id-ce-invalidityDate
     children = list(_der_children(data))
 
     # data is the contents of the parent constructed value. When that parent
@@ -130,9 +131,14 @@ def _validate_generalized_time_tree(data: bytes) -> None:
             and (len(children) == 2 or children[1][0] == 0x01)):
         extension_oid = children[0][1]
         extension_value = children[-1][1]
-        if extension_oid == archive_cutoff_oid:
+        if extension_oid in (archive_cutoff_oid, invalidity_date_oid):
+            field = (
+                "OCSP archiveCutoff"
+                if extension_oid == archive_cutoff_oid
+                else "OCSP invalidityDate"
+            )
             generalized_time = _require_single_der_value(
-                extension_value, 0x18, "OCSP archiveCutoff"
+                extension_value, 0x18, field
             )
             _validate_generalized_time_value(generalized_time)
         elif extension_oid == crl_id_oid:
