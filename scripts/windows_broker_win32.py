@@ -578,7 +578,7 @@ class OverlappedOperation:
 
     Callbacks return (success, error_code) for CancelIoEx and
     (success, bytes_transferred, error_code) for GetOverlappedResultEx. The latter
-    must be invoked with wait=True so a terminal result is obtained before the
+    must use a bounded wait so a terminal result is obtained before the
     operation releases any memory. ERROR_NOT_FOUND from cancellation is treated
     as a completion race, never as proof that the OVERLAPPED can be freed.
     """
@@ -676,7 +676,6 @@ class OverlappedOperation:
                 ERROR_IO_INCOMPLETE,
                 ERROR_IO_PENDING,
                 WAIT_TIMEOUT,
-                WAIT_FAILED,
                 ERROR_INVALID_HANDLE,
                 ERROR_INVALID_PARAMETER,
             ):
