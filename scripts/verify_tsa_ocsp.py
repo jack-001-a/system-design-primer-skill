@@ -270,6 +270,18 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
         "this_update": this_update.isoformat().replace("+00:00", "Z"),
         "next_update": next_update.isoformat().replace("+00:00", "Z"),
         "issuer_roots_sha256": roots_digest,
+        "issuer_intermediates_sha256": (
+            hashlib.sha256(intermediates.read_bytes()).hexdigest() if intermediates is not None else None
+        ),
+        "trust_anchor_policy": (
+            "issuer-roots bundle is SHA-256 pinned and restricted to self-issued CA certificates "
+            "with critical BasicConstraints and keyCertSign; optional responder "
+            "certificates/intermediates are supplied separately via -verify_other"
+        ),
+        "verification": (
+            "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, "
+            "-x509_strict, and -auth_level 2; Python verifies exact target CertID, status, and freshness"
+        ),
         "response_sha256": hashlib.sha256(response.read_bytes()).hexdigest(),
         "nonce_checked": False,
         "scope": ("historical OCSP status validation at the supplied target time" if at_time is not None else
