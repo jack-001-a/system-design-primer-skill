@@ -673,6 +673,17 @@ class TsaRevocationTests(unittest.TestCase):
         _validate_crl_time_der(0x17, b"491231235959Z", "CRL time")
         _validate_crl_time_der(0x17, b"500101000000Z", "CRL time")
 
+    def test_crl_der_time_rejects_leap_seconds(self):
+        cases = (
+            (0x17, b"261119235960Z"),
+            (0x18, b"20261119235960Z"),
+        )
+        for tag, encoded in cases:
+            with self.subTest(tag=tag, encoded=encoded), self.assertRaisesRegex(
+                ValueError, "valid calendar date and time"
+            ):
+                _validate_crl_time_der(tag, encoded, "CRL time")
+
     def test_der_tlv_reader_accepts_minimal_long_form_length(self):
         encoded = b"\x04\x81\x80" + b"x" * 128
         self.assertEqual(_read_der_tlv(encoded, 0), (0x04, 3, 131, 131))
