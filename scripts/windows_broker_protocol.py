@@ -179,6 +179,7 @@ class BrokerProtocolState:
                 ("start", "receive", "broker_ready"): "ready",
                 ("ready", "send", "launch"): "waiting_result",
                 ("result_received", "send", "handles_ack"): "complete",
+                ("result_received", "send", "cancel"): "cancelled",
                 ("waiting_result", "send", "cancel"): "cancelled",
             }
             if event == ("waiting_result", "receive", "launch_result"):

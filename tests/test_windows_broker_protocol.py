@@ -213,6 +213,25 @@ class WindowsBrokerProtocolTests(unittest.TestCase):
         }), "type": "launch_result"})
         self.assertEqual(state.advance("receive", {**message({"accepted": True}), "type": "handles_ack"}), "complete")
 
+    def test_host_can_cancel_after_created_result_when_handle_handoff_fails(self):
+        host = BrokerProtocolState("host", "launch-001")
+        host.advance("receive", {**message({"broker_pid": 99}), "type": "broker_ready"})
+        host.advance("send", message(self._launch_payload()))
+        host.advance("receive", {**message({
+            "status": "created", "pid": 123, "process_handle": 44, "job_handle": 45,
+        }), "type": "launch_result"})
+        self.assertEqual(host.state, "result_received")
+        self.assertEqual(host.advance("send", {**message({}), "type": "cancel"}), "cancelled")
+
+        broker = BrokerProtocolState("broker", "launch-001")
+        broker.advance("send", {**message({"broker_pid": 99}), "type": "broker_ready"})
+        broker.advance("receive", message(self._launch_payload()))
+        broker.advance("send", {**message({
+            "status": "created", "pid": 123, "process_handle": 44, "job_handle": 45,
+        }), "type": "launch_result"})
+        self.assertEqual(broker.state, "awaiting_ack")
+        self.assertEqual(broker.advance("receive", {**message({}), "type": "cancel"}), "cancelled")
+
     def test_cancel_and_failed_launch_are_terminal(self):
         host = BrokerProtocolState("host", "launch-001")
         host.advance("receive", {**message({"broker_pid": 99}), "type": "broker_ready"})
