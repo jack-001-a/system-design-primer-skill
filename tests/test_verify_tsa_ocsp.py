@@ -55,6 +55,13 @@ Next Update: Nov 19 12:05:00 2026 GMT
         output = self.output.replace("Cert Status: good", "Cert Status: revoked")
         result, _, _ = self.run_valid(output)
         self.assertEqual(result["status"], "revoked")
+    def test_accepts_preproduced_response_before_this_update(self):
+        output = self.output.replace("Nov 19 11:59:00 2026 GMT", "Nov 19 11:57:00 2026 GMT")
+        result, _, _ = self.run_valid(output)
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["produced_at"], "2026-11-19T11:57:00Z")
+        self.assertEqual(result["this_update"], "2026-11-19T11:58:00Z")
+
     def test_rejects_missing_signature_verification(self):
         with self.assertRaisesRegex(ValueError, "did not confirm"):
             self.run_valid(self.output.replace("Response verify OK", "Response verify failure"))
