@@ -6,7 +6,11 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest.mock import patch
-from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verification_time_bounds, verification_time_bounds_for_gen_time, verification_time_within_validity, parse_openssl_gen_time, verify_timestamp
+from scripts.evidence_timestamp import (
+    MAX_TIMESTAMP_INPUT_BYTES, create_request, inspect_tsa_signer_certificate,
+    load_signature, verification_time_bounds, verification_time_bounds_for_gen_time,
+    verification_time_within_validity, parse_openssl_gen_time, verify_timestamp,
+)
 
 class EvidenceTimestampTests(unittest.TestCase):
     def setUp(self):
@@ -200,6 +204,109 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertTrue(result["tsa_chain_valid_at_gen_time"])
         self.assertEqual(result["tsa_chain_validation_time"], result["gen_time"])
 
+
+    def test_verification_uses_immutable_snapshots_of_all_evidence_inputs(self):
+        import hashlib
+
+        self.request.write_bytes(b"request-original")
+        self.response.write_bytes(b"response-original")
+        self.ca.write_bytes(b"ca-original")
+        chain = self.root / "chain.pem"
+        chain.write_bytes(b"chain-original")
+        digest = hashlib.sha256(b"s" * 64).hexdigest()
+        originals = {
+            self.signature: self.signature.read_bytes(),
+            self.request: b"request-original",
+            self.response: b"response-original",
+            self.ca: b"ca-original",
+            chain: b"chain-original",
+        }
+        mutated = {path: b"replaced-after-snapshot" for path in originals}
+        mutated_once = False
+        verification_commands = []
+
+        query_text = (
+            "Hash Algorithm: sha256\\nMessage data: 0x" + digest + "\\n"
+        )
+        reply_text = (
+            "Time stamp: Nov 19 12:00:00 2026 GMT\\n"
+            "Policy OID: 1.2.3\\nSerial number: 01\\n"
+            "Hash Algorithm: sha256\\nMessage data: 0x" + digest + "\\n"
+        )
+
+        def fake_run_openssl(args):
+            nonlocal mutated_once
+            if "-query" in args:
+                request_snapshot = Path(args[args.index("-in") + 1])
+                self.assertEqual(request_snapshot.read_bytes(), originals[self.request])
+                self.assertNotEqual(request_snapshot, self.request)
+                if not mutated_once:
+                    for path, data in mutated.items():
+                        path.write_bytes(data)
+                    mutated_once = True
+                return query_text
+            if "-reply" in args and "-verify" not in args:
+                response_snapshot = Path(args[args.index("-in") + 1])
+                self.assertEqual(response_snapshot.read_bytes(), originals[self.response])
+                self.assertNotEqual(response_snapshot, self.response)
+                return reply_text
+            if "-verify" in args:
+                request_snapshot = Path(args[args.index("-queryfile") + 1])
+                response_snapshot = Path(args[args.index("-in") + 1])
+                ca_snapshot = Path(args[args.index("-CAfile") + 1])
+                chain_snapshot = Path(args[args.index("-untrusted") + 1])
+                self.assertEqual(request_snapshot.read_bytes(), originals[self.request])
+                self.assertEqual(response_snapshot.read_bytes(), originals[self.response])
+                self.assertEqual(ca_snapshot.read_bytes(), originals[self.ca])
+                self.assertEqual(chain_snapshot.read_bytes(), originals[chain])
+                self.assertNotEqual(ca_snapshot, self.ca)
+                self.assertNotEqual(chain_snapshot, chain)
+                verification_commands.append(args)
+                return ""
+            raise AssertionError(args)
+
+        signer_result = {
+            "tsa_signer_certificate_sha256": "a" * 64,
+            "tsa_signer_serial_number": "01",
+            "tsa_signer_valid_at_gen_time": True,
+            "tsa_signer_eku": "critical:id-kp-timeStamping",
+            "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer",
+        }
+
+        def inspect_snapshot(response_path, gen_time):
+            self.assertEqual(response_path.read_bytes(), originals[self.response])
+            self.assertNotEqual(response_path, self.response)
+            self.assertEqual(gen_time, "2026-11-19T12:00:00Z")
+            return signer_result
+
+        with patch("scripts.evidence_timestamp.run_openssl", side_effect=fake_run_openssl), patch(
+            "scripts.evidence_timestamp.inspect_tsa_signer_certificate",
+            side_effect=inspect_snapshot,
+        ):
+            result = verify_timestamp(
+                self.signature, self.request, self.response, self.ca,
+                hashlib.sha256(originals[self.ca]).hexdigest(), chain,
+            )
+
+        self.assertTrue(mutated_once)
+        self.assertTrue(all(path.read_bytes() == data for path, data in mutated.items()))
+        self.assertEqual(result["request_sha256"], hashlib.sha256(originals[self.request]).hexdigest())
+        self.assertEqual(result["response_sha256"], hashlib.sha256(originals[self.response]).hexdigest())
+        self.assertEqual(result["tsa_ca_sha256"], hashlib.sha256(originals[self.ca]).hexdigest())
+        self.assertEqual(len(verification_commands), 1)
+
+    def test_oversized_timestamp_evidence_is_rejected_before_openssl(self):
+        self.request.write_bytes(b"request")
+        self.response.write_bytes(b"x" * (MAX_TIMESTAMP_INPUT_BYTES + 1))
+        with patch(
+            "scripts.evidence_timestamp.run_openssl",
+            side_effect=AssertionError("OpenSSL must not receive oversized timestamp evidence"),
+        ):
+            with self.assertRaisesRegex(ValueError, "16 MiB limit"):
+                verify_timestamp(
+                    self.signature, self.request, self.response, self.ca,
+                    hashlib.sha256(self.ca.read_bytes()).hexdigest(),
+                )
 
     def test_rejects_response_token_imprint_mismatch(self):
         self.request.write_bytes(b"request")
