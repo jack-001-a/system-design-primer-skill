@@ -376,6 +376,51 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertIsNone(operation.buffer)
         self.assertIsNone(operation.overlapped)
 
+    def test_last_error_exception_keeps_io_resources_recoverable(self):
+        operation, closed = self.make_operation()
+        fake = FakeKernel32()
+        fake.ReadFile = lambda *args: 0
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent)
+        buffer = (ctypes.c_ubyte * 4)()
+        operation.buffer = buffer
+        with self.assertRaisesRegex(RuntimeError, "last-error"):
+            win32.start_overlapped_io(
+                bindings, operation, buffer=buffer, length=4,
+                get_last_error=lambda: (_ for _ in ()).throw(RuntimeError("last-error"))
+            )
+        self.assertEqual(operation.state, operation.PENDING)
+        result = operation.cancel_and_drain(
+            cancel_io_ex=lambda *_: (False, win32.ERROR_NOT_FOUND),
+            get_overlapped_result=lambda *_: (False, 0, win32.ERROR_OPERATION_ABORTED),
+        )
+        self.assertEqual(result.error_code, win32.ERROR_OPERATION_ABORTED)
+        operation.close()
+        self.assertEqual(closed, [20])
+
+    def test_connect_last_error_exception_keeps_resources_recoverable(self):
+        operation, closed = self.make_operation()
+        fake = FakeKernel32()
+        fake.ConnectNamedPipe = lambda *args: 0
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent)
+        with self.assertRaisesRegex(RuntimeError, "last-error"):
+            win32.start_overlapped_connect(
+                bindings, operation,
+                get_last_error=lambda: (_ for _ in ()).throw(RuntimeError("last-error"))
+            )
+        self.assertEqual(operation.state, operation.PENDING)
+        operation.cancel_and_drain(
+            cancel_io_ex=lambda *_: (False, win32.ERROR_NOT_FOUND),
+            get_overlapped_result=lambda *_: (False, 0, win32.ERROR_OPERATION_ABORTED),
+        )
+        operation.close()
+        self.assertEqual(closed, [20])
+
     def test_close_is_rejected_while_win32_submission_is_in_progress(self):
         operation, closed = self.make_operation()
         entered = threading.Event()

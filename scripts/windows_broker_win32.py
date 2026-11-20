@@ -333,25 +333,26 @@ def start_overlapped_connect(bindings: Kernel32Bindings, operation: "OverlappedO
     operation.overlapped.hEvent = operation.event_handle
     try:
         succeeded = bool(bindings.ConnectNamedPipe(operation.file_handle, ctypes.byref(operation.overlapped)))
+        if succeeded:
+            operation.mark_completed()
+            return "connected", None
+        error = int(get_last_error())
+        if error == ERROR_IO_PENDING:
+            operation.mark_pending()
+            return "pending", None
+        if error == ERROR_PIPE_CONNECTED:
+            # The connection exists even if signaling the event fails.
+            operation.mark_completed()
+            signaled = bool(bindings.SetEvent(operation.event_handle))
+            signal_error = None if signaled else int(get_last_error())
+            return "connected", signal_error
+        operation.mark_completed()
+        return "failed", error
     except BaseException:
-        # Submission outcome is uncertain; retain resources as if I/O were pending.
-        operation.mark_pending()
+        # Any exception before a terminal state leaves submission outcome uncertain.
+        if operation.state == operation.STARTING:
+            operation.mark_pending()
         raise
-    if succeeded:
-        operation.mark_completed()
-        return "connected", None
-    error = int(get_last_error())
-    if error == ERROR_IO_PENDING:
-        operation.mark_pending()
-        return "pending", None
-    if error == ERROR_PIPE_CONNECTED:
-        # A client connected after pipe creation but before this call.
-        signaled = bool(bindings.SetEvent(operation.event_handle))
-        signal_error = None if signaled else int(get_last_error())
-        operation.mark_completed()
-        return "connected", signal_error
-    operation.mark_completed()
-    return "failed", error
 
 
 def start_overlapped_io(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, buffer: Any, length: int, write: bool = False, get_last_error: Callable[[], int] = last_error) -> tuple[str, int, int | None]:
@@ -376,19 +377,20 @@ def start_overlapped_io(bindings: Kernel32Bindings, operation: "OverlappedOperat
     function = bindings.WriteFile if write else bindings.ReadFile
     try:
         succeeded = bool(function(operation.file_handle, pointer, DWORD(length), ctypes.byref(transferred), ctypes.byref(operation.overlapped)))
-    except BaseException:
-        # Submission outcome is uncertain; retain resources as if I/O were pending.
-        operation.mark_pending()
-        raise
-    if succeeded:
+        if succeeded:
+            operation.mark_completed()
+            return "completed", int(transferred.value), None
+        error = int(get_last_error())
+        if error == ERROR_IO_PENDING:
+            operation.mark_pending()
+            return "pending", int(transferred.value), error
         operation.mark_completed()
-        return "completed", int(transferred.value), None
-    error = int(get_last_error())
-    if error == ERROR_IO_PENDING:
-        operation.mark_pending()
-        return "pending", int(transferred.value), error
-    operation.mark_completed()
-    return "failed", int(transferred.value), error
+        return "failed", int(transferred.value), error
+    except BaseException:
+        # Any exception before a terminal state leaves submission outcome uncertain.
+        if operation.state == operation.STARTING:
+            operation.mark_pending()
+        raise
 
 
 class OverlappedOperation:
