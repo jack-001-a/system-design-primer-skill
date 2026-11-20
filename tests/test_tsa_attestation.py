@@ -19,10 +19,28 @@ class TsaAttestationTests(unittest.TestCase):
             "gen_time": "2026-11-19T12:00:00Z",
             "tsa_certificate_sha256": h(b"cert"),
             "timestamp_result_sha256": h(b"timestamp"),
-            "result_digest_policy": "required_independent_sha256_pins_for_all_supplied_result_files",
+            "result_digest_policy": "caller_supplied_sha256_pins_checked_for_byte_equality_only",
+            "gen_time_source": "caller_asserted_from_external_timestamp_verification",
+            "gen_time_provenance": {
+                "source": "caller_supplied_gen_time_argument",
+                "independently_verified_by_this_report": False,
+            },
+            "result_digest_pin_provenance": {
+                "source": "caller_supplied_command_line_arguments",
+                "independently_authenticated_by_this_report": False,
+            },
+            "timestamp_not_established": ["Timestamp trust policy remains caller-selected."],
             "timestamp_signer_serial_number": "1234",
             "historical_revocation_assessment": {
                 "source": "verified_crl", "status": "not_revoked_at_gen_time",
+                "claim_scope": {
+                    "meaning": "The target certificate was not listed as revoked in the single supplied, verified direct CRL at genTime.",
+                    "crl_coverage": "supplied_crl_only",
+                    "distribution_points": "not_evaluated",
+                    "all_applicable_crl_sources": "not_established",
+                    "all_chain_certificates": "not_assessed",
+                    "complete_revocation_status": False,
+                },
                 "validation_time": "2026-11-19T12:00:00Z", "evaluation_time_upper_bound": "2026-11-19T12:00:00Z", "crl_sha256": h(b"crl"),
                 "issuer_roots_sha256": h(b"roots"),
             "issuer_intermediates_sha256": None,
@@ -45,7 +63,7 @@ class TsaAttestationTests(unittest.TestCase):
             },
             "limitations": _build_limitations(
                 {"provided": False, "historical_status_claim": False},
-                {"status": "not_assessed"})
+                {"status": "not_assessed"}) + ["Timestamp trust policy remains caller-selected."]
         }, sort_keys=True), encoding="utf-8")
         self.key = Ed25519PrivateKey.generate()
         self.private = self.root / "private.pem"
