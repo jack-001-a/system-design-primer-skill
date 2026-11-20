@@ -299,7 +299,7 @@ The per-launch broker prototype uses one dedicated local named-pipe instance for
 
 #### Server creation and namespace ownership
 
-- The host creates the pipe before starting the broker, using a per-launch name under `\\\\.\\pipe\\` with at least 256 bits of cryptographically secure randomness. The name is an identifier, not an authentication credential.
+- The host creates the pipe before starting the broker, using a per-launch name under `\\.\pipe\` with at least 256 bits of cryptographically secure randomness. The name is an identifier, not an authentication credential.
 - Create exactly one instance (`nMaxInstances=1`) with `PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE`.
 - Use byte-stream mode with the existing length-prefixed protocol. Set `PIPE_REJECT_REMOTE_CLIENTS`; do not use `PIPE_NOWAIT` as an asynchronous-I/O substitute.
 - Supply an explicit, non-inheritable `SECURITY_ATTRIBUTES` and a protected DACL. The DACL must grant access only to SYSTEM and the current logon SID; do not use the default pipe DACL, which also grants read access to Everyone and anonymous users.
