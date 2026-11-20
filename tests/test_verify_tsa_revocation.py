@@ -269,9 +269,10 @@ class TsaRevocationTests(unittest.TestCase):
 
     def test_rejects_crl_issuer_without_key_cert_sign(self):
         self.issuer, self.leaf, self.listing = make_material(key_cert_sign=False)
-        self.write_material()
         with self.assertRaisesRegex(ValueError, "not authorized for keyCertSign"):
-            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+            validate_direct_crl_scope(
+                self.leaf, [self.issuer], self.listing, NOW, NOW,
+            )
 
     def test_rejects_non_ca_crl_issuer(self):
         self.issuer, self.leaf, self.listing = make_material(ca=False)
