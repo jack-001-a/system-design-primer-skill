@@ -186,9 +186,16 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
         if request_result.returncode:
             detail = (request_result.stderr or request_result.stdout).strip()
             raise ValueError("OpenSSL could not construct the certificate-bound OCSP request: " + detail[-2000:])
-        command = [executable, "ocsp", "-issuer", str(issuer), "-reqin", str(request_path),
+        command = [executable, "ocsp", "-reqin", str(request_path),
                    "-respin", str(response), "-CAfile", str(roots), "-no-CApath", "-no-CAstore",
                    "-x509_strict", "-auth_level", "2", "-no_nonce"]
+        if responder_certificate is None:
+            # OpenSSL 3.5.x retries a failed -verify_other check with the -issuer
+            # certificates using OCSP_TRUSTOTHER, dropping OCSP_NOINTERN. In pinned
+            # mode that can re-select an embedded responder and bypass the pin.
+            # The request DER already carries the target CertID, so omit -issuer
+            # from response verification when the signer certificate is pinned.
+            command.extend(["-issuer", str(issuer)])
         if responder_certificate is not None:
             signer_bundle = Path(temporary) / "responder-signer-bundle.pem"
             if pinned_responder_certificate is None:
