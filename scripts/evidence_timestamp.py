@@ -4,6 +4,7 @@ import argparse
 import base64
 import hashlib
 import json
+import math
 import re
 import shutil
 import subprocess
@@ -197,7 +198,7 @@ def verify_timestamp(
         raise ValueError("timestamp token did not expose a generation time for historical chain verification")
     canonical_gen_time = parse_openssl_gen_time(gen_time.group(1))
     command = ["ts", "-verify", "-queryfile", str(request_path), "-in", str(response_path), "-CAfile", str(tsa_ca_path),
-               "-attime", str(int(datetime.fromisoformat(canonical_gen_time.replace("Z", "+00:00")).timestamp())),
+               "-attime", str(math.ceil(datetime.fromisoformat(canonical_gen_time.replace("Z", "+00:00")).timestamp())),
                "-purpose", "timestampsign"]
     if chain_path is not None:
         command.extend(["-untrusted", str(chain_path)])
@@ -233,7 +234,7 @@ def verify_timestamp(
         "tsa_ca_sha256": actual_ca_sha256,
         "tsa_chain_valid_at_gen_time": True,
         "tsa_chain_validation_time": canonical_gen_time,
-        "tsa_chain_validation_policy": "OpenSSL ts -verify -purpose timestampsign -attime; pathLenConstraint and Name Constraints enforced by OpenSSL",
+        "tsa_chain_validation_policy": "OpenSSL ts -verify -purpose timestampsign -attime (rounded up to the next second for conservative fractional-genTime handling); pathLenConstraint and Name Constraints enforced by OpenSSL",
         **signer_evidence,
         "verification": "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), and TSA chain verification at genTime",
     }

@@ -3,6 +3,7 @@ import base64
 import json
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verify_timestamp
@@ -68,7 +69,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         with patch("scripts.evidence_timestamp.inspect_tsa_signer_certificate", return_value={"tsa_signer_certificate_sha256": "a" * 64, "tsa_signer_serial_number": "01", "tsa_signer_valid_at_gen_time": True, "tsa_signer_eku": "critical:id-kp-timeStamping", "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer"}), patch("scripts.evidence_timestamp.run_openssl") as run:
             run.side_effect = [
                 "Hash Algorithm: sha256\\nMessage data: 0x" + digest + "\\n",
-                "Time stamp: Nov 19 12:00:00 2026 GMT\\nPolicy OID: 1.2.3\\nSerial number: 01\\nHash Algorithm: sha256\\nMessage data: 0x" + digest + "\\nAccuracy: 1 seconds, 2 millis, 3 micros\\nOrdering: no\\nNonce: 0x1234\\n",
+                "Time stamp: Nov 19 12:00:00.000001 2026 GMT\\nPolicy OID: 1.2.3\\nSerial number: 01\\nHash Algorithm: sha256\\nMessage data: 0x" + digest + "\\nAccuracy: 1 seconds, 2 millis, 3 micros\\nOrdering: no\\nNonce: 0x1234\\n",
                 "",
             ]
             import hashlib as h
@@ -77,7 +78,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(result["tsa_signer_certificate_sha256"], "a" * 64)
         self.assertTrue(result["tsa_signer_valid_at_gen_time"])
         self.assertIn("CMS SignerInfo", result["tsa_signer_identity_source"])
-        self.assertEqual(result["gen_time"], "2026-11-19T12:00:00Z")
+        self.assertEqual(result["gen_time"], "2026-11-19T12:00:00.000001Z")
         self.assertEqual(result["policy_oid"], "1.2.3")
         self.assertEqual(result["accuracy"], {"seconds": 1, "millis": 2, "micros": 3})
         self.assertTrue(result["nonce_present"])
@@ -86,6 +87,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         historical = run.call_args_list[2].args[0]
         self.assertEqual(historical[:2], ["ts", "-verify"])
         self.assertIn("-attime", historical)
+        self.assertEqual(historical[historical.index("-attime") + 1], str(int(datetime(2026, 11, 19, 12, 0, 1, tzinfo=timezone.utc).timestamp())))
         self.assertIn("-purpose", historical)
         self.assertIn("timestampsign", historical)
         self.assertTrue(result["tsa_chain_valid_at_gen_time"])
