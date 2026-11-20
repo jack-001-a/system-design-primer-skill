@@ -495,7 +495,7 @@ class TsaAttestationTests(unittest.TestCase):
             "nonce_present": False,
             "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
             "signature_sha256": hashlib.sha256(signature).hexdigest(),
-            "gen_time": "2026-11-19T23:59:59.500000Z",
+            "gen_time": "2026-11-19T23:59:59.5Z",
             "accuracy": {"millis": 400, "micros": 100},
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
