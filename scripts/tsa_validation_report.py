@@ -49,6 +49,29 @@ def parse_utc(value: str, field: str) -> datetime:
     microseconds = int((fraction + "000000")[:6]) if fraction else 0
     return whole_second.replace(microsecond=microseconds)
 
+
+CRL_PATH_VALIDATION_SCOPE = (
+    "OpenSSL target certificate PKIX path validation at the exact floor/ceiling "
+    "Unix-second bound(s) of RFC 3161 genTime"
+)
+CRL_VERIFICATION_METHOD = (
+    "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, "
+    "CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, target certificate "
+    "PKIX path validation at exact floor/ceiling Unix-second bound(s), AKI, scope, "
+    "freshness, signature-policy and entry-semantic preflight"
+)
+
+
+def utc_unix_second_bounds(value: str, field: str = "UTC timestamp") -> list[int]:
+    """Return floor/ceiling Unix seconds without losing arbitrary fraction precision."""
+    whole_second, fraction = parse_utc_parts(value, field)
+    epoch = datetime(1970, 1, 1, tzinfo=whole_second.tzinfo)
+    delta = whole_second - epoch
+    floor_second = delta.days * 86400 + delta.seconds
+    if any(digit != "0" for digit in fraction):
+        return [floor_second, floor_second + 1]
+    return [floor_second]
+
 def validate_crl_issuer_validity(value: Any, field: str, gen_time: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(field + " evidence is missing")
@@ -193,6 +216,12 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         raise ValueError("CRL effective_at_time must conservatively ceil genTime to a whole second")
     if crl_result.get("time_rounding") != "ceil_to_next_whole_second_for_conservative_historical_evaluation":
         raise ValueError("CRL result does not declare conservative whole-second time rounding")
+    expected_crl_path_validation_times = utc_unix_second_bounds(gen_time, "gen_time")
+    crl_path_validation_times = crl_result.get("path_validation_times")
+    if crl_path_validation_times != expected_crl_path_validation_times:
+        raise ValueError("CRL target certificate path must be checked at exact floor/ceiling Unix-second bounds")
+    if crl_result.get("path_validation_scope") != CRL_PATH_VALIDATION_SCOPE:
+        raise ValueError("CRL target certificate path-validation scope is missing or unsupported")
     require_digest(crl_result_sha256, "crl_result_sha256")
     if crl_result.get("verified") is not True:
         raise ValueError("CRL result is not explicitly verified")
@@ -270,7 +299,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         raise ValueError("CRL signature algorithm identity is missing")
     if crl_result.get("crl_signature_policy") != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
         raise ValueError("CRL signature policy evidence is missing or unsupported")
-    if crl_result.get("verification") != "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight":
+    if crl_result.get("verification") != CRL_VERIFICATION_METHOD:
         raise ValueError("CRL verification provenance is missing or unsupported")
     crl_issuer_validity = validate_crl_issuer_validity(
         crl_result.get("crl_issuer_certificate_validity"), "CRL issuer validity", gen_time)
@@ -429,7 +458,11 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         responder_crl_policy = responder_revocation_result.get("crl_signature_policy")
         if responder_crl_policy != "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed":
             raise ValueError("OCSP responder CRL signature policy evidence is missing or unsupported")
-        if responder_revocation_result.get("verification") != "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight":
+        if responder_revocation_result.get("path_validation_times") != expected_crl_path_validation_times:
+            raise ValueError("OCSP responder CRL target certificate path must be checked at exact floor/ceiling Unix-second bounds")
+        if responder_revocation_result.get("path_validation_scope") != CRL_PATH_VALIDATION_SCOPE:
+            raise ValueError("OCSP responder CRL path-validation scope is missing or unsupported")
+        if responder_revocation_result.get("verification") != CRL_VERIFICATION_METHOD:
             raise ValueError("OCSP responder CRL verification provenance is missing or unsupported")
         responder_issuer_validity = validate_crl_issuer_validity(
             responder_revocation_result.get("crl_issuer_certificate_validity"), "OCSP responder CRL issuer validity", gen_time)
@@ -447,6 +480,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         responder_revocation_section = {
             "status": "not_revoked_at_gen_time",
             "validation_time": gen_time,
+            "path_validation_times": responder_revocation_result["path_validation_times"],
+            "path_validation_scope": responder_revocation_result["path_validation_scope"],
             "responder_certificate_sha256": responder_digest,
             "crl_sha256": require_digest(responder_revocation_result.get("crl_sha256"), "responder CRL crl_sha256"),
             "issuer_roots_sha256": require_digest(responder_revocation_result.get("issuer_roots_sha256"), "responder CRL issuer_roots_sha256"),
@@ -499,6 +534,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             },
             "validation_time": gen_time,
             "evaluation_time_upper_bound": expected_effective_at_time,
+            "path_validation_times": crl_path_validation_times,
+            "path_validation_scope": crl_result["path_validation_scope"],
             "crl_sha256": crl_digest,
             "issuer_roots_sha256": crl_roots_digest,
             "issuer_intermediates_sha256": crl_intermediates_digest,
