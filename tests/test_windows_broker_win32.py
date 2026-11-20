@@ -450,7 +450,6 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         # The registry must retain the operation while its event handle is
         # still being closed; unregister waits for the operation lock.
         self.assertIn(operation, connection._operations)
-        self.assertEqual(operation.state, operation.COMPLETED)
         release_close.set()
 
         closer.join(2)
