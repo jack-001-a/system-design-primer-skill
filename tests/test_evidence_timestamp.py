@@ -70,7 +70,8 @@ class EvidenceTimestampTests(unittest.TestCase):
                 "Hash Algorithm: sha256\\nMessage data: 0x" + digest + "\\n",
                 "Time stamp: Nov 19 12:00:00 2026 GMT\\nPolicy OID: 1.2.3\\nSerial number: 01\\nHash Algorithm: sha256\\nMessage data: 0x" + digest + "\\nAccuracy: 1 seconds, 2 millis, 3 micros\\nOrdering: no\\nNonce: 0x1234\\n",
                 "",
-            ]            import hashlib as h
+            ]
+            import hashlib as h
             result = verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
         self.assertTrue(result["verified"])
         self.assertEqual(result["tsa_signer_certificate_sha256"], "a" * 64)
@@ -98,8 +99,8 @@ class EvidenceTimestampTests(unittest.TestCase):
         with patch("scripts.evidence_timestamp.run_openssl") as run:
             run.side_effect = [
                 "Hash Algorithm: sha256\nMessage data: " + digest,
-                "",
                 "Time stamp: Nov 19 12:00:00 2026 GMT\nPolicy OID: 1.2.3\nSerial number: 01\nHash Algorithm: sha256\nMessage data: " + "0" * 64,
+                "",
             ]
             with self.assertRaisesRegex(ValueError, "does not bind"):
                 verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
@@ -111,8 +112,8 @@ class EvidenceTimestampTests(unittest.TestCase):
         with patch("scripts.evidence_timestamp.run_openssl") as run:
             run.side_effect = [
                 "Hash Algorithm: sha256\nMessage data: " + digest,
-                "",
                 "Time stamp: Nov 19 12:00:00 2026 GMT\nHash Algorithm: sha256\nMessage data: " + digest,
+                "",
             ]
             with self.assertRaisesRegex(ValueError, "policy OID or serial"):
                 verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
@@ -124,8 +125,8 @@ class EvidenceTimestampTests(unittest.TestCase):
         with patch("scripts.evidence_timestamp.run_openssl") as run:
             run.side_effect = [
                 "Hash Algorithm: sha256\nMessage data: " + digest,
-                "",
                 "Time stamp: not-a-time\nPolicy OID: 1.2.3\nSerial number: 01\nHash Algorithm: sha256\nMessage data: " + digest,
+                "",
             ]
             with self.assertRaisesRegex(ValueError, "genTime"):
                 verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
