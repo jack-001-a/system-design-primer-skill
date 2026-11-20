@@ -439,6 +439,10 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertEqual(result["trusted_timestamp_upper_bound"], "2026-11-20T00:00:00.000000Z")
         self.assertTrue(result["timestamp_accuracy_assessed"])
         self.assertFalse(result["signature_existed_before_revocation"])
+        self.assertIsNone(result["trusted_timestamp_lower_bound"])
+        self.assertIsNone(result["trusted_timestamp_upper_bound"])
+        self.assertFalse(result["timestamp_accuracy_assessed"])
+        self.assertIn("no explicit Accuracy", result["historical_validity_basis"])
         self.assertEqual(result["historical_assessment"], "timestamped_existence_only")
 
     @patch("scripts.tsa_attestation.verify_timestamp")
