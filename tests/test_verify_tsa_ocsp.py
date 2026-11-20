@@ -1,8 +1,10 @@
 from __future__ import annotations
 import hashlib
 import shutil
+import stat
 import tempfile
 import unittest
+from types import SimpleNamespace
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch, Mock
@@ -17,8 +19,10 @@ from scripts.verify_tsa_ocsp import bind_responder_certificate
 from scripts.verify_tsa_ocsp import (
     verify_ocsp_response, validate_trust_anchor_bundle, verification_time_bounds,
     parse_historical_at_time, validate_ocsp_generalized_time_profile,
-    MAX_OCSP_RESPONSE_BYTES, MAX_DER_DEPTH, MAX_DER_CHILDREN, MAX_DER_NODES,
+    MAX_OCSP_RESPONSE_BYTES, MAX_OCSP_INPUT_BYTES,
+    MAX_DER_DEPTH, MAX_DER_CHILDREN, MAX_DER_NODES,
     _validate_der_primitive, _der_children, _require_single_der_value,
+    _read_stable_ocsp_input,
 )
 
 
@@ -442,6 +446,40 @@ Next Update: Nov 19 12:05:00 2026 GMT
                 verify_ocsp_response(
                     self.cert, self.issuer, self.roots, self.response, self.pin(), now=self.now
                 )
+
+    def test_rejects_oversized_non_response_ocsp_input_before_openssl(self):
+        oversized = self.root / "oversized-intermediates.pem"
+        with oversized.open("wb") as stream:
+            stream.truncate(MAX_OCSP_INPUT_BYTES + 1)
+        with patch(
+            "scripts.verify_tsa_ocsp.shutil.which",
+            side_effect=AssertionError("OpenSSL must not receive oversized OCSP evidence"),
+        ):
+            with self.assertRaisesRegex(ValueError, "maximum supported size"):
+                verify_ocsp_response(
+                    self.cert, self.issuer, self.roots, self.response,
+                    self.pin(), intermediates=oversized, now=self.now,
+                )
+
+    def test_stable_ocsp_input_reader_rejects_metadata_change_during_read(self):
+        source = self.root / "changing-input.pem"
+        source.write_bytes(b"stable-size")
+        before = SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o600,
+            st_dev=1, st_ino=2, st_size=len(b"stable-size"),
+            st_mtime_ns=100, st_ctime_ns=100,
+        )
+        after = SimpleNamespace(
+            st_mode=stat.S_IFREG | 0o600,
+            st_dev=1, st_ino=2, st_size=len(b"stable-size"),
+            st_mtime_ns=101, st_ctime_ns=100,
+        )
+        with patch(
+            "scripts.verify_tsa_ocsp.os.fstat",
+            side_effect=[before, after],
+        ):
+            with self.assertRaisesRegex(ValueError, "changed while being snapshotted"):
+                _read_stable_ocsp_input(source, "test OCSP input")
 
     def test_rejects_excessive_constructed_der_nesting(self):
         response = synthetic_ocsp_response(
