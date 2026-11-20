@@ -1,5 +1,6 @@
 from __future__ import annotations
 import hashlib
+import os
 import shutil
 import stat
 import tempfile
@@ -614,6 +615,13 @@ Next Update: Nov 19 12:05:00 2026 GMT
                     self.cert, self.issuer, self.roots, self.response,
                     self.pin(), intermediates=oversized, now=self.now,
                 )
+
+    @unittest.skipUnless(hasattr(os, "mkfifo"), "named pipes are unavailable on this platform")
+    def test_stable_ocsp_input_reader_rejects_fifo_without_waiting_for_writer(self):
+        fifo = self.root / "ocsp-input.fifo"
+        os.mkfifo(fifo)
+        with self.assertRaisesRegex(ValueError, "must be a regular file"):
+            _read_stable_ocsp_input(fifo, "test OCSP input")
 
     def test_stable_ocsp_input_reader_rejects_metadata_change_during_read(self):
         source = self.root / "changing-input.pem"
