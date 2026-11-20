@@ -330,7 +330,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertIn("-signer", calls[1])
 
 
-    def test_rejects_noncritical_tsa_signer_key_usage(self):
+    def test_accepts_noncritical_tsa_signer_key_usage_when_bits_are_permitted(self):
         from datetime import datetime, timedelta, timezone
         from cryptography import x509
         from cryptography.hazmat.primitives import hashes, serialization
@@ -360,8 +360,9 @@ class EvidenceTimestampTests(unittest.TestCase):
         with patch("scripts.evidence_timestamp.openssl_path", return_value="openssl"), patch(
             "scripts.evidence_timestamp.subprocess.run", side_effect=fake_run
         ):
-            with self.assertRaisesRegex(ValueError, "KeyUsage must be critical"):
-                inspect_tsa_signer_certificate(self.response, now.isoformat().replace("+00:00", "Z"))
+            result = inspect_tsa_signer_certificate(self.response, now.isoformat().replace("+00:00", "Z"))
+        self.assertTrue(result["tsa_signer_valid_at_gen_time"])
+        self.assertEqual(result["tsa_signer_eku"], "critical:id-kp-timeStamping")
 
 if __name__ == "__main__":
     unittest.main()
