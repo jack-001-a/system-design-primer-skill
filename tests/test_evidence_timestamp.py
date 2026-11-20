@@ -33,10 +33,10 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(verification_time_bounds(future), (253402300799, 253402300800))
         self.assertEqual(verification_time_bounds(
             datetime(2026, 11, 19, 12, 0, 0, 1, tzinfo=timezone.utc)),
-            (1795099200, 1795099201))
+            (1795089600, 1795089601))
         self.assertEqual(verification_time_bounds(
             datetime(2026, 11, 19, 12, 0, 0, tzinfo=timezone.utc)),
-            (1795099200,))
+            (1795089600,))
         self.assertEqual(verification_time_bounds(
             datetime(1969, 12, 31, 23, 59, 59, 999999, tzinfo=timezone.utc)),
             (-1, 0))
