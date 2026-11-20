@@ -222,6 +222,24 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(parse_accuracy("Accuracy: 2 millis"),
                          {"seconds": 0, "millis": 2, "micros": 0})
 
+    def test_parse_ordering_applies_default_and_accepts_explicit_values(self):
+        from scripts.evidence_timestamp import parse_ordering
+        self.assertFalse(parse_ordering("Policy OID: 1.2.3\\n"))
+        self.assertFalse(parse_ordering("Ordering: no\\n"))
+        self.assertTrue(parse_ordering("Ordering: yes\\n"))
+        self.assertTrue(parse_ordering("ordering: YES\\n"))
+
+    def test_parse_ordering_rejects_malformed_or_duplicate_fields(self):
+        from scripts.evidence_timestamp import parse_ordering
+        for details in (
+            "Ordering: maybe\\n",
+            "Ordering: yes trailing\\n",
+            "Ordering: yes\\nOrdering: no\\n",
+        ):
+            with self.subTest(details=details):
+                with self.assertRaisesRegex(ValueError, "ordering field is malformed"):
+                    parse_ordering(details)
+
     def test_parse_accuracy_rejects_partial_or_malformed_components(self):
         from scripts.evidence_timestamp import parse_accuracy
         invalid = [

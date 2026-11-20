@@ -127,7 +127,7 @@ def parse_openssl_gen_time(value: str) -> str:
 
 
 def parse_accuracy(details: str) -> dict[str, int] | None:
-    """Parse the optional RFC 3161 Accuracy field without accepting partial matches."""
+    """Parse Accuracy; None means absent, while omitted components in a present field are zero."""
     matches = re.findall(r"^Accuracy:[ \t]*(.*?)[ \t]*$", details, re.I | re.M)
     if not matches:
         return None
@@ -225,6 +225,18 @@ def inspect_tsa_signer_certificate(response_path: Path, gen_time: str) -> dict[s
         "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer",
     }
 
+
+
+def parse_ordering(details: str) -> bool:
+    """Parse RFC 3161 ordering; an absent DEFAULT FALSE field is false."""
+    matches = re.findall(r"^Ordering:[ \\t]*(.*?)[ \\t]*$", details, re.I | re.M)
+    if not matches:
+        return False
+    if len(matches) != 1 or matches[0].lower() not in {"yes", "no"}:
+        raise ValueError("timestamp token ordering field is malformed")
+    return matches[0].lower() == "yes"
+
+
 def verify_timestamp(
     signature_path: Path, request_path: Path, response_path: Path,
     tsa_ca_path: Path, expected_ca_sha256: str, chain_path: Path | None = None,
@@ -270,7 +282,6 @@ def verify_timestamp(
         raise ValueError("timestamp token message imprint does not bind the supplied Ed25519 signature")
     canonical_gen_time = parse_openssl_gen_time(gen_time.group(1))
     signer_evidence = inspect_tsa_signer_certificate(response_path, canonical_gen_time)
-    ordering = re.search(r"^Ordering:\s*(yes|no)", details, re.I | re.M)
     nonce = re.search(r"^Nonce:\s*(\S+)", details, re.I | re.M)
     return {
         "verified": True,
@@ -279,7 +290,7 @@ def verify_timestamp(
         "policy_oid": policy.group(1),
         "serial_number": serial.group(1),
         "accuracy": parse_accuracy(details),
-        "ordering": ordering.group(1).lower() == "yes" if ordering else False,
+        "ordering": parse_ordering(details),
         "nonce_present": nonce is not None,
         "request_sha256": hashlib.sha256(request_path.read_bytes()).hexdigest(),
         "response_sha256": hashlib.sha256(response_path.read_bytes()).hexdigest(),
