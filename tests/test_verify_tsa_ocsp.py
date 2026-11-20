@@ -481,8 +481,12 @@ Next Update: Nov 19 12:05:00 2026 GMT
             b"20261120120500Z",
             extra_certs=der_value(0xA0, der_value(0x30, many_groups)),
         )
-        with self.assertRaisesRegex(ValueError, "node-count limit"):
-            validate_ocsp_generalized_time_profile(response)
+        with patch(
+            "scripts.verify_tsa_ocsp._validate_ocsp_response_data",
+            side_effect=AssertionError("schema parsing must not run before the DER budget check"),
+        ):
+            with self.assertRaisesRegex(ValueError, "node-count limit"):
+                validate_ocsp_generalized_time_profile(response)
 
     def test_rejects_fractional_ocsp_time_before_invoking_openssl(self):
         self.response.write_bytes(synthetic_ocsp_response(
