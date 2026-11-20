@@ -58,9 +58,19 @@ class EvidenceTimestampTests(unittest.TestCase):
             (1795089600, 1795089601),
         )
         self.assertEqual(
-            verification_time_bounds_for_gen_time("2026-11-19T12:00:00.000000000Z"),
+            verification_time_bounds_for_gen_time("2026-11-19T12:00:00Z"),
             (1795089600,),
         )
+        with self.assertRaisesRegex(ValueError, "omit trailing zeros"):
+            verification_time_bounds_for_gen_time("2026-11-19T12:00:00.000000000Z")
+
+    def test_parse_openssl_gen_time_rejects_fractional_trailing_zeros(self):
+        for value in (
+            "Nov 19 12:00:00.0 2026 GMT",
+            "Nov 19 12:00:00.100 2026 GMT",
+        ):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, "omit trailing zeros"):
+                parse_openssl_gen_time(value)
 
     def test_parse_openssl_gen_time_rejects_unsupported_precision_and_timezone(self):
         invalid = (
