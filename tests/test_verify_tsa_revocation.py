@@ -12,25 +12,29 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 from scripts.verify_tsa_revocation import (parse_utc_epoch, verify_crl_status, validate_crl_signature_policy,
-    validate_crl_number_value, validate_crl_der_profile, validate_direct_crl_scope, _read_der_tlv, load_crl, load_certificates)
+    validate_crl_number_value, validate_crl_der_profile, validate_direct_crl_scope, validate_trust_anchor_bundle,
+    _read_der_tlv, load_crl, load_certificates)
 
 NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
 
 
-def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, issuer_not_before=None, issuer_not_after=None, last_update=None, future=False, delta=False, indirect=False, empty_idp=False, idp_critical=True, only_user_idp=False, legacy_leaf=False, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
+def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, include_key_usage=True, key_usage_critical=True, include_ski=True, basic_constraints_critical=True, issuer_not_before=None, issuer_not_after=None, last_update=None, future=False, delta=False, indirect=False, empty_idp=False, idp_critical=True, only_user_idp=False, legacy_leaf=False, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
     key = rsa.generate_private_key(public_exponent=65537, key_size=key_size)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "CRL issuer")])
-    issuer = (
+    issuer_builder = (
         x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key())
         .serial_number(1).not_valid_before(issuer_not_before or NOW-timedelta(days=30)).not_valid_after(issuer_not_after or NOW+timedelta(days=365))
-        .add_extension(x509.BasicConstraints(ca=ca, path_length=None), True)
-        .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False, key_encipherment=False,
-            data_encipherment=False, key_agreement=False, key_cert_sign=key_cert_sign, crl_sign=crl_sign,
-            encipher_only=None, decipher_only=None), True)
-        .add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), False)
-        .sign(key, hashes.SHA256())
+        .add_extension(x509.BasicConstraints(ca=ca, path_length=None), basic_constraints_critical)
     )
+    if include_key_usage:
+        issuer_builder = issuer_builder.add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+            key_encipherment=False, data_encipherment=False, key_agreement=False,
+            key_cert_sign=key_cert_sign, crl_sign=crl_sign, encipher_only=None, decipher_only=None),
+            key_usage_critical)
+    if include_ski:
+        issuer_builder = issuer_builder.add_extension(x509.SubjectKeyIdentifier.from_public_key(key.public_key()), False)
+    issuer = issuer_builder.sign(key, hashes.SHA256())
     leaf_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
     leaf_builder = (x509.CertificateBuilder().subject_name(x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "TSA signer")]))
         .issuer_name(name).public_key(leaf_key.public_key()).serial_number(2)
@@ -100,6 +104,26 @@ class TsaRevocationTests(unittest.TestCase):
             parse_utc_epoch("2026-11-19T12:00:00+00:00")
         with self.assertRaisesRegex(ValueError, "valid UTC"):
             parse_utc_epoch("2026-02-30T12:00:00Z")
+
+    def test_rejects_trust_anchor_without_explicit_key_usage(self):
+        issuer, _, _ = make_material(include_key_usage=False)
+        with self.assertRaisesRegex(ValueError, "lacks explicit keyUsage"):
+            validate_trust_anchor_bundle([issuer])
+
+    def test_rejects_trust_anchor_with_noncritical_key_usage(self):
+        issuer, _, _ = make_material(key_usage_critical=False)
+        with self.assertRaisesRegex(ValueError, "critical keyUsage"):
+            validate_trust_anchor_bundle([issuer])
+
+    def test_rejects_trust_anchor_without_subject_key_identifier(self):
+        issuer, _, _ = make_material(include_ski=False)
+        with self.assertRaisesRegex(ValueError, "lacks subjectKeyIdentifier"):
+            validate_trust_anchor_bundle([issuer])
+
+    def test_rejects_trust_anchor_with_noncritical_basic_constraints(self):
+        issuer, _, _ = make_material(basic_constraints_critical=False)
+        with self.assertRaisesRegex(ValueError, "critical basicConstraints"):
+            validate_trust_anchor_bundle([issuer])
 
     def test_rejects_non_self_issued_intermediate_in_trust_anchor_bundle(self):
         root_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
