@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.verify_build_provenance import (
-    PREDICATE_TYPE, _copy_regular_file_snapshot, _sha256_file, _version_tuple, verify_build_provenance,
+    PREDICATE_TYPE, _copy_regular_file_snapshot, _run_cli_bounded, _sha256_file, _version_tuple, verify_build_provenance,
 )
 
 
@@ -61,15 +61,17 @@ class BuildProvenanceTests(unittest.TestCase):
                 _version_tuple(output)
 
     def _mock_cli(self, run, output=None, version="gh version 2.102.0"):
+        from subprocess import CompletedProcess
+
         run.side_effect = [
-            type("Completed", (), {"returncode": 0, "stdout": version, "stderr": ""})(),
-            type("Completed", (), {
-                "returncode": 0, "stdout": json.dumps(self.good_result if output is None else output),
-                "stderr": "",
-            })(),
+            CompletedProcess(["gh", "version"], 0, version, ""),
+            CompletedProcess(
+                ["gh", "attestation", "verify"], 0,
+                json.dumps(self.good_result if output is None else output), "",
+            ),
         ]
 
-    @patch("scripts.verify_build_provenance.subprocess.run")
+    @patch("scripts.verify_build_provenance._run_cli_bounded")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_uses_patched_gh_and_exact_identity_policy(self, which, run):
         self._mock_cli(run)
@@ -97,9 +99,7 @@ class BuildProvenanceTests(unittest.TestCase):
     @patch("scripts.verify_build_provenance.subprocess.run")
     @patch("scripts.verify_build_provenance.shutil.which", return_value="/usr/bin/gh")
     def test_vulnerable_gh_versions_are_rejected_before_verification(self, which, run):
-        run.return_value.returncode = 0
-        run.return_value.stdout = "gh version 2.101.0"
-        run.return_value.stderr = ""
+        run.return_value = __import__("subprocess").CompletedProcess(["gh", "version"], 0, "gh version 2.101.0", "")
         with self.assertRaisesRegex(RuntimeError, ">= 2.102.0"):
             verify_build_provenance(self.artifact, **self.policy)
         self.assertEqual(run.call_count, 1)
@@ -120,7 +120,7 @@ class BuildProvenanceTests(unittest.TestCase):
         import subprocess
 
         run.side_effect = [
-            type("Completed", (), {"returncode": 0, "stdout": "gh version 2.102.0", "stderr": ""})(),
+            __import__("subprocess").CompletedProcess(["gh", "version"], 0, "gh version 2.102.0", ""),
             subprocess.TimeoutExpired(["gh", "attestation", "verify"], 300),
         ]
         with self.assertRaisesRegex(RuntimeError, "timed out after 300 seconds"):
@@ -133,7 +133,7 @@ class BuildProvenanceTests(unittest.TestCase):
     def test_cli_verification_failure_is_not_overridden(self, which, run):
         run.side_effect = [
             type("Completed", (), {"returncode": 0, "stdout": "gh version 2.102.0", "stderr": ""})(),
-            type("Completed", (), {"returncode": 1, "stdout": "", "stderr": "certificate identity mismatch"})(),
+            __import__("subprocess").CompletedProcess(["gh"], 1, "", "certificate identity mismatch"),
         ]
         with self.assertRaisesRegex(RuntimeError, "certificate identity mismatch"):
             verify_build_provenance(self.artifact, **self.policy)
@@ -196,7 +196,7 @@ class BuildProvenanceTests(unittest.TestCase):
             with self.subTest(stdout=stdout):
                 run.side_effect = [
                     type("Completed", (), {"returncode": 0, "stdout": "gh version 2.102.0", "stderr": ""})(),
-                    type("Completed", (), {"returncode": 0, "stdout": stdout, "stderr": ""})(),
+                    __import__("subprocess").CompletedProcess(["gh"], 0, stdout, ""),
                 ]
                 with self.assertRaises(RuntimeError):
                     verify_build_provenance(self.artifact, **self.policy)
@@ -212,18 +212,14 @@ class BuildProvenanceTests(unittest.TestCase):
 
         def fake_run(command, **kwargs):
             if command[-1:] == ["version"]:
-                return type("Completed", (), {
-                    "returncode": 0, "stdout": "gh version 2.102.0", "stderr": "",
-                })()
+                return __import__("subprocess").CompletedProcess(["gh", "version"], 0, "gh version 2.102.0", "")
             bundle_snapshot = Path(command[command.index("--bundle") + 1])
             root_snapshot = Path(command[command.index("--custom-trusted-root") + 1])
             observed["bundle_path"] = bundle_snapshot
             observed["root_path"] = root_snapshot
             observed["bundle_bytes"] = bundle_snapshot.read_bytes()
             observed["root_bytes"] = root_snapshot.read_bytes()
-            return type("Completed", (), {
-                "returncode": 0, "stdout": json.dumps(self.good_result), "stderr": "",
-            })()
+            return __import__("subprocess").CompletedProcess(["gh"], 0, json.dumps(self.good_result), "")
 
         run.side_effect = fake_run
         verify_build_provenance(

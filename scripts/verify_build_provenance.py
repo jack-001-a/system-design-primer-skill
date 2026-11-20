@@ -17,6 +17,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +27,10 @@ GH_VERSION_RE = re.compile(r"^gh version (\d+)\.(\d+)\.(\d+)(?: \([^()\r\n]+\))?
 MIN_GH_VERSION = (2, 102, 0)
 GH_VERSION_TIMEOUT_SECONDS = 30
 GH_VERIFY_TIMEOUT_SECONDS = 300
+GH_VERSION_STDOUT_LIMIT_BYTES = 64 * 1024
+GH_VERIFY_STDOUT_LIMIT_BYTES = 16 * 1024 * 1024
+GH_STDERR_LIMIT_BYTES = 64 * 1024
+GH_STDERR_TAIL_BYTES = 4 * 1024
 PREDICATE_TYPE = "https://slsa.dev/provenance/v1"
 OIDC_ISSUER = "https://token.actions.githubusercontent.com"
 
@@ -112,6 +117,66 @@ def _copy_regular_file_snapshot(source: Path, destination: Path, label: str) -> 
                 # TemporaryDirectory remains responsible for final cleanup.
                 pass
         raise
+
+
+
+def _run_cli_bounded(
+    command: list[str],
+    *,
+    timeout: int,
+    output_dir: Path,
+    stdout_limit: int,
+    stderr_limit: int = GH_STDERR_LIMIT_BYTES,
+) -> subprocess.CompletedProcess[str]:
+    """Run a CLI with file-backed, size-monitored output and a hard wall-clock deadline."""
+    stdout_path = output_dir / "cli-stdout"
+    stderr_path = output_dir / "cli-stderr"
+    deadline = time.monotonic() + timeout
+    with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
+        process = subprocess.Popen(
+            command, stdout=stdout_file, stderr=stderr_file, text=False
+        )
+        failure = None
+        while True:
+            try:
+                returncode = process.wait(timeout=min(0.05, max(0.0, deadline - time.monotonic())))
+                break
+            except subprocess.TimeoutExpired:
+                stdout_size = stdout_path.stat().st_size
+                stderr_size = stderr_path.stat().st_size
+                if stdout_size > stdout_limit:
+                    failure = RuntimeError(
+                        f"GitHub CLI stdout exceeded the {stdout_limit}-byte limit"
+                    )
+                    break
+                if stderr_size > stderr_limit:
+                    failure = RuntimeError(
+                        f"GitHub CLI stderr exceeded the {stderr_limit}-byte limit"
+                    )
+                    break
+                if time.monotonic() >= deadline:
+                    failure = subprocess.TimeoutExpired(command, timeout)
+                    break
+        if failure is not None:
+            process.kill()
+            process.wait()
+        stdout_file.flush()
+        stderr_file.flush()
+
+    if failure is not None:
+        raise failure
+    stdout_size = stdout_path.stat().st_size
+    stderr_size = stderr_path.stat().st_size
+    if stdout_size > stdout_limit:
+        raise RuntimeError(f"GitHub CLI stdout exceeded the {stdout_limit}-byte limit")
+    if stderr_size > stderr_limit:
+        raise RuntimeError(f"GitHub CLI stderr exceeded the {stderr_limit}-byte limit")
+    with stdout_path.open("rb") as stream:
+        stdout = stream.read(stdout_limit + 1).decode("utf-8", errors="replace")
+    with stderr_path.open("rb") as stream:
+        stream.seek(max(0, stderr_size - GH_STDERR_TAIL_BYTES))
+        stderr = stream.read(GH_STDERR_TAIL_BYTES).decode("utf-8", errors="replace")
+    return subprocess.CompletedProcess(command, returncode, stdout, stderr)
 
 
 def _version_tuple(output: str) -> tuple[int, int, int]:
@@ -217,24 +282,7 @@ def verify_build_provenance(
     if executable is None:
         raise RuntimeError("GitHub CLI (gh) is required for cryptographic attestation verification")
 
-    try:
-        version = subprocess.run(
-            [executable, "version"], capture_output=True, text=True, check=False,
-            timeout=GH_VERSION_TIMEOUT_SECONDS,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("timed out while determining GitHub CLI version") from exc
-    if version.returncode != 0:
-        raise RuntimeError("could not determine GitHub CLI version")
-    gh_version = _version_tuple(version.stdout)
-    if gh_version < MIN_GH_VERSION:
-        raise RuntimeError(
-            "GitHub CLI >= 2.102.0 is required; older releases have vulnerable "
-            "source-ref and signer-workflow identity matching"
-        )
-
-    # Verify a private snapshot so the file cannot change between hashing and
-    # the CLI reading it (TOCTOU). The CLI itself computes and checks its digest.
+    # Keep CLI output files inside the private workspace and remove them on exit.
     with tempfile.TemporaryDirectory(prefix="slsa-verify-") as temp_dir:
         snapshot_dir = Path(temp_dir)
         artifact_snapshot = snapshot_dir / "artifact" / artifact.name
@@ -251,6 +299,25 @@ def verify_build_provenance(
             trusted_root_snapshot = snapshot_dir / "trusted-root" / trusted_root.name
             trusted_root_snapshot.parent.mkdir()
             _copy_regular_file_snapshot(trusted_root, trusted_root_snapshot, "trusted_root")
+
+        try:
+            version = _run_cli_bounded(
+                [executable, "version"],
+                timeout=GH_VERSION_TIMEOUT_SECONDS,
+                output_dir=snapshot_dir,
+                stdout_limit=GH_VERSION_STDOUT_LIMIT_BYTES,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError("timed out while determining GitHub CLI version") from exc
+        if version.returncode != 0:
+            raise RuntimeError("could not determine GitHub CLI version")
+        gh_version = _version_tuple(version.stdout)
+        if gh_version < MIN_GH_VERSION:
+            raise RuntimeError(
+                "GitHub CLI >= 2.102.0 is required; older releases have vulnerable "
+                "source-ref and signer-workflow identity matching"
+            )
+
         command = [
             executable, "attestation", "verify", str(artifact_snapshot),
             "--repo", repository,
@@ -267,9 +334,11 @@ def verify_build_provenance(
         if trusted_root is not None:
             command.extend(["--custom-trusted-root", str(trusted_root_snapshot)])
         try:
-            completed = subprocess.run(
-                command, capture_output=True, text=True, check=False,
+            completed = _run_cli_bounded(
+                command,
                 timeout=GH_VERIFY_TIMEOUT_SECONDS,
+                output_dir=snapshot_dir,
+                stdout_limit=GH_VERIFY_STDOUT_LIMIT_BYTES,
             )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
@@ -277,7 +346,7 @@ def verify_build_provenance(
             ) from exc
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "no diagnostic output").strip()
-            raise RuntimeError("gh attestation verify rejected the artifact: " + detail[-4000:])
+            raise RuntimeError("gh attestation verify rejected the artifact: " + detail[-GH_STDERR_TAIL_BYTES:])
         try:
             verified = json.loads(completed.stdout)
         except json.JSONDecodeError as exc:
