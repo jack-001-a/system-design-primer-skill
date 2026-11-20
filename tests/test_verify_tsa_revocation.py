@@ -84,6 +84,8 @@ class TsaRevocationTests(unittest.TestCase):
                          parse_utc_epoch("2026-11-19T12:00:01Z"))
         self.assertEqual(parse_utc_epoch("2026-11-19T12:00:00.999999Z"),
                          parse_utc_epoch("2026-11-19T12:00:01Z"))
+        self.assertEqual(parse_utc_epoch("2026-11-19T12:00:00.0000001Z"),
+                         parse_utc_epoch("2026-11-19T12:00:01Z"))
         self.assertEqual(parse_utc_epoch("2026-11-19T12:00:00Z"),
                          parse_utc_epoch("2026-11-19T12:00:00.000000Z"))
 
