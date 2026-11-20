@@ -312,7 +312,14 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
     report_digest = hashlib.sha256(raw_report).hexdigest()
     if require_sha256(envelope["report_sha256"], "report_sha256") != report_digest:
         raise ValueError("attestation report SHA-256 mismatch")
-    require_sha256(envelope["verifier_bundle_sha256"], "verifier_bundle_sha256")
+    verifier_bundle_digest = require_sha256(envelope["verifier_bundle_sha256"], "verifier_bundle_sha256")
+    verifier_bundle_bytes_verified = False
+    if verifier_bundle_path is not None:
+        if not verifier_bundle_path.is_file():
+            raise ValueError("verifier bundle path must identify a regular file")
+        if digest_file(verifier_bundle_path) != verifier_bundle_digest:
+            raise ValueError("verifier bundle SHA-256 does not match the signed envelope")
+        verifier_bundle_bytes_verified = True
     if (not isinstance(envelope["verifier_identity"], str)
             or not envelope["verifier_identity"].strip()
             or len(envelope["verifier_identity"]) > 256):
@@ -451,7 +458,11 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
                 },
                 "verifier_bundle_digest": {
                     "source": "attester_asserted_in_signed_envelope",
-                    "bundle_bytes_verified": False,
+                    "bundle_bytes_verified": verifier_bundle_bytes_verified,
+                    "bundle_bytes_verification": (
+                        "local_file_sha256_matches_signed_digest"
+                        if verifier_bundle_bytes_verified else "not_performed"
+                    ),
                     "execution_provenance_established": False,
                 },
                 "verifier_identity": {
@@ -481,8 +492,8 @@ def main() -> int:
     sign.add_argument("--report", type=Path, required=True)
     sign.add_argument("--private-key", type=Path, required=True)
     sign.add_argument("--key-id", required=True)
-    sign.add_argument("--verifier-bundle-sha256", required=True,
-                      help="attester-asserted bundle digest; bundle bytes and execution are not independently verified")
+    sign.add_argument("--verifier-bundle", type=Path, required=True,
+                      help="local verifier bundle file; its SHA-256 is measured before signing")
     sign.add_argument("--verifier-identity", required=True,
                       help="attester-asserted verifier label; identity is not independently authenticated")
     sign.add_argument("--output", type=Path, required=True)
@@ -491,6 +502,8 @@ def main() -> int:
     verify.add_argument("--attestation", type=Path, required=True)
     verify.add_argument("--trust-store", type=Path, required=True)
     verify.add_argument("--trust-store-sha256", required=True)
+    verify.add_argument("--verifier-bundle", type=Path, required=True,
+                        help="verifier bundle file whose bytes must match the signed SHA-256")
     verify.add_argument("--timestamp-request", type=Path)
     verify.add_argument("--timestamp-response", type=Path)
     verify.add_argument("--tsa-ca", type=Path)
@@ -499,8 +512,10 @@ def main() -> int:
     args = parser.parse_args()
     try:
         if args.command == "sign":
+            if not args.verifier_bundle.is_file():
+                raise ValueError("verifier bundle path must identify a regular file")
             result = create_attestation(args.report, args.private_key, args.key_id,
-                                        args.verifier_bundle_sha256, args.verifier_identity)
+                                        digest_file(args.verifier_bundle), args.verifier_identity)
             if args.output.exists():
                 raise FileExistsError(args.output)
             with args.output.open("x", encoding="utf-8", newline="") as stream:

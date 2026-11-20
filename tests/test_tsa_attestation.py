@@ -79,6 +79,8 @@ class TsaAttestationTests(unittest.TestCase):
             "not_before": stamp(now - timedelta(days=1)),
             "not_after": stamp(now + timedelta(days=30)), "revoked_at": None
         }}}, sort_keys=True), encoding="utf-8")
+        self.bundle = self.root / "verifier.bundle"
+        self.bundle.write_bytes(b"verifier package")
         self.attestation = self.root / "attestation.json"
         envelope = create_attestation(self.report, self.private, "tsa-attester",
                                       hashlib.sha256(b"verifier package").hexdigest(),
@@ -112,6 +114,7 @@ class TsaAttestationTests(unittest.TestCase):
         self.assertEqual(result["evidence_provenance"]["verifier_bundle_digest"], {
             "source": "attester_asserted_in_signed_envelope",
             "bundle_bytes_verified": False,
+            "bundle_bytes_verification": "not_performed",
             "execution_provenance_established": False,
         })
         self.assertEqual(result["evidence_provenance"]["verifier_identity"], {
@@ -126,6 +129,23 @@ class TsaAttestationTests(unittest.TestCase):
             "RFC 3161 token over this attestation signature; not the original TSA token summarized in the signed report")
         self.assertIsNone(result["evidence_provenance"]["tsa_ca_digest_pin"])
 
+
+    def test_verifier_bundle_file_is_measured_against_signed_digest(self):
+        result = verify_attestation(
+            self.report, self.attestation, self.store, digest_file(self.store),
+            verifier_bundle_path=self.bundle)
+        self.assertTrue(result["evidence_provenance"]["verifier_bundle_digest"]["bundle_bytes_verified"])
+        self.assertEqual(
+            result["evidence_provenance"]["verifier_bundle_digest"]["bundle_bytes_verification"],
+            "local_file_sha256_matches_signed_digest")
+        self.assertFalse(result["execution_provenance_established"])
+
+    def test_verifier_bundle_file_digest_mismatch_is_rejected(self):
+        self.bundle.write_bytes(b"tampered verifier bundle")
+        with self.assertRaisesRegex(ValueError, "verifier bundle SHA-256 does not match"):
+            verify_attestation(
+                self.report, self.attestation, self.store, digest_file(self.store),
+                verifier_bundle_path=self.bundle)
 
     def test_verified_attestation_exposes_signed_timestamp_result_digest(self):
         result = self.verify()
