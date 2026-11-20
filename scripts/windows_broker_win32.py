@@ -582,6 +582,7 @@ class OverlappedOperation:
     STARTING = "starting"
     PENDING = "pending"
     COMPLETED = "completed"
+    CLOSING = "closing"
     CLOSED = "closed"
 
     def __init__(
@@ -692,6 +693,9 @@ class OverlappedOperation:
                 raise OverlappedLifecycleError(
                     "cannot release OVERLAPPED resources while I/O submission or completion is in progress"
                 )
+            # A failed/raising CloseHandle leaves the event handle's validity
+            # uncertain. Retain the handle and dependent resources in CLOSING.
+            self._state = self.CLOSING
             if self.event_handle:
                 if not self._close_handle(self.event_handle):
                     raise OSError("CloseHandle failed for overlapped event")

@@ -1236,7 +1236,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         with self.assertRaisesRegex(OSError, "CloseHandle failed"):
             operation.close()
 
-        self.assertEqual(operation.state, operation.COMPLETED)
+        self.assertEqual(operation.state, operation.CLOSING)
         self.assertEqual(operation.event_handle, 20)
         self.assertIs(operation.overlapped, original_overlapped)
         self.assertIs(operation.buffer, original_buffer)
@@ -1267,7 +1267,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "event-close-api"):
             operation.close()
 
-        self.assertEqual(operation.state, operation.COMPLETED)
+        self.assertEqual(operation.state, operation.CLOSING)
         self.assertEqual(operation.event_handle, 20)
         self.assertIs(operation.overlapped, original_overlapped)
         self.assertIs(operation.buffer, original_buffer)
