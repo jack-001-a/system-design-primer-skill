@@ -279,6 +279,9 @@ class TsaRevocationTests(unittest.TestCase):
         self.assertIn("-attime", run.call_args.args[0])
         self.assertIn("-crl_check", run.call_args.args[0])
         self.assertIn("-CRLfile", run.call_args.args[0])
+        crl_argument = run.call_args.args[0][run.call_args.args[0].index("-CRLfile") + 1]
+        self.assertNotEqual(Path(crl_argument), self.crl)
+        self.assertFalse(Path(crl_argument).exists(), "temporary CRL snapshot must be removed after verification")
         self.assertIn("-no-CApath", run.call_args.args[0])
         self.assertIn("-no-CAstore", run.call_args.args[0])
         self.assertIn("-x509_strict", run.call_args.args[0])
