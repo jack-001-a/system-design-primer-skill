@@ -237,7 +237,7 @@ class NamedPipeConnection:
         with self._lock, operation._lock:
             if self._state != self.CONNECTED:
                 raise OverlappedLifecycleError(
-                    "cannot register I/O on a disconnected pipe"
+                    "cannot register I/O while pipe is not connected"
                 )
             if self._connect_operation is not None:
                 raise OverlappedLifecycleError(
@@ -273,7 +273,7 @@ class NamedPipeConnection:
         with self._lock:
             if self._state != self.CONNECTED:
                 raise OverlappedLifecycleError(
-                    "cannot submit I/O on a disconnected pipe"
+                    "cannot submit I/O while pipe is not connected"
                 )
             if self._connect_operation is not None:
                 raise OverlappedLifecycleError(
@@ -472,7 +472,7 @@ def close_named_pipe(
 ) -> tuple[bool, int | None]:
     """Close the server pipe handle after disconnect and operation cleanup."""
     with connection._lock:
-        if connection._state not in (connection.DISCONNECTED, connection.CLOSING):
+        if connection._state not in (connection.DISCONNECTED, connection.DISCONNECTING, connection.CLOSING):
             raise OverlappedLifecycleError(
                 f"cannot close pipe handle in state {connection._state}"
             )
