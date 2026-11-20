@@ -515,6 +515,12 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "not authorized for cRLSign"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
+    def test_rejects_crl_issuer_without_key_usage_extension(self):
+        self.issuer, self.leaf, self.listing = make_material(include_key_usage=False)
+        self.write_material()
+        with self.assertRaisesRegex(ValueError, "lacks explicit keyUsage with cRLSign"):
+            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+
     def test_fractional_gen_time_rejects_crl_issued_at_ceil_second(self):
         self.issuer, self.leaf, self.listing = make_material(last_update=NOW+timedelta(seconds=1))
         self.write_material()
