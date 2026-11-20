@@ -197,12 +197,14 @@ def verify_timestamp(
     if not gen_time:
         raise ValueError("timestamp token did not expose a generation time for historical chain verification")
     canonical_gen_time = parse_openssl_gen_time(gen_time.group(1))
+    target_epoch = datetime.fromisoformat(canonical_gen_time.replace("Z", "+00:00")).timestamp()
+    verification_times = sorted({math.floor(target_epoch), math.ceil(target_epoch)})
     command = ["ts", "-verify", "-queryfile", str(request_path), "-in", str(response_path), "-CAfile", str(tsa_ca_path),
-               "-attime", str(math.ceil(datetime.fromisoformat(canonical_gen_time.replace("Z", "+00:00")).timestamp())),
                "-purpose", "timestampsign"]
     if chain_path is not None:
         command.extend(["-untrusted", str(chain_path)])
-    run_openssl(command)
+    for verification_time in verification_times:
+        run_openssl([*command, "-attime", str(verification_time)])
     gen_time = re.search(r"^Time(?: stamp)?\s*:\s*(.+)$", details, re.I | re.M)
     policy = re.search(r"^Policy OID\s*:\s*(\S+)", details, re.I | re.M)
     serial = re.search(r"^Serial number\s*:\s*(\S+)", details, re.I | re.M)
@@ -234,7 +236,7 @@ def verify_timestamp(
         "tsa_ca_sha256": actual_ca_sha256,
         "tsa_chain_valid_at_gen_time": True,
         "tsa_chain_validation_time": canonical_gen_time,
-        "tsa_chain_validation_policy": "OpenSSL ts -verify -purpose timestampsign -attime (rounded up to the next second for conservative fractional-genTime handling); pathLenConstraint and Name Constraints enforced by OpenSSL",
+        "tsa_chain_validation_policy": "OpenSSL ts -verify -purpose timestampsign at both floor and ceiling seconds of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL",
         **signer_evidence,
         "verification": "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), and TSA chain verification at genTime",
     }
