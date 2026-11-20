@@ -1018,6 +1018,45 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         operation.close()
         connection.unregister_operation(operation)
 
+    def test_connection_cannot_unregister_uncommitted_connect_result(self):
+        fake = FakeKernel32()
+        fake.ConnectNamedPipe = lambda *_: 0
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        operation = win32.OverlappedOperation(
+            file_handle=10, overlapped=win32.OVERLAPPED(), event_handle=20,
+            buffer=None, close_handle=lambda _: True,
+        )
+        connection = win32.NamedPipeConnection(10)
+        connection._state = connection.DISCONNECTED
+
+        self.assertEqual(
+            connection.start_connect(
+                bindings, operation, get_last_error=lambda: win32.ERROR_IO_PENDING
+            ),
+            ("pending", None),
+        )
+        operation.mark_completed()
+        operation.close()
+
+        with self.assertRaisesRegex(
+            win32.OverlappedLifecycleError, "connect result must be committed"
+        ):
+            connection.unregister_operation(operation)
+        self.assertEqual(connection.state, connection.CONNECTING)
+        self.assertIn(operation, connection._operations)
+
+        # The native resources are closed, but the terminal result can still be
+        # committed using the exact registered operation identity.
+        connection.complete_connect(operation, connected=False)
+        connection.unregister_operation(operation)
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertNotIn(operation, connection._operations)
+
     def test_connection_start_connect_normalizes_already_connected_race(self):
         fake = FakeKernel32()
         fake.ConnectNamedPipe = lambda *_: 0

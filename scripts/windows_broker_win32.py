@@ -304,6 +304,10 @@ class NamedPipeConnection:
         with self._lock:
             if operation not in self._operations:
                 raise OverlappedLifecycleError("operation is not registered")
+            if operation is self._connect_operation and self._state == self.CONNECTING:
+                raise OverlappedLifecycleError(
+                    "connect result must be committed before unregistering"
+                )
             if operation.state != operation.CLOSED:
                 raise OverlappedLifecycleError(
                     "operation resources must be closed before unregistering"
@@ -385,13 +389,17 @@ class NamedPipeConnection:
                 raise OverlappedLifecycleError(
                     "connect operation is not registered with this pipe"
                 )
-            if operation.file_handle != self.file_handle:
-                raise OverlappedLifecycleError(
-                    "connect operation handle does not belong to this pipe"
-                )
-            if operation.state != operation.COMPLETED:
+            # close() is allowed after terminal completion and clears the
+            # operation's native handle reference. Preserve the connection-level
+            # registration until this result is committed, so callers can still
+            # recover safely if they closed the event before committing state.
+            if operation.state not in (operation.COMPLETED, operation.CLOSED):
                 raise OverlappedLifecycleError(
                     "connect operation must be completed before committing its result"
+                )
+            if operation.state != operation.CLOSED and operation.file_handle != self.file_handle:
+                raise OverlappedLifecycleError(
+                    "connect operation handle does not belong to this pipe"
                 )
             self._state = self.CONNECTED if connected else self.DISCONNECTED
 
