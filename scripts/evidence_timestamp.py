@@ -268,12 +268,20 @@ def verify_timestamp(
         raise ValueError("timestamp token did not expose a generation time for historical chain verification")
     canonical_gen_time = parse_openssl_gen_time(gen_time.group(1))
     verification_times = verification_time_bounds_for_gen_time(canonical_gen_time)
-    command = ["ts", "-verify", "-queryfile", str(request_path), "-in", str(response_path), "-CAfile", str(tsa_ca_path),
-               "-purpose", "timestampsign"]
-    if chain_path is not None:
-        command.extend(["-untrusted", str(chain_path)])
-    for verification_time in verification_times:
-        run_openssl([*command, "-attime", str(verification_time)])
+    # OpenSSL ts does not expose -no-CApath/-no-CAstore. Supply explicit empty
+    # locations so only the caller-pinned CAfile can contribute trust anchors.
+    with tempfile.TemporaryDirectory(prefix="tsa-empty-trust-") as empty_trust:
+        empty_path = Path(empty_trust) / "ca-path"
+        empty_path.mkdir()
+        empty_store = Path(empty_trust) / "ca-store.pem"
+        empty_store.write_bytes(b"")
+        command = ["ts", "-verify", "-queryfile", str(request_path), "-in", str(response_path),
+                   "-CAfile", str(tsa_ca_path), "-CApath", str(empty_path),
+                   "-CAstore", str(empty_store), "-purpose", "timestampsign"]
+        if chain_path is not None:
+            command.extend(["-untrusted", str(chain_path)])
+        for verification_time in verification_times:
+            run_openssl([*command, "-attime", str(verification_time)])
     gen_time = re.search(r"^Time(?: stamp)?\s*:\s*(.+)$", details, re.I | re.M)
     policy = re.search(r"^Policy OID\s*:\s*(\S+)", details, re.I | re.M)
     serial = re.search(r"^Serial number\s*:\s*(\S+)", details, re.I | re.M)
