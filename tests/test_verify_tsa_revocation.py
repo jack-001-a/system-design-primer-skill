@@ -588,6 +588,19 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "applicability preflight failed"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
+    def test_unspecified_reason_code_is_accepted_as_recommended_profile_input(self):
+        # RFC 5280 says reasonCode SHOULD be absent rather than encode
+        # unspecified(0); it does not make this a MUST-level rejection.
+        entry = self.make_entry(NOW+timedelta(minutes=1),
+                                reason=x509.ReasonFlags.unspecified)
+        self.issuer, self.leaf, self.listing = make_material(entry=entry)
+        self.write_material()
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
+            result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+        self.assertEqual(result["revocation_entry"]["reason"], "unspecified")
+        self.assertEqual(result["revocation_entry"]["status_at_time"], "not_yet_revoked")
+
     def test_later_invalidity_date_does_not_override_revocation_date(self):
         entry = self.make_entry(NOW-timedelta(minutes=1), invalidity=NOW+timedelta(minutes=1))
         self.issuer, self.leaf, self.listing = make_material(entry=entry)
