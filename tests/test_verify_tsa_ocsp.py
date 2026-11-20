@@ -22,7 +22,7 @@ from scripts.verify_tsa_ocsp import (
     MAX_OCSP_RESPONSE_BYTES, MAX_OCSP_INPUT_BYTES,
     MAX_DER_DEPTH, MAX_DER_CHILDREN, MAX_DER_NODES,
     _validate_der_primitive, _der_children, _require_single_der_value,
-    _read_stable_ocsp_input,
+    _read_stable_ocsp_input, _validate_x509_name,
 )
 
 
@@ -114,6 +114,48 @@ def nested_der_sequences(depth: int) -> bytes:
     for _ in range(depth):
         value = der_value(0x30, value)
     return value
+
+
+def synthetic_x509_name(attribute_values: tuple[bytes, ...]) -> bytes:
+    return der_value(0x30, der_value(0x31, b"".join(attribute_values)))
+
+
+def synthetic_x509_attribute(oid_content: bytes, value: bytes) -> bytes:
+    return der_value(
+        0x30,
+        der_value(0x06, oid_content) + der_value(0x0C, value),
+    )
+
+
+def synthetic_x509_certificate(issuer_name: bytes, subject_name: bytes) -> bytes:
+    signature_algorithm = der_value(
+        0x30,
+        der_value(0x06, bytes.fromhex("2a864886f70d01010b")) + der_value(0x05, b""),
+    )
+    public_key_algorithm = der_value(
+        0x30,
+        der_value(0x06, bytes.fromhex("2a864886f70d010101")) + der_value(0x05, b""),
+    )
+    validity = der_value(
+        0x30,
+        der_value(0x17, b"261120000000Z") + der_value(0x17, b"271120000000Z"),
+    )
+    subject_public_key_info = der_value(
+        0x30, public_key_algorithm + der_value(0x03, b"\\x00public-key")
+    )
+    tbs_certificate = der_value(
+        0x30,
+        der_value(0x02, b"\\x01")
+        + signature_algorithm
+        + issuer_name
+        + validity
+        + subject_name
+        + subject_public_key_info,
+    )
+    return der_value(
+        0x30,
+        tbs_certificate + signature_algorithm + der_value(0x03, b"\\x00signature"),
+    )
 
 class TsaOcspTests(unittest.TestCase):
     def setUp(self):
@@ -242,6 +284,56 @@ Next Update: Nov 19 12:05:00 2026 GMT
                 )
                 with self.assertRaisesRegex(ValueError, message):
                     validate_ocsp_generalized_time_profile(response)
+
+    def test_ocsp_responder_by_name_enforces_rdn_set_of_der_order(self):
+        common_name = synthetic_x509_attribute(bytes.fromhex("550403"), b"Alice")
+        organization = synthetic_x509_attribute(bytes.fromhex("55040a"), b"Example")
+        sorted_name = synthetic_x509_name((common_name, organization))
+        unsorted_name = synthetic_x509_name((organization, common_name))
+        valid_time = b"20261120120000Z"
+
+        valid_response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            responder_id=der_value(0xA1, sorted_name),
+        )
+        validate_ocsp_generalized_time_profile(valid_response)
+
+        malformed_response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            responder_id=der_value(0xA1, unsorted_name),
+        )
+        with self.assertRaisesRegex(ValueError, "RDN SET OF components are not in DER sort order"):
+            validate_ocsp_generalized_time_profile(malformed_response)
+
+    def test_x509_name_rejects_empty_relative_distinguished_name(self):
+        empty_rdn_name = der_value(0x30, der_value(0x31, b""))
+        with self.assertRaisesRegex(ValueError, "RelativeDistinguishedName must not be empty"):
+            _validate_x509_name(
+                _require_single_der_value(empty_rdn_name, 0x30, "Name"),
+                "test Name",
+            )
+
+    def test_embedded_x509_certificate_names_enforce_rdn_set_of_der_order(self):
+        common_name = synthetic_x509_attribute(bytes.fromhex("550403"), b"TSA")
+        organization = synthetic_x509_attribute(bytes.fromhex("55040a"), b"Example")
+        sorted_name = synthetic_x509_name((common_name, organization))
+        unsorted_name = synthetic_x509_name((organization, common_name))
+        valid_time = b"20261120120000Z"
+
+        valid_certificate = synthetic_x509_certificate(sorted_name, sorted_name)
+        valid_response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            extra_certs=der_value(0xA0, der_value(0x30, valid_certificate)),
+        )
+        validate_ocsp_generalized_time_profile(valid_response)
+
+        malformed_certificate = synthetic_x509_certificate(unsorted_name, sorted_name)
+        malformed_response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            extra_certs=der_value(0xA0, der_value(0x30, malformed_certificate)),
+        )
+        with self.assertRaisesRegex(ValueError, "issuer RDN SET OF components are not in DER sort order"):
+            validate_ocsp_generalized_time_profile(malformed_response)
 
     def test_ocsp_profile_rejects_context_tag_confusion(self):
         valid_time = b"20261120120000Z"
