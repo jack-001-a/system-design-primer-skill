@@ -102,3 +102,37 @@ Before enabling the native path by default:
 - test launch from inside an outer Job with nested jobs allowed and with a deliberately incompatible outer-job configuration;
 - test each failure point after Job creation, attribute-list allocation, each attribute update, and process creation, asserting all acquired resources are closed;
 - test that a failed Job-list process creation never falls back to an uncontained launch.
+## Helper-process broker alternative for strict handle isolation
+
+A process-local lock does not protect inheritable handles from unrelated code that calls `CreateProcess(..., bInheritHandles=TRUE, ...)` concurrently. A dedicated helper process is a documented alternative worth prototyping before requiring a host-wide lock.
+
+The proposed broker design is:
+
+1. Start a small helper process with ordinary non-inheriting process creation. The helper holds no application file handles and remains alive while launch requests are serviced (or waits for the host process to exit).
+2. Keep the verifier's stdout/stderr file handles non-inheritable in the verifier process.
+3. For one launch request, duplicate only the required file handles into the helper process with `DuplicateHandle`, marking the remote duplicates inheritable.
+4. Build the target's `STARTUPINFOEX` attributes with both `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` (the helper-owned duplicate handles) and `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS` (the helper process handle).
+5. Include `PROC_THREAD_ATTRIBUTE_JOB_LIST` in the same attribute list. Create the target with `bInheritHandles=TRUE` and `EXTENDED_STARTUPINFO_PRESENT`; set standard handles to the helper-owned duplicate values.
+6. After `CreateProcessW` returns, close the temporary duplicate handles in the helper and retain only the target process and Job handles needed for supervision.
+
+This follows the helper-process pattern described by Raymond Chen for avoiding the reverse handle-inheritance race: the main host's own handles remain non-inheritable, while only the helper's short-lived duplicates are eligible for inheritance. See the linked engineering note in the implementation research record.
+
+### Important unresolved questions
+
+- Confirm the exact access rights required for the helper process handle used by `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`, and verify the helper can be opened with `PROCESS_CREATE_PROCESS`.
+- Confirm the handle-list entries are interpreted in the specified parent process context as required by the helper pattern; test with real Win32 handles, not only mocks.
+- Define synchronization and ownership for remote duplicate handles when multiple launch requests overlap. A per-launch helper is simpler but costs process startup; a shared broker needs request IDs, serialization or safe concurrent ownership, and crash cleanup.
+- Verify how the target inherits the helper's existing Job membership while also receiving the explicit `PROC_THREAD_ATTRIBUTE_JOB_LIST`. Exercise the actual CI/outer-Job environment.
+- Ensure helper startup itself does not inherit verifier handles, and ensure helper termination cannot strand remote handles or orphan the target.
+- Treat helper creation, remote duplication, attribute setup, target creation, and remote-handle closure as separate failure points with explicit cleanup.
+
+The helper-process design is a candidate, not yet an implementation decision. It may provide stronger isolation than temporarily toggling inheritability in the multithreaded host, but its lifecycle and Job Object interactions must be proven by Windows integration tests before adoption.
+
+## Revised handle-inheritance decision gate
+
+Do not treat a local lock plus `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` as a strict process-wide no-leak guarantee. Compare at least these two candidates in a Windows prototype:
+
+- **Host-coordinated direct launch:** all process creation in the host must participate in one coordination policy while temporary inheritable handles exist.
+- **Dedicated helper-process launch:** only the helper owns inheritable duplicates; the host's ordinary handles remain non-inheritable.
+
+Select the simpler candidate only after a concurrent process-creation test demonstrates that unrelated children cannot acquire the verifier's stdout/stderr handles. Keep the native launch disabled until that test and the Job-list lifecycle tests pass on Windows CI.
