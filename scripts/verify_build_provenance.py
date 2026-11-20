@@ -68,7 +68,16 @@ def _copy_regular_file_snapshot(source: Path, destination: Path, label: str) -> 
         raise ValueError(f"{label} could not be opened as a regular file") from exc
 
     try:
-        with os.fdopen(descriptor, "rb") as source_stream:
+        source_stream = os.fdopen(descriptor, "rb")
+    except Exception:
+        try:
+            os.close(descriptor)
+        except OSError:
+            pass
+        raise
+
+    try:
+        with source_stream:
             opened = os.fstat(source_stream.fileno())
             if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
                 raise ValueError(f"{label} changed identity while being opened")

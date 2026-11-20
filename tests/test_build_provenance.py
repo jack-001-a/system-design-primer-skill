@@ -261,6 +261,42 @@ class BuildProvenanceTests(unittest.TestCase):
         _copy_regular_file_snapshot(source, snapshot, "source")
         self.assertEqual(snapshot.read_bytes(), b"stable input")
 
+    def test_descriptor_snapshot_closes_fd_if_fdopen_fails(self):
+        source = Path(self.temp.name) / "source.bin"
+        snapshot = Path(self.temp.name) / "snapshot.bin"
+        source.write_bytes(b"input")
+        real_open = os.open
+        opened_fd = {}
+
+        def capture_open(path, flags, *args, **kwargs):
+            descriptor = real_open(path, flags, *args, **kwargs)
+            opened_fd["value"] = descriptor
+            return descriptor
+
+        with patch("scripts.verify_build_provenance.os.open", side_effect=capture_open):
+            with patch("scripts.verify_build_provenance.os.fdopen", side_effect=OSError("fdopen failed")):
+                with patch("scripts.verify_build_provenance.os.close", wraps=os.close) as close:
+                    with self.assertRaisesRegex(OSError, "fdopen failed"):
+                        _copy_regular_file_snapshot(source, snapshot, "source")
+        close.assert_called_once_with(opened_fd["value"])
+        self.assertFalse(snapshot.exists())
+
+    def test_descriptor_snapshot_rejects_source_mutation_during_copy(self):
+        source = Path(self.temp.name) / "source.bin"
+        snapshot = Path(self.temp.name) / "snapshot.bin"
+        source.write_bytes(b"original")
+        real_copy = __import__("shutil").copyfileobj
+
+        def mutate_during_copy(source_stream, destination_stream):
+            real_copy(source_stream, destination_stream)
+            with source.open("ab") as writer:
+                writer.write(b"-changed")
+
+        with patch("scripts.verify_build_provenance.shutil.copyfileobj", side_effect=mutate_during_copy):
+            with self.assertRaisesRegex(ValueError, "changed while being snapshotted"):
+                _copy_regular_file_snapshot(source, snapshot, "source")
+        self.assertFalse(snapshot.exists())
+
     def test_descriptor_snapshot_rejects_path_replacement(self):
         source = Path(self.temp.name) / "source.bin"
         replacement = Path(self.temp.name) / "replacement.bin"
