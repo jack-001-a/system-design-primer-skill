@@ -188,7 +188,7 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
             raise ValueError("OpenSSL could not construct the certificate-bound OCSP request: " + detail[-2000:])
         command = [executable, "ocsp", "-issuer", str(issuer), "-reqin", str(request_path),
                    "-respin", str(response), "-CAfile", str(roots), "-no-CApath", "-no-CAstore",
-                   "-x509_strict", "-no_nonce"]
+                   "-x509_strict", "-auth_level", "2", "-no_nonce"]
         if responder_certificate is not None:
             signer_bundle = Path(temporary) / "responder-signer-bundle.pem"
             if pinned_responder_certificate is None:
