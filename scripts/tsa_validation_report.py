@@ -118,6 +118,32 @@ def _build_overall_assessment(ocsp: dict[str, Any]) -> str:
     }[status]
 
 
+def validate_timestamp_scope(result: dict[str, Any]) -> tuple[dict[str, str], list[str]]:
+    """Validate and preserve the explicit verification scope and limitations."""
+    scope = result.get("verification_scope")
+    required = {
+        "cms_signature", "request_imprint", "response_imprint",
+        "request_response_binding", "nonce_binding",
+        "tsa_pkix_chain_at_gen_time", "tsa_signer_certificate_profile",
+        "tsa_signer_validity_at_gen_time",
+    }
+    if not isinstance(scope, dict) or set(scope) != required:
+        raise ValueError("timestamp verification scope is missing or malformed")
+    for field in required - {"nonce_binding"}:
+        if scope[field] != "verified":
+            raise ValueError("timestamp verification scope does not establish " + field)
+    if type(result.get("nonce_present")) is not bool:
+        raise ValueError("timestamp nonce_present must be an explicit boolean")
+    expected_nonce = "verified" if result["nonce_present"] else "not_requested"
+    if scope["nonce_binding"] != expected_nonce:
+        raise ValueError("timestamp nonce scope contradicts nonce_present")
+    limitations = result.get("not_established")
+    if (not isinstance(limitations, list) or not limitations
+            or any(not isinstance(item, str) or not item.strip() for item in limitations)):
+        raise ValueError("timestamp not_established must be a non-empty list of descriptions")
+    return dict(scope), list(limitations)
+
+
 def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                             crl_result_sha256: str, ocsp_result: dict[str, Any] | None = None,
                             ocsp_result_sha256: str | None = None,
@@ -147,6 +173,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
     require_digest(timestamp_result_sha256, "timestamp_result_sha256")
     if timestamp_result.get("verified") is not True:
         raise ValueError("RFC 3161 timestamp result is not explicitly verified")
+    timestamp_verification_scope, timestamp_not_established = validate_timestamp_scope(timestamp_result)
     if timestamp_result.get("gen_time") != gen_time:
         raise ValueError("timestamp result genTime does not exactly match report genTime")
     timestamp_certificate_digest = require_digest(
@@ -341,6 +368,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "gen_time_source": "caller_supplied_from_independently_verified_rfc3161_token",
         "tsa_certificate_sha256": certificate_digest,
         "timestamp_result_sha256": timestamp_result_sha256,
+        "timestamp_verification_scope": timestamp_verification_scope,
+        "timestamp_not_established": timestamp_not_established,
         "result_digest_policy": "required_independent_sha256_pins_for_all_supplied_result_files",
         "timestamp_signer_serial_number": timestamp_result.get("tsa_signer_serial_number"),
         "historical_revocation_assessment": {
@@ -363,7 +392,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         "current_ocsp_assessment": ocsp_section,
         "historical_ocsp_responder_revocation_assessment": responder_revocation_section,
         "overall_assessment": overall_assessment,
-        "limitations": _build_limitations(ocsp_section, responder_revocation_section),
+        "limitations": _build_limitations(ocsp_section, responder_revocation_section) + timestamp_not_established,
     }
 
 def write_report(output: Path, report: dict[str, Any]) -> str:

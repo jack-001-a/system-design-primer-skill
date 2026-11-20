@@ -54,6 +54,16 @@ class TsaValidationReportTests(unittest.TestCase):
             "verified": True, "signature_sha256": hashlib.sha256(b"signature").hexdigest(),
             "gen_time": self.gen_time, "policy_oid": "1.2.3", "serial_number": "1234",
             "accuracy": None, "ordering": False, "nonce_present": True,
+            "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "verified", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "not_established": [
+                "Caller selects the trust anchors.", "Policy OID acceptability is not assessed.",
+                "CRL/OCSP revocation evidence is handled separately.", "Evidence archive integrity is not established.",
+            ],
             "request_sha256": hashlib.sha256(b"request").hexdigest(),
             "response_sha256": hashlib.sha256(b"timestamp token").hexdigest(),
             "tsa_ca_sha256": hashlib.sha256(b"tsa ca").hexdigest(),
@@ -88,6 +98,33 @@ class TsaValidationReportTests(unittest.TestCase):
     def test_rejects_unverified_timestamp_result(self):
         bad = dict(self.timestamp, verified=False)
         with self.assertRaisesRegex(ValueError, "not explicitly verified"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_preserves_timestamp_scope_and_limitations_in_report(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        self.assertEqual(report["timestamp_verification_scope"], self.timestamp["verification_scope"])
+        self.assertEqual(report["timestamp_not_established"], self.timestamp["not_established"])
+        for limitation in self.timestamp["not_established"]:
+            self.assertIn(limitation, report["limitations"])
+
+    def test_rejects_timestamp_result_missing_scope(self):
+        bad = dict(self.timestamp)
+        bad.pop("verification_scope")
+        with self.assertRaisesRegex(ValueError, "verification scope is missing"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_timestamp_nonce_scope_contradiction(self):
+        bad = dict(self.timestamp, verification_scope=dict(self.timestamp["verification_scope"],
+                   nonce_binding="not_requested"))
+        with self.assertRaisesRegex(ValueError, "nonce scope contradicts"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_empty_timestamp_limitations(self):
+        bad = dict(self.timestamp, not_established=[])
+        with self.assertRaisesRegex(ValueError, "not_established must be a non-empty list"):
             build_report(self.gen_time, self.crl, self.crl_file_hash,
                          timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
 
