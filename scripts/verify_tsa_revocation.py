@@ -5,7 +5,9 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 import re
+import stat
 import shutil
 import subprocess
 import sys
@@ -654,6 +656,29 @@ def _verify_crl_status_with_snapshot(
     }
 
 
+
+def _read_stable_input(source: Path) -> bytes:
+    """Read one regular-file input and reject detectable concurrent mutation."""
+    with source.open("rb") as handle:
+        before = os.fstat(handle.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError(f"verification input is not a regular file: {source}")
+        data = handle.read()
+        after = os.fstat(handle.fileno())
+
+    identity_before = (
+        before.st_dev, before.st_ino, before.st_size,
+        before.st_mtime_ns, before.st_ctime_ns,
+    )
+    identity_after = (
+        after.st_dev, after.st_ino, after.st_size,
+        after.st_mtime_ns, after.st_ctime_ns,
+    )
+    if identity_before != identity_after or len(data) != after.st_size:
+        raise ValueError(f"verification input changed while being snapshotted: {source}")
+    return data
+
+
 def verify_crl_status(
     certificate: Path,
     issuer_roots: Path,
@@ -671,7 +696,7 @@ def verify_crl_status(
 
         def snapshot_input(source: Path, label: str) -> Path:
             target = snapshot_dir / f"{label}{source.suffix}"
-            target.write_bytes(source.read_bytes())
+            target.write_bytes(_read_stable_input(source))
             return target
 
         certificate_snapshot = snapshot_input(certificate, "certificate")
