@@ -982,3 +982,9 @@ independent of wording differences between OpenSSL releases and build
 locales. The complete stdout/stderr is still included in assertion failures
 for diagnosis. These are OpenSSL verification error identifiers, not
 application-defined policy codes.
+The historical TSA path integration suite also covers the lower validity
+boundary: an intermediate CA whose `notBefore` is one second after the
+requested historical verification instant must fail with OpenSSL X.509
+reason code 9 (`X509_V_ERR_CERT_NOT_YET_VALID`). Together with the expired
+intermediate case (reason code 10), this checks both sides of the CA
+certificate validity interval at the historical instant.
