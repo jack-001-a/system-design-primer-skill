@@ -28,7 +28,8 @@ def parse_utc_epoch(value: str) -> int:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
         raise ValueError("at-time is not a valid UTC timestamp") from exc
-    return int(parsed.timestamp())
+    whole_second = int(parsed.replace(microsecond=0).timestamp())
+    return whole_second + (1 if parsed.microsecond else 0)
 
 
 def load_certificates(path: Path) -> list[x509.Certificate]:
@@ -229,6 +230,7 @@ def verify_crl_status(
 ) -> dict[str, Any]:
     epoch = parse_utc_epoch(at_time)
     instant = datetime.fromtimestamp(epoch, timezone.utc)
+    effective_at_time = instant.isoformat(timespec="seconds").replace("+00:00", "Z")
     if not isinstance(expected_roots_sha256, str) or not HEX256.fullmatch(expected_roots_sha256):
         raise ValueError("expected issuer-root SHA-256 must be 64 lowercase hex characters")
 
@@ -283,6 +285,8 @@ def verify_crl_status(
         "verified": True,
         "status": "not_revoked_at_validation_time",
         "at_time": at_time,
+        "effective_at_time": effective_at_time,
+        "time_rounding": "ceil_to_next_whole_second_for_conservative_historical_evaluation",
         "certificate_sha256": hashlib.sha256(cert_bytes).hexdigest(),
         "issuer_roots_sha256": roots_digest,
         "crl_sha256": crl_digest,

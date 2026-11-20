@@ -79,6 +79,14 @@ class TsaRevocationTests(unittest.TestCase):
     def crl_pin(self):
         return hashlib.sha256(self.crl.read_bytes()).hexdigest()
 
+    def test_fractional_gen_time_is_rounded_up_not_down(self):
+        self.assertEqual(parse_utc_epoch("2026-11-19T12:00:00.000001Z"),
+                         parse_utc_epoch("2026-11-19T12:00:01Z"))
+        self.assertEqual(parse_utc_epoch("2026-11-19T12:00:00.999999Z"),
+                         parse_utc_epoch("2026-11-19T12:00:01Z"))
+        self.assertEqual(parse_utc_epoch("2026-11-19T12:00:00Z"),
+                         parse_utc_epoch("2026-11-19T12:00:00.000000Z"))
+
     def test_requires_strict_utc_and_valid_calendar_time(self):
         with self.assertRaisesRegex(ValueError, "ending in Z"):
             parse_utc_epoch("2026-11-19T12:00:00+00:00")
@@ -101,6 +109,8 @@ class TsaRevocationTests(unittest.TestCase):
                                        expected_crl_sha256=self.crl_pin())
         self.assertTrue(result["verified"])
         self.assertEqual(result["crl_sha256"], self.crl_pin())
+        self.assertEqual(result["effective_at_time"], AT_TIME)
+        self.assertEqual(result["time_rounding"], "ceil_to_next_whole_second_for_conservative_historical_evaluation")
         self.assertIn("-attime", run.call_args.args[0])
         self.assertIn("-crl_check", run.call_args.args[0])
         self.assertIn("-CRLfile", run.call_args.args[0])

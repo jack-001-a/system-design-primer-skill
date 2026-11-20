@@ -23,7 +23,7 @@ class TsaAttestationTests(unittest.TestCase):
             "timestamp_signer_serial_number": "1234",
             "historical_revocation_assessment": {
                 "source": "verified_crl", "status": "not_revoked_at_gen_time",
-                "validation_time": "2026-11-19T12:00:00Z", "crl_sha256": h(b"crl"),
+                "validation_time": "2026-11-19T12:00:00Z", "evaluation_time_upper_bound": "2026-11-19T12:00:00Z", "crl_sha256": h(b"crl"),
                 "issuer_roots_sha256": h(b"roots"), "crl_issuer_certificate_sha256": h(b"issuer"),
                 "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
                 "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed", "verification": "OpenSSL path and CRL signature validation plus direct-CRL issuer, cRLSign, AKI, scope, freshness, signature-policy and entry-semantic preflight",

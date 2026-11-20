@@ -14,6 +14,8 @@ class TsaValidationReportTests(unittest.TestCase):
             "verified": True,
             "status": "not_revoked_at_validation_time",
             "at_time": self.gen_time,
+            "effective_at_time": self.gen_time,
+            "time_rounding": "ceil_to_next_whole_second_for_conservative_historical_evaluation",
             "certificate_sha256": self.cert,
             "crl_sha256": hashlib.sha256(b"crl").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"crl roots").hexdigest(),

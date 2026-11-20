@@ -110,7 +110,16 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
                             responder_revocation_result_sha256: str | None = None,
                             timestamp_result: dict[str, Any] | None = None,
                             timestamp_result_sha256: str | None = None) -> dict[str, Any]:
-    parse_utc(gen_time, "gen_time")
+    gen_dt = parse_utc(gen_time, "gen_time")
+    effective_second = gen_dt.replace(microsecond=0)
+    if gen_dt.microsecond:
+        from datetime import timedelta
+        effective_second += timedelta(seconds=1)
+    expected_effective_at_time = effective_second.isoformat(timespec="seconds").replace("+00:00", "Z")
+    if crl_result.get("effective_at_time") != expected_effective_at_time:
+        raise ValueError("CRL effective_at_time must conservatively ceil genTime to a whole second")
+    if crl_result.get("time_rounding") != "ceil_to_next_whole_second_for_conservative_historical_evaluation":
+        raise ValueError("CRL result does not declare conservative whole-second time rounding")
     require_digest(crl_result_sha256, "crl_result_sha256")
     if crl_result.get("verified") is not True:
         raise ValueError("CRL result is not explicitly verified")

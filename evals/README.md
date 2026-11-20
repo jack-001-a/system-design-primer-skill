@@ -958,3 +958,8 @@ When a separate CRL is used to assess the OCSP responder at RFC 3161 genTime, th
 ### TSA signer and OCSP responder CRL evidence parity
 
 The unified report and detached attestation apply the same strict direct-CRL evidence contract to the TSA signer and the OCSP responder: issuer-certificate SHA-256 identity, CRL signature algorithm OID, the exact supported key-strength/signature policy, verifier provenance, and serial-specific entry status at the target instant. Report construction and attestation both reject missing or unsupported policy/provenance and contradictory entry-presence/status combinations. The TSA signer CRL's historical assessment remains bound to RFC 3161 `genTime`; this does not broaden direct-CRL scope, prove CRL-source completeness, or independently authenticate the verifier output.
+
+
+### Fractional-second historical CRL evaluation
+
+RFC 3161 `genTime` may include fractional seconds, while the OpenSSL historical verification interface accepts integer Unix seconds. The CRL verifier therefore rounds a fractional target time **up** to the next whole second (and leaves exact-second values unchanged), then evaluates both CRL entry semantics and OpenSSL path/revocation checks at that conservative upper bound. The result records the exact caller-supplied `at_time`, the effective `effective_at_time`, and the rounding policy. The validation report and detached Attestation recompute and require the same bound. This avoids evaluating before the claimed historical instant; it may conservatively classify a revocation occurring within that fractional-second interval as already effective.
