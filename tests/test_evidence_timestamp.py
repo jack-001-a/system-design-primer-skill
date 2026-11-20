@@ -472,14 +472,14 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
             ["openssl", "ts", "-help"],
             capture_output=True, text=True, check=False,
         )
-        help_text = result.stdout + "\\n" + result.stderr
+        help_text = result.stdout + "\n" + result.stderr
         self.assertEqual(result.returncode, 0, help_text)
-        self.assertRegex(help_text, r"(?m)^\\s+-auth_level(?:\\s|$)")
+        self.assertRegex(help_text, r"(?m)^\s+-auth_level(?:\s|$)")
 
     def test_openssl_rejects_undersized_tsa_signer_key_at_auth_level_two(self):
         self._make_chain(leaf_key_size=1024)
         result = self._verify()
-        diagnostic = result.stdout + "\\n" + result.stderr
+        diagnostic = result.stdout + "\n" + result.stderr
         self.assertNotEqual(result.returncode, 0, diagnostic)
         self.assertRegex(diagnostic.lower(), r"key (too small|too weak)")
 
