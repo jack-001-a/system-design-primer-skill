@@ -331,9 +331,9 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
         ], capture_output=True, text=True, check=False)
 
     def _assert_verify_error(self, result, expected_code):
-        diagnostic = result.stdout + "\\n" + result.stderr
+        diagnostic = result.stdout + "\n" + result.stderr
         self.assertNotEqual(result.returncode, 0, diagnostic)
-        self.assertRegex(diagnostic, rf"\\berror\\s+{expected_code}\\b", diagnostic)
+        self.assertRegex(diagnostic, rf"\berror\s+{expected_code}\b", diagnostic)
 
     def test_openssl_rejects_path_length_constraint_violation(self):
         self._make_chain(intermediate_path_length=0, add_subordinate=True)
