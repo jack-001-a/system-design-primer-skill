@@ -114,6 +114,16 @@ class TsaAttestationTests(unittest.TestCase):
             "bundle_bytes_verified": False,
             "execution_provenance_established": False,
         })
+        self.assertEqual(result["evidence_provenance"]["verifier_identity"], {
+            "source": "attester_asserted_in_signed_envelope",
+            "independently_authenticated_by_this_verifier": False,
+        })
+        self.assertEqual(result["evidence_provenance"]["input_evidence_bytes"], {
+            "verified_by_this_attestation_verifier": False,
+            "scope": "CRL, OCSP, and original timestamp-result evidence are represented by report digests and assertions; their source files are not reopened or re-verified here",
+        })
+        self.assertEqual(result["evidence_provenance"]["timestamp_token"]["scope"],
+            "RFC 3161 token over this attestation signature; not the original TSA token summarized in the signed report")
         self.assertIsNone(result["evidence_provenance"]["tsa_ca_digest_pin"])
 
 

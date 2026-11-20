@@ -454,6 +454,14 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
                     "bundle_bytes_verified": False,
                     "execution_provenance_established": False,
                 },
+                "verifier_identity": {
+                    "source": "attester_asserted_in_signed_envelope",
+                    "independently_authenticated_by_this_verifier": False,
+                },
+                "input_evidence_bytes": {
+                    "verified_by_this_attestation_verifier": False,
+                    "scope": "CRL, OCSP, and original timestamp-result evidence are represented by report digests and assertions; their source files are not reopened or re-verified here",
+                },
                 "tsa_ca_digest_pin": ({
                     "source": "caller_supplied_command_line_argument",
                     "authenticated_by_this_verifier": False,
@@ -461,6 +469,7 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
                 "timestamp_token": {
                     "verified_by_this_verifier": trusted_timestamp is not None,
                     "signature_binding": "exact_attestation_signature" if trusted_timestamp is not None else "not_verified",
+                    "scope": "RFC 3161 token over this attestation signature; not the original TSA token summarized in the signed report",
                 },
             }}
 
@@ -472,8 +481,10 @@ def main() -> int:
     sign.add_argument("--report", type=Path, required=True)
     sign.add_argument("--private-key", type=Path, required=True)
     sign.add_argument("--key-id", required=True)
-    sign.add_argument("--verifier-bundle-sha256", required=True)
-    sign.add_argument("--verifier-identity", required=True)
+    sign.add_argument("--verifier-bundle-sha256", required=True,
+                      help="attester-asserted bundle digest; bundle bytes and execution are not independently verified")
+    sign.add_argument("--verifier-identity", required=True,
+                      help="attester-asserted verifier label; identity is not independently authenticated")
     sign.add_argument("--output", type=Path, required=True)
     verify = sub.add_parser("verify")
     verify.add_argument("--report", type=Path, required=True)
