@@ -187,23 +187,69 @@ def get_overlapped_result_wait(
     return succeeded, int(transferred.value), error
 
 
+class NamedPipeConnection:
+    """Track server-side connection state independently from one I/O operation."""
+
+    CONNECTED = "connected"
+    DISCONNECTED = "disconnected"
+
+    def __init__(self, file_handle: Any) -> None:
+        if not file_handle:
+            raise ValueError("a live named-pipe handle is required")
+        self.file_handle = file_handle
+        self._state = self.CONNECTED
+        self._lock = threading.RLock()
+
+    @property
+    def state(self) -> str:
+        with self._lock:
+            return self._state
+
+    def mark_connected(self) -> None:
+        """Record a successful ConnectNamedPipe completion before reuse."""
+        with self._lock:
+            if self._state != self.DISCONNECTED:
+                raise OverlappedLifecycleError(
+                    f"cannot reconnect pipe in state {self._state}"
+                )
+            self._state = self.CONNECTED
+
+
 def disconnect_named_pipe(
     bindings: Kernel32Bindings,
+    connection: NamedPipeConnection,
     operation: "OverlappedOperation",
     *,
     get_last_error: Callable[[], int] = last_error,
 ) -> tuple[bool, int | None]:
-    """Disconnect a completed pipe operation; never tear down pending I/O."""
-    if operation.state == operation.PENDING:
-        raise OverlappedLifecycleError(
-            "cannot disconnect a pipe while overlapped I/O is pending"
-        )
-    if operation.state != operation.COMPLETED or not operation.file_handle:
-        raise OverlappedLifecycleError(
-            "disconnect requires a completed operation with a live pipe handle"
-        )
-    succeeded = bool(bindings.DisconnectNamedPipe(operation.file_handle))
-    return (True, None) if succeeded else (False, int(get_last_error()))
+    """Disconnect once, only after the supplied pipe I/O has completed.
+
+    The caller must drain every outstanding operation on this pipe before
+    invoking this function; the operation argument is a lifecycle guard, not
+    a registry of all concurrent I/O issued against the handle.
+    """
+    with connection._lock:
+        if connection._state != connection.CONNECTED:
+            raise OverlappedLifecycleError(
+                f"cannot disconnect pipe in state {connection._state}"
+            )
+        if operation.state == operation.PENDING:
+            raise OverlappedLifecycleError(
+                "cannot disconnect a pipe while overlapped I/O is pending"
+            )
+        if operation.state != operation.COMPLETED:
+            raise OverlappedLifecycleError(
+                "disconnect requires a completed operation"
+            )
+        if operation.file_handle != connection.file_handle:
+            raise OverlappedLifecycleError(
+                "operation handle does not belong to this pipe connection"
+            )
+        succeeded = bool(bindings.DisconnectNamedPipe(connection.file_handle))
+        if not succeeded:
+            return False, int(get_last_error())
+        connection._state = connection.DISCONNECTED
+        return True, None
 
 
 def start_overlapped_connect(bindings: Kernel32Bindings, operation: "OverlappedOperation", *, get_last_error: Callable[[], int] = last_error) -> tuple[str, int | None]:

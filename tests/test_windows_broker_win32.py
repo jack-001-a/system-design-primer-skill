@@ -125,8 +125,9 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
             fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
         operation, _ = self.make_operation()
         operation.mark_pending()
+        connection = win32.NamedPipeConnection(10)
         with self.assertRaises(win32.OverlappedLifecycleError):
-            win32.disconnect_named_pipe(bindings, operation)
+            win32.disconnect_named_pipe(bindings, connection, operation)
 
     def test_disconnect_captures_api_failure(self):
         fake = FakeKernel32()
@@ -139,9 +140,51 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         operation, _ = self.make_operation()
         operation.mark_pending()
         operation.mark_completed()
-        self.assertEqual(win32.disconnect_named_pipe(bindings, operation,
+        connection = win32.NamedPipeConnection(10)
+        self.assertEqual(win32.disconnect_named_pipe(bindings, connection, operation,
             get_last_error=lambda: 109), (False, 109))
+        self.assertEqual(connection.state, connection.CONNECTED)
         self.assertEqual(seen, [10])
+
+    def test_disconnect_transitions_connection_and_rejects_duplicate(self):
+        fake = FakeKernel32()
+        calls = []
+        fake.DisconnectNamedPipe = lambda handle: calls.append(handle) or 1
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+        operation, _ = self.make_operation()
+        operation.mark_pending()
+        operation.mark_completed()
+        connection = win32.NamedPipeConnection(10)
+        self.assertEqual(win32.disconnect_named_pipe(bindings, connection, operation), (True, None))
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            win32.disconnect_named_pipe(bindings, connection, operation)
+        self.assertEqual(calls, [10])
+
+    def test_reconnect_requires_disconnected_state(self):
+        connection = win32.NamedPipeConnection(10)
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            connection.mark_connected()
+        # A successful ConnectNamedPipe completion is recorded explicitly.
+        connection._state = connection.DISCONNECTED
+        connection.mark_connected()
+        self.assertEqual(connection.state, connection.CONNECTED)
+
+    def test_disconnect_rejects_operation_for_another_pipe(self):
+        fake = FakeKernel32()
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+        operation, _ = self.make_operation()
+        operation.mark_pending()
+        operation.mark_completed()
+        connection = win32.NamedPipeConnection(99)
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            win32.disconnect_named_pipe(bindings, connection, operation)
 
     def test_loader_binds_connect_named_pipe_signature(self):
         fake = FakeKernel32()
