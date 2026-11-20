@@ -282,6 +282,47 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(calls, [])
         self.assertEqual(connection.state, connection.CONNECTED)
 
+    def test_register_and_close_are_serialized(self):
+        entered_add = threading.Event()
+        release_add = threading.Event()
+        close_started = threading.Event()
+        close_finished = threading.Event()
+
+        class BlockingSet(set):
+            def add(self, item):
+                entered_add.set()
+                if not release_add.wait(2):
+                    raise AssertionError("registration did not get released")
+                super().add(item)
+
+        operation, _ = self.make_operation()
+        connection = win32.NamedPipeConnection(10)
+        connection._operations = BlockingSet()
+
+        def register():
+            connection.register_operation(operation)
+
+        def close():
+            close_started.set()
+            operation.close()
+            close_finished.set()
+
+        register_thread = threading.Thread(target=register)
+        close_thread = threading.Thread(target=close)
+        register_thread.start()
+        self.assertTrue(entered_add.wait(2))
+        close_thread.start()
+        self.assertTrue(close_started.wait(2))
+        self.assertFalse(close_finished.wait(0.05))
+        release_add.set()
+        register_thread.join(2)
+        close_thread.join(2)
+        self.assertFalse(register_thread.is_alive())
+        self.assertFalse(close_thread.is_alive())
+        self.assertTrue(close_finished.is_set())
+        self.assertEqual(operation.state, operation.CLOSED)
+        self.assertIn(operation, connection._operations)
+
     def test_register_rejects_wrong_handle_and_disconnected_pipe(self):
         connection = win32.NamedPipeConnection(10)
         wrong, _ = self.make_operation()

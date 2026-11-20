@@ -209,7 +209,10 @@ class NamedPipeConnection:
 
     def register_operation(self, operation: "OverlappedOperation") -> None:
         """Register every I/O operation issued against this pipe instance."""
-        with self._lock:
+        # Lock order is connection -> operation throughout this class.
+        # Keep the state check and registry insertion atomic with respect to
+        # operation.close(), which takes only the operation lock.
+        with self._lock, operation._lock:
             if self._state != self.CONNECTED:
                 raise OverlappedLifecycleError(
                     "cannot register I/O on a disconnected pipe"
@@ -218,7 +221,7 @@ class NamedPipeConnection:
                 raise OverlappedLifecycleError(
                     "operation handle does not belong to this pipe connection"
                 )
-            if operation.state in (operation.CLOSED,):
+            if operation._state == operation.CLOSED:
                 raise OverlappedLifecycleError(
                     "cannot register a closed I/O operation"
                 )
