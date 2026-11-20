@@ -277,7 +277,7 @@ def verify_timestamp(
         empty_store.write_bytes(b"")
         command = ["ts", "-verify", "-queryfile", str(request_path), "-in", str(response_path),
                    "-CAfile", str(tsa_ca_path), "-CApath", str(empty_path),
-                   "-CAstore", str(empty_store), "-purpose", "timestampsign"]
+                   "-CAstore", str(empty_store), "-purpose", "timestampsign", "-x509_strict"]
         if chain_path is not None:
             command.extend(["-untrusted", str(chain_path)])
         for verification_time in verification_times:
