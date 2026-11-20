@@ -187,10 +187,20 @@ class EvidenceTimestampTests(unittest.TestCase):
                 Path(command[command.index("-out") + 1]).write_bytes(b"content")
                 return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
             raise AssertionError(command)
+        intermediates = self.root / "tsa-intermediates.pem"
+        intermediates.write_bytes(b"intermediate")
         with patch("scripts.evidence_timestamp.openssl_path", return_value="openssl"), patch(
             "scripts.evidence_timestamp.subprocess.run", side_effect=fake_run
-        ):
-            result = inspect_tsa_signer_certificate(self.response, now.isoformat().replace("+00:00", "Z"))
+        ), patch("scripts.evidence_timestamp.run_openssl") as verify_path:
+            result = inspect_tsa_signer_certificate(
+                self.response, now.isoformat().replace("+00:00", "Z"), self.ca, intermediates
+            )
+        command = verify_path.call_args.args[0]
+        self.assertEqual(command[:5], ["verify", "-purpose", "timestampsign", "-attime", str(int(now.timestamp()))])
+        self.assertIn("-CAfile", command)
+        self.assertIn(str(self.ca), command)
+        self.assertIn("-untrusted", command)
+        self.assertIn(str(intermediates), command)
         self.assertEqual(result["tsa_signer_certificate_sha256"], cert.fingerprint(hashes.SHA256()).hex())
         self.assertIn("cms", calls[1])
         self.assertIn("-signer", calls[1])
