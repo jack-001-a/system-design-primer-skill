@@ -284,6 +284,36 @@ class TsaRevocationTests(unittest.TestCase):
         self.write_material()
         with self.assertRaisesRegex(ValueError, "CA=true"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+    def test_rejects_crl_aki_for_cross_certificate_not_named_by_target_aki(self):
+        self.issuer, self.leaf, self.listing = make_material()
+        cross_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        cross_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Alternate issuer")])
+        cross_signed = (
+            x509.CertificateBuilder().subject_name(self.issuer.subject).issuer_name(cross_name)
+            .public_key(self.issuer.public_key()).serial_number(99)
+            .not_valid_before(NOW-timedelta(days=30)).not_valid_after(NOW+timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=True, crl_sign=True, encipher_only=None, decipher_only=None), True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()), False)
+            .sign(cross_key, hashes.SHA256())
+        )
+        self.write_material()
+        mismatched_aki = x509.AuthorityKeyIdentifier(
+            key_identifier=x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()).digest,
+            authority_cert_issuer=[x509.DirectoryName(cross_name)],
+            authority_cert_serial_number=99,
+        )
+        self.listing = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
+            .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
+            .add_extension(mismatched_aki, False).add_extension(x509.CRLNumber(2), False)
+            .sign(cross_key, hashes.SHA256()))
+        with self.assertRaisesRegex(ValueError, "does not match the target certificate AuthorityKeyIdentifier"):
+            validate_direct_crl_scope(
+                self.leaf, [self.issuer, cross_signed], self.listing, NOW, NOW,
+            )
+
     def test_aki_authority_issuer_and_serial_disambiguate_cross_signed_same_subject_ski(self):
         self.issuer, self.leaf, self.listing = make_material()
         cross_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
