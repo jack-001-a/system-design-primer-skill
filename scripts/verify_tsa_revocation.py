@@ -118,6 +118,72 @@ def _read_der_tlv(data: bytes, offset: int) -> tuple[int, int, int, int]:
     return tag, cursor, end, end
 
 
+
+def validate_invalidity_date_der_encoding(raw: bytes, tbs_start: int, tbs_end: int) -> None:
+    """Require CRL invalidityDate values to use RFC 5280's canonical GeneralizedTime."""
+    cursor = tbs_start
+    tag, _, _, next_cursor = _read_der_tlv(raw, cursor)
+    if tag == 0x02:  # optional v2 version
+        cursor = next_cursor
+    # signature, issuer, thisUpdate
+    for expected in (0x30, 0x30):
+        tag, _, _, cursor = _read_der_tlv(raw, cursor)
+        if tag != expected:
+            raise ValueError("malformed TBSCertList while locating invalidityDate")
+    tag, _, _, cursor = _read_der_tlv(raw, cursor)
+    if tag not in (0x17, 0x18):
+        raise ValueError("malformed TBSCertList thisUpdate")
+    # nextUpdate is optional.
+    if cursor < tbs_end:
+        tag, _, _, next_cursor = _read_der_tlv(raw, cursor)
+        if tag in (0x17, 0x18):
+            cursor = next_cursor
+    # revokedCertificates is optional and precedes [0] EXPLICIT crlExtensions.
+    if cursor >= tbs_end:
+        return
+    tag, entries_start, entries_end, next_cursor = _read_der_tlv(raw, cursor)
+    if tag != 0x30:
+        return
+    entry_cursor = entries_start
+    while entry_cursor < entries_end:
+        entry_tag, entry_start, entry_end, entry_next = _read_der_tlv(raw, entry_cursor)
+        if entry_tag != 0x30:
+            raise ValueError("malformed revokedCertificates entry")
+        field_cursor = entry_start
+        serial_tag, _, _, field_cursor = _read_der_tlv(raw, field_cursor)
+        date_tag, _, _, field_cursor = _read_der_tlv(raw, field_cursor)
+        if serial_tag != 0x02 or date_tag not in (0x17, 0x18):
+            raise ValueError("malformed CRL entry serial number or revocationDate")
+        if field_cursor < entry_end:
+            extensions_tag, extensions_start, extensions_end, _ = _read_der_tlv(raw, field_cursor)
+            if extensions_tag == 0x30:
+                extension_cursor = extensions_start
+                while extension_cursor < extensions_end:
+                    ext_tag, ext_start, ext_end, ext_next = _read_der_tlv(raw, extension_cursor)
+                    if ext_tag != 0x30:
+                        raise ValueError("malformed CRL entry extension")
+                    oid_tag, oid_start, oid_end, ext_field = _read_der_tlv(raw, ext_start)
+                    if oid_tag != 0x06:
+                        raise ValueError("malformed CRL entry extension OID")
+                    oid = raw[oid_start:oid_end]
+                    if ext_field < ext_end:
+                        maybe_tag, _, _, maybe_next = _read_der_tlv(raw, ext_field)
+                        if maybe_tag == 0x01:
+                            ext_field = maybe_next
+                    value_tag, value_start, value_end, _ = _read_der_tlv(raw, ext_field)
+                    if value_tag != 0x04 or value_end != ext_end:
+                        raise ValueError("malformed CRL entry extension value")
+                    if oid == b"\\x55\\x1d\\x18":
+                        time_tag, time_start, time_end, time_next = _read_der_tlv(raw, value_start)
+                        encoded_time = raw[time_start:time_end]
+                        if (time_tag != 0x18 or time_next != value_end
+                                or re.fullmatch(rb"[0-9]{14}Z", encoded_time) is None):
+                            raise ValueError(
+                                "invalidityDate must be GeneralizedTime in YYYYMMDDHHMMSSZ form without fractional seconds"
+                            )
+                    extension_cursor = ext_next
+        entry_cursor = entry_next
+
 def validate_crl_der_profile(raw: bytes, crl: x509.CertificateRevocationList) -> None:
     """Enforce RFC 5280 CRL version and inner/outer signature AlgorithmIdentifier equality."""
     tag, outer_start, outer_end, outer_next = _read_der_tlv(raw, 0)
@@ -126,6 +192,7 @@ def validate_crl_der_profile(raw: bytes, crl: x509.CertificateRevocationList) ->
     tbs_tag, tbs_start, tbs_end, tbs_next = _read_der_tlv(raw, outer_start)
     if tbs_tag != 0x30 or tbs_next > outer_end:
         raise ValueError("CRL DER lacks a bounded TBSCertList SEQUENCE")
+    validate_invalidity_date_der_encoding(raw, tbs_start, tbs_end)
     cursor = tbs_start
     first_tag, first_start, first_end, first_next = _read_der_tlv(raw, cursor)
     if first_next > tbs_end:
