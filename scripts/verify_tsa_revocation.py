@@ -101,6 +101,12 @@ def validate_crl_signature_policy(crl: x509.CertificateRevocationList, signer: x
 def assess_crl_entry(certificate: x509.Certificate, crl: x509.CertificateRevocationList,
                      at_time: datetime) -> dict[str, Any]:
     """Interpret the target serial's CRL entry conservatively at a historical instant."""
+    for entry in crl:
+        try:
+            entry.extensions.get_extension_for_oid(ExtensionOID.CERTIFICATE_ISSUER)
+        except x509.ExtensionNotFound:
+            continue
+        raise ValueError("certificateIssuer CRL entries require indirect-CRL processing, which is unsupported")
     matches = [entry for entry in crl if entry.serial_number == certificate.serial_number]
     if len(matches) > 1:
         raise ValueError("CRL contains duplicate entries for the target certificate serial number")
