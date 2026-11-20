@@ -246,6 +246,49 @@ class NamedPipeConnection:
                 )
             self._operations.add(operation)
 
+    def start_operation(
+        self,
+        bindings: "Kernel32Bindings",
+        operation: "OverlappedOperation",
+        *,
+        buffer: Any,
+        length: int,
+        write: bool = False,
+        get_last_error: Callable[[], int] = last_error,
+    ) -> tuple[str, int, int | None]:
+        """Submit registered I/O while excluding concurrent disconnect/reuse.
+
+        The connection lock remains held through the native ReadFile/WriteFile
+        submission. This makes registration, submission, and disconnect one
+        serialized lifecycle; callers must not submit registered operations
+        through the low-level start_overlapped_io helper directly.
+        """
+        with self._lock:
+            if self._state != self.CONNECTED:
+                raise OverlappedLifecycleError(
+                    "cannot submit I/O on a disconnected pipe"
+                )
+            if operation not in self._operations:
+                raise OverlappedLifecycleError(
+                    "operation must be registered before I/O submission"
+                )
+            if operation.file_handle != self.file_handle:
+                raise OverlappedLifecycleError(
+                    "operation handle does not belong to this pipe connection"
+                )
+            if operation.state != operation.CREATED:
+                raise OverlappedLifecycleError(
+                    f"cannot submit operation in state {operation.state}"
+                )
+            return start_overlapped_io(
+                bindings,
+                operation,
+                buffer=buffer,
+                length=length,
+                write=write,
+                get_last_error=get_last_error,
+            )
+
     def unregister_operation(self, operation: "OverlappedOperation") -> None:
         """Forget an operation only after its OVERLAPPED resources are closed."""
         with self._lock:

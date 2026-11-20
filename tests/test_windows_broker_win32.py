@@ -118,6 +118,82 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
             win32.load_kernel32(loader=lambda *args, **kwargs: fake)
         self.assertEqual(fake.DisconnectNamedPipe.argtypes, [win32.HANDLE])
 
+    def test_connection_serializes_io_submission_against_disconnect(self):
+        entered = threading.Event()
+        release = threading.Event()
+        disconnect_calls = []
+        fake = FakeKernel32()
+
+        def blocking_read(handle, pointer, length, transferred, overlapped):
+            entered.set()
+            if not release.wait(2):
+                raise AssertionError("I/O submission was not released")
+            return 0
+
+        fake.ReadFile = blocking_read
+        fake.DisconnectNamedPipe = lambda handle: disconnect_calls.append(handle) or 1
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        operation, _ = self.make_operation()
+        connection = win32.NamedPipeConnection(10)
+        connection.register_operation(operation)
+        start_results = []
+        start_errors = []
+        disconnect_errors = []
+
+        def start_io():
+            try:
+                start_results.append(connection.start_operation(
+                    bindings, operation, buffer=operation.buffer, length=len(operation.buffer),
+                    get_last_error=lambda: win32.ERROR_IO_PENDING,
+                ))
+            except Exception as exc:
+                start_errors.append(exc)
+
+        def disconnect():
+            try:
+                win32.disconnect_named_pipe(bindings, connection, operation)
+            except win32.OverlappedLifecycleError as exc:
+                disconnect_errors.append(str(exc))
+
+        starter = threading.Thread(target=start_io)
+        starter.start()
+        self.assertTrue(entered.wait(2))
+        disconnector = threading.Thread(target=disconnect)
+        disconnector.start()
+        release.set()
+        starter.join(2)
+        disconnector.join(2)
+
+        self.assertFalse(starter.is_alive())
+        self.assertFalse(disconnector.is_alive())
+        self.assertEqual(start_errors, [])
+        self.assertEqual(start_results, [("pending", 0, win32.ERROR_IO_PENDING)])
+        self.assertEqual(len(disconnect_errors), 1)
+        self.assertEqual(disconnect_calls, [])
+        self.assertEqual(operation.state, operation.PENDING)
+        self.assertEqual(connection.state, connection.CONNECTED)
+
+    def test_connection_start_requires_registered_operation(self):
+        fake = FakeKernel32()
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        operation, _ = self.make_operation()
+        connection = win32.NamedPipeConnection(10)
+        with self.assertRaisesRegex(win32.OverlappedLifecycleError, "registered"):
+            connection.start_operation(
+                bindings, operation, buffer=operation.buffer, length=len(operation.buffer)
+            )
+        self.assertEqual(operation.state, operation.CREATED)
+
     def test_disconnect_rejects_pending_operation(self):
         fake = FakeKernel32()
         bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
