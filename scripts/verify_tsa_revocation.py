@@ -659,6 +659,7 @@ def _verify_crl_status_with_snapshot(
 
 def _read_stable_input(source: Path) -> bytes:
     """Read one regular-file input and reject detectable concurrent mutation."""
+    # Descriptor metadata brackets the read, avoiding a second pathname lookup.
     with source.open("rb") as handle:
         before = os.fstat(handle.fileno())
         if not stat.S_ISREG(before.st_mode):
@@ -688,7 +689,7 @@ def verify_crl_status(
     intermediates: Path | None = None,
     expected_crl_sha256: str | None = None,
 ) -> dict[str, Any]:
-    """Verify one immutable CRL snapshot for both preflight and OpenSSL."""
+    """Verify snapshots of all inputs consistently across preflight and OpenSSL."""
     # Snapshot every file consumed by Python preflight or the OpenSSL child.
     # This binds the pinned/parsed objects to the exact paths OpenSSL receives.
     with tempfile.TemporaryDirectory(prefix="tsa-inputs-") as directory:
