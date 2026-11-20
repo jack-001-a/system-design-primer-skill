@@ -165,11 +165,18 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(calls, [10])
 
     def test_reconnect_requires_disconnected_state(self):
+        fake = FakeKernel32()
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+        operation, _ = self.make_operation()
+        operation.mark_pending()
+        operation.mark_completed()
         connection = win32.NamedPipeConnection(10)
         with self.assertRaises(win32.OverlappedLifecycleError):
             connection.mark_connected()
-        # A successful ConnectNamedPipe completion is recorded explicitly.
-        connection._state = connection.DISCONNECTED
+        self.assertEqual(win32.disconnect_named_pipe(bindings, connection, operation), (True, None))
         connection.mark_connected()
         self.assertEqual(connection.state, connection.CONNECTED)
 
