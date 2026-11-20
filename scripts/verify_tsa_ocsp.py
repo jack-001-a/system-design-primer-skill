@@ -3,8 +3,10 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -21,6 +23,7 @@ HEX256 = re.compile(r"^[0-9a-f]{64}$")
 # Bound preflight work for untrusted OCSP response bytes. These are local
 # verifier resource limits, not protocol-level size constraints.
 MAX_OCSP_RESPONSE_BYTES = 16 * 1024 * 1024
+MAX_OCSP_INPUT_BYTES = 16 * 1024 * 1024
 MAX_DER_DEPTH = 64
 MAX_DER_NODES = 200_000
 MAX_DER_CHILDREN = 50_000
@@ -64,16 +67,49 @@ def load_certificate(path: Path, description: str) -> x509.Certificate:
             raise ValueError("could not parse " + description) from exc
 
 
-def _read_bounded_ocsp_response(path: Path) -> bytes:
-    """Read an OCSP response without allocating beyond the configured limit."""
-    with path.open("rb") as stream:
-        raw = stream.read(MAX_OCSP_RESPONSE_BYTES + 1)
-    if len(raw) > MAX_OCSP_RESPONSE_BYTES:
+def _read_stable_ocsp_input(
+    source: Path,
+    description: str,
+    max_bytes: int = MAX_OCSP_INPUT_BYTES,
+) -> bytes:
+    """Read one bounded regular input and reject files that change during the read."""
+    with source.open("rb") as stream:
+        before = os.fstat(stream.fileno())
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError(description + " must be a regular file")
+        if before.st_size > max_bytes:
+            raise ValueError(
+                description + " exceeds the maximum supported size of "
+                + str(max_bytes) + " bytes"
+            )
+        raw = stream.read(max_bytes + 1)
+        after = os.fstat(stream.fileno())
+
+    if len(raw) > max_bytes:
         raise ValueError(
-            "OCSP response exceeds the maximum supported size of "
-            + str(MAX_OCSP_RESPONSE_BYTES) + " bytes"
+            description + " exceeds the maximum supported size of "
+            + str(max_bytes) + " bytes"
+        )
+    identity_before = (
+        before.st_dev, before.st_ino, before.st_size,
+        before.st_mtime_ns, before.st_ctime_ns,
+    )
+    identity_after = (
+        after.st_dev, after.st_ino, after.st_size,
+        after.st_mtime_ns, after.st_ctime_ns,
+    )
+    if identity_before != identity_after or len(raw) != after.st_size:
+        raise ValueError(
+            description + " changed while being snapshotted: " + str(source)
         )
     return raw
+
+
+def _read_bounded_ocsp_response(path: Path) -> bytes:
+    """Read one bounded, stable OCSP response input."""
+    return _read_stable_ocsp_input(
+        path, "OCSP response", MAX_OCSP_RESPONSE_BYTES
+    )
 
 
 def _der_tlv(data: bytes | memoryview, offset: int = 0) -> tuple[int, memoryview, int]:
@@ -548,22 +584,13 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
     with tempfile.TemporaryDirectory(prefix="tsa-ocsp-inputs-") as temporary:
         snapshot_dir = Path(temporary)
 
-        def snapshot(
-            name: str, source: Path | None, max_bytes: int | None = None
-        ) -> Path | None:
+        def snapshot(name: str, source: Path | None) -> Path | None:
             if source is None:
                 return None
             destination = snapshot_dir / name
-            if max_bytes is None:
-                raw = source.read_bytes()
-            elif max_bytes == MAX_OCSP_RESPONSE_BYTES and name == "ocsp-response.der":
-                raw = _read_bounded_ocsp_response(source)
-            else:
-                # Read at most one byte beyond any other explicit limit.
-                with source.open("rb") as stream:
-                    raw = stream.read(max_bytes + 1)
-                if len(raw) > max_bytes:
-                    raise ValueError("input exceeds the maximum supported size")
+            raw = _read_stable_ocsp_input(
+                source, "OCSP " + name, MAX_OCSP_INPUT_BYTES
+            )
             destination.write_bytes(raw)
             return destination
 
@@ -571,7 +598,7 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
             snapshot("target-certificate", certificate),
             snapshot("issuer-certificate", issuer),
             snapshot("issuer-roots", roots),
-            snapshot("ocsp-response.der", response, MAX_OCSP_RESPONSE_BYTES),
+            snapshot("ocsp-response.der", response),
             expected_roots_sha256,
             snapshot("intermediates.pem", intermediates),
             now=now,
