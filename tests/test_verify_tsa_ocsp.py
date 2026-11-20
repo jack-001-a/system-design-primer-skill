@@ -105,24 +105,28 @@ Next Update: Nov 19 12:05:00 2026 GMT
         intermediates = self.root / "intermediates.pem"
         intermediate_bytes = self.root_certificate.public_bytes(Encoding.PEM)
         intermediates.write_bytes(intermediate_bytes)
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            if len(calls) == 2:
+                supplied_bundle = Path(command[command.index("-verify_other") + 1])
+                self.assertEqual(supplied_bundle.read_bytes(), intermediate_bytes)
+                return Mock(returncode=0, stdout=self.output, stderr="")
+            return Mock(returncode=0, stdout="", stderr="")
+
         with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), \
-             patch("scripts.verify_tsa_ocsp.subprocess.run") as run:
-            run.side_effect = [
-                Mock(returncode=0, stdout="", stderr=""),
-                Mock(returncode=0, stdout=self.output, stderr=""),
-            ]
+             patch("scripts.verify_tsa_ocsp.subprocess.run", side_effect=fake_run):
             result = verify_ocsp_response(
                 self.cert, self.issuer, self.roots, self.response, self.pin(),
                 intermediates=intermediates, now=self.now,
             )
-        command = run.call_args_list[1].args[0]
+        command = calls[1]
         self.assertEqual(
             result["issuer_intermediates_sha256"],
             hashlib.sha256(intermediate_bytes).hexdigest(),
         )
         self.assertIn("-verify_other", command)
-        supplied_bundle = Path(command[command.index("-verify_other") + 1])
-        self.assertEqual(supplied_bundle.read_bytes(), intermediate_bytes)
 
     def test_reports_revoked_status_without_calling_it_good(self):
         revoked_response = (ocsp.OCSPResponseBuilder()
