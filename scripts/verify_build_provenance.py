@@ -13,6 +13,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import stat
 import subprocess
 import sys
@@ -120,6 +121,28 @@ def _copy_regular_file_snapshot(source: Path, destination: Path, label: str) -> 
 
 
 
+def _kill_and_reap_cli(process: subprocess.Popen[bytes]) -> None:
+    """Stop the isolated CLI process group where supported, then reap its leader."""
+    if os.name == "posix":
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            # Retain a direct-child fallback if process-group signaling is unavailable.
+            if process.poll() is None:
+                try:
+                    process.kill()
+                except ProcessLookupError:
+                    pass
+    elif process.poll() is None:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+    process.wait()
+
+
 def _run_cli_bounded(
     command: list[str],
     *,
@@ -128,38 +151,49 @@ def _run_cli_bounded(
     stdout_limit: int,
     stderr_limit: int = GH_STDERR_LIMIT_BYTES,
 ) -> subprocess.CompletedProcess[str]:
-    """Run a CLI with file-backed, size-monitored output and a hard wall-clock deadline."""
+    """Run a CLI with bounded output checks and a wall-clock deadline."""
     stdout_path = output_dir / "cli-stdout"
     stderr_path = output_dir / "cli-stderr"
     deadline = time.monotonic() + timeout
     with stdout_path.open("wb") as stdout_file, stderr_path.open("wb") as stderr_file:
         process = subprocess.Popen(
-            command, stdout=stdout_file, stderr=stderr_file, text=False
+            command,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            text=False,
+            start_new_session=(os.name == "posix"),
         )
         failure = None
-        while True:
-            try:
-                returncode = process.wait(timeout=min(0.05, max(0.0, deadline - time.monotonic())))
-                break
-            except subprocess.TimeoutExpired:
-                stdout_size = stdout_path.stat().st_size
-                stderr_size = stderr_path.stat().st_size
-                if stdout_size > stdout_limit:
-                    failure = RuntimeError(
-                        f"GitHub CLI stdout exceeded the {stdout_limit}-byte limit"
+        try:
+            while True:
+                try:
+                    returncode = process.wait(
+                        timeout=min(0.05, max(0.0, deadline - time.monotonic()))
                     )
                     break
-                if stderr_size > stderr_limit:
-                    failure = RuntimeError(
-                        f"GitHub CLI stderr exceeded the {stderr_limit}-byte limit"
-                    )
-                    break
-                if time.monotonic() >= deadline:
-                    failure = subprocess.TimeoutExpired(command, timeout)
-                    break
-        if failure is not None:
-            process.kill()
-            process.wait()
+                except subprocess.TimeoutExpired:
+                    stdout_size = stdout_path.stat().st_size
+                    stderr_size = stderr_path.stat().st_size
+                    if stdout_size > stdout_limit:
+                        failure = RuntimeError(
+                            f"GitHub CLI stdout exceeded the {stdout_limit}-byte limit"
+                        )
+                        break
+                    if stderr_size > stderr_limit:
+                        failure = RuntimeError(
+                            f"GitHub CLI stderr exceeded the {stderr_limit}-byte limit"
+                        )
+                        break
+                    if time.monotonic() >= deadline:
+                        failure = subprocess.TimeoutExpired(command, timeout)
+                        break
+
+            # Also stop descendants that inherited the output handles. On POSIX,
+            # start_new_session gives this CLI an isolated process group.
+            _kill_and_reap_cli(process)
+        except BaseException:
+            _kill_and_reap_cli(process)
+            raise
         stdout_file.flush()
         stderr_file.flush()
 

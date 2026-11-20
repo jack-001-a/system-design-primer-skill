@@ -306,6 +306,29 @@ class BuildProvenanceTests(unittest.TestCase):
                 stdout_limit=128,
             )
 
+    @unittest.skipUnless(os.name == "posix", "process-group cleanup is POSIX-specific")
+    def test_cli_success_stops_descendants_that_inherit_output_handles(self):
+        import time
+
+        marker = Path(self.temp.name) / "late-child-write"
+        child_code = (
+            "import pathlib,time; time.sleep(0.4); "
+            f"pathlib.Path({str(marker)!r}).write_text('late')"
+        )
+        parent_code = (
+            "import subprocess,sys; "
+            f"subprocess.Popen([sys.executable, '-c', {child_code!r}])"
+        )
+        result = _run_cli_bounded(
+            [sys.executable, "-c", parent_code],
+            timeout=5,
+            output_dir=Path(self.temp.name),
+            stdout_limit=128,
+        )
+        self.assertEqual(result.returncode, 0)
+        time.sleep(0.5)
+        self.assertFalse(marker.exists())
+
     def test_sha256_file_hashes_large_files_incrementally(self):
         artifact = Path(self.temp.name) / "large-artifact.bin"
         payload = (b"streaming-hash-check-" * 100000)
