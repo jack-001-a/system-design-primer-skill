@@ -485,17 +485,17 @@ class TsaRevocationTests(unittest.TestCase):
 
 
     def test_der_tlv_reader_accepts_minimal_long_form_length(self):
-        encoded = b"\\x04\\x81\\x80" + b"x" * 128
+        encoded = b"\x04\x81\x80" + b"x" * 128
         self.assertEqual(_read_der_tlv(encoded, 0), (0x04, 3, 131, 131))
 
     def test_der_tlv_reader_rejects_noncanonical_or_truncated_lengths(self):
         cases = (
-            (b"\\x04\\x80", "invalid DER length"),
-            (b"\\x04\\x82\\x00\\x80", "non-minimal DER length"),
-            (b"\\x04\\x81\\x7f", "non-minimal DER length"),
-            (b"\\x04\\x82\\x01", "invalid DER length"),
-            (b"\\x04\\x85\\x01\\x02\\x03\\x04\\x05", "invalid DER length"),
-            (b"\\x04\\x02\\x01", "truncated DER value"),
+            (b"\x04\x80", "invalid DER length"),
+            (b"\x04\x82\x00\x80", "non-minimal DER length"),
+            (b"\x04\x81\x7f", "non-minimal DER length"),
+            (b"\x04\x82\x01", "invalid DER length"),
+            (b"\x04\x85\x01\x02\x03\x04\x05", "invalid DER length"),
+            (b"\x04\x02\x01", "truncated DER value"),
         )
         for encoded, message in cases:
             with self.subTest(encoded=encoded), self.assertRaisesRegex(ValueError, message):
