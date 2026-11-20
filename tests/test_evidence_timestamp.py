@@ -175,6 +175,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(upper_bound[upper_bound.index("-attime") + 1], str(int(datetime(2026, 11, 19, 12, 0, 1, tzinfo=timezone.utc).timestamp())))
         self.assertIn("-purpose", historical)
         self.assertIn("timestampsign", historical)
+        self.assertIn("-x509_strict", historical)
         self.assertIn("-CApath", historical)
         self.assertIn("-CAstore", historical)
         self.assertTrue(result["tsa_chain_valid_at_gen_time"])
