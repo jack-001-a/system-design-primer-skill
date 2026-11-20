@@ -284,13 +284,13 @@ def disconnect_named_pipe(
             raise OverlappedLifecycleError(
                 "operation must be registered with its pipe connection"
             )
-        pending = [
+        unfinished = [
             item for item in connection._operations
-            if item.state == item.PENDING
+            if item.state not in (item.COMPLETED, item.CLOSED)
         ]
-        if pending:
+        if unfinished:
             raise OverlappedLifecycleError(
-                "cannot disconnect while registered pipe I/O is pending"
+                "cannot disconnect while registered pipe I/O is not completed"
             )
         succeeded = bool(bindings.DisconnectNamedPipe(connection.file_handle))
         if not succeeded:

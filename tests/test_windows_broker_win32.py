@@ -209,6 +209,27 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(win32.disconnect_named_pipe(bindings, connection, completed), (True, None))
         self.assertEqual(connection._operations, {completed, pending})
 
+    def test_disconnect_rejects_registered_operation_not_yet_started(self):
+        fake = FakeKernel32()
+        calls = []
+        fake.DisconnectNamedPipe = lambda handle: calls.append(handle) or 1
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+        completed, _ = self.make_operation()
+        completed.mark_completed()
+        not_started, _ = self.make_operation()
+        connection = win32.NamedPipeConnection(10)
+        connection.register_operation(completed)
+        connection.register_operation(not_started)
+        with self.assertRaisesRegex(
+            win32.OverlappedLifecycleError, "not completed"
+        ):
+            win32.disconnect_named_pipe(bindings, connection, completed)
+        self.assertEqual(calls, [])
+        self.assertEqual(connection.state, connection.CONNECTED)
+
     def test_register_rejects_wrong_handle_and_disconnected_pipe(self):
         connection = win32.NamedPipeConnection(10)
         wrong, _ = self.make_operation()
