@@ -650,6 +650,33 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "target certificate is revoked"):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
+    def test_input_snapshots_are_removed_when_openssl_spawn_raises(self):
+        captured_command = []
+
+        def fail_to_spawn(command, **kwargs):
+            captured_command.extend(command)
+            raise RuntimeError("simulated process-spawn failure")
+
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch(
+            "scripts.verify_tsa_revocation.subprocess.run", side_effect=fail_to_spawn
+        ):
+            with self.assertRaisesRegex(RuntimeError, "simulated process-spawn failure"):
+                verify_crl_status(
+                    self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(),
+                    expected_crl_sha256=self.crl_pin(),
+                )
+
+        crl_argument = Path(captured_command[captured_command.index("-CRLfile") + 1])
+        roots_argument = Path(captured_command[captured_command.index("-CAfile") + 1])
+        certificate_argument = Path(captured_command[-1])
+        snapshot_directory = crl_argument.parent
+        self.assertEqual(roots_argument.parent, snapshot_directory)
+        self.assertEqual(certificate_argument.parent, snapshot_directory)
+        self.assertFalse(crl_argument.exists(), "CRL snapshot must be removed after spawn failure")
+        self.assertFalse(roots_argument.exists(), "trust-anchor snapshot must be removed after spawn failure")
+        self.assertFalse(certificate_argument.exists(), "target-certificate snapshot must be removed after spawn failure")
+        self.assertFalse(snapshot_directory.exists(), "private snapshot directory must be removed after spawn failure")
+
     def test_rejects_openssl_failure(self):
         with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
             run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 2, "", "certificate revoked"
