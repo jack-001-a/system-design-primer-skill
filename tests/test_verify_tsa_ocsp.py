@@ -18,7 +18,7 @@ from scripts.verify_tsa_ocsp import (
     verify_ocsp_response, validate_trust_anchor_bundle, verification_time_bounds,
     parse_historical_at_time, validate_ocsp_generalized_time_profile,
     MAX_OCSP_RESPONSE_BYTES, MAX_DER_DEPTH, MAX_DER_CHILDREN, MAX_DER_NODES,
-    _validate_der_primitive,
+    _validate_der_primitive, _der_children, _require_single_der_value,
 )
 
 
@@ -323,7 +323,7 @@ Next Update: Nov 19 12:05:00 2026 GMT
         valid_extensions = synthetic_ocsp_response(
             valid_time, valid_time, valid_time,
             response_extensions=der_value(0xA1, der_value(0x30, der_value(0x30, extension))),
-            extension=extension,
+            extension=der_value(0x30, extension),
         )
         validate_ocsp_generalized_time_profile(valid_extensions)
 
@@ -401,9 +401,12 @@ Next Update: Nov 19 12:05:00 2026 GMT
         valid = synthetic_ocsp_response(
             b"20261120120000Z", b"20261120115800Z", b"20261120120500Z"
         )
-        # The generated outer SEQUENCE uses short-form DER length and starts
-        # with the one-byte successful ENUMERATED value.
-        malformed = der_value(0x30, valid[2:] + der_value(0x05, b""))
+        content = _require_single_der_value(valid, 0x30, "OCSPResponse")
+        fields = list(_der_children(content))
+        malformed_content = b"".join(
+            der_value(tag, bytes(value)) for tag, value in fields
+        ) + der_value(0x05, b"")
+        malformed = der_value(0x30, malformed_content)
         with self.assertRaisesRegex(ValueError, "unexpected responseStatus envelope fields"):
             validate_ocsp_generalized_time_profile(malformed)
 
@@ -411,8 +414,12 @@ Next Update: Nov 19 12:05:00 2026 GMT
         valid = synthetic_ocsp_response(
             b"20261120120000Z", b"20261120115800Z", b"20261120120500Z"
         )
-        # Replace successful(0) with malformedRequest(1), retaining responseBytes.
-        malformed = der_value(0x30, der_value(0x0A, b"\x01") + valid[5:])
+        content = _require_single_der_value(valid, 0x30, "OCSPResponse")
+        fields = list(_der_children(content))
+        malformed = der_value(
+            0x30,
+            der_value(0x0A, b"\x01") + der_value(0xA0, bytes(fields[1][1])),
+        )
         with self.assertRaisesRegex(ValueError, "OCSP error response must not contain responseBytes"):
             validate_ocsp_generalized_time_profile(malformed)
 
