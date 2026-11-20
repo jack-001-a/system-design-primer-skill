@@ -1541,7 +1541,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(operation.state, win32.OverlappedOperation.CLOSED)
 
 
-    def test_disconnect_proceeds_after_concurrent_event_close_failure(self):
+    def test_disconnect_waits_for_concurrent_event_close_retry(self):
         entered_close = threading.Event()
         release_close = threading.Event()
         disconnect_started = threading.Event()
