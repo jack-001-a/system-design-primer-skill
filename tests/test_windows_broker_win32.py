@@ -1496,6 +1496,25 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         operation.close()
         self.assertEqual(closed, [20])
 
+    def test_wait_api_failures_do_not_prove_overlapped_completion(self):
+        for error in (
+            win32.WAIT_FAILED,
+            win32.ERROR_INVALID_HANDLE,
+            win32.ERROR_INVALID_PARAMETER,
+        ):
+            with self.subTest(error=error):
+                operation, closed = self.make_operation()
+                operation.mark_pending()
+                with self.assertRaises(win32.OverlappedStillPending):
+                    operation.cancel_and_drain(
+                        cancel_io_ex=lambda *_: (False, win32.ERROR_NOT_FOUND),
+                        get_overlapped_result_ex=lambda *_: (False, 0, error),
+                    )
+                self.assertEqual(operation.state, operation.PENDING)
+                self.assertIsNotNone(operation.overlapped)
+                self.assertIsNotNone(operation.buffer)
+                self.assertEqual(closed, [])
+
     def test_bounded_drain_rejects_invalid_timeout(self):
         operation, _ = self.make_operation()
         operation.mark_pending()
