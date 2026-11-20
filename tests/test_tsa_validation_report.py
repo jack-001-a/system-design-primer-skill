@@ -16,6 +16,11 @@ class TsaValidationReportTests(unittest.TestCase):
             "at_time": self.gen_time,
             "effective_at_time": self.gen_time,
             "time_rounding": "ceil_to_next_whole_second_for_conservative_historical_evaluation",
+            "path_validation_times": [1795089600],
+            "path_validation_scope": (
+                "OpenSSL target certificate PKIX path validation at the exact floor/ceiling "
+                "Unix-second bound(s) of RFC 3161 genTime"
+            ),
             "certificate_sha256": self.cert,
             "crl_sha256": hashlib.sha256(b"crl").hexdigest(),
             "issuer_roots_sha256": hashlib.sha256(b"crl roots").hexdigest(),
@@ -32,7 +37,12 @@ class TsaValidationReportTests(unittest.TestCase):
             "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
             "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
             "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
-            "verification": "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+            "verification": (
+                "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, "
+                "CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, target certificate "
+                "PKIX path validation at exact floor/ceiling Unix-second bound(s), AKI, scope, "
+                "freshness, signature-policy and entry-semantic preflight"
+            ),
             "revocation_entry": {"present": False, "status_at_time": "not_listed"},
         }
         self.ocsp = {
@@ -205,16 +215,47 @@ class TsaValidationReportTests(unittest.TestCase):
 
     def test_fractional_gen_time_requires_ceiling_evaluation_bound(self):
         gen_time = "2026-11-19T12:00:00.000000000000000000000001Z"
-        crl = dict(self.crl, at_time=gen_time, effective_at_time="2026-11-19T12:00:01Z")
+        crl = dict(
+            self.crl,
+            at_time=gen_time,
+            effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600, 1795089601],
+        )
         timestamp = dict(self.timestamp, gen_time=gen_time, tsa_chain_validation_time=gen_time)
         report = build_report(gen_time, crl, self.crl_file_hash,
             timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash)
         self.assertEqual(report["historical_revocation_assessment"]["evaluation_time_upper_bound"],
                          "2026-11-19T12:00:01Z")
+        self.assertEqual(
+            report["historical_revocation_assessment"]["path_validation_times"],
+            [1795089600, 1795089601],
+        )
         bad = dict(crl, effective_at_time="2026-11-19T12:00:00Z")
         with self.assertRaisesRegex(ValueError, "conservatively ceil"):
             build_report(gen_time, bad, self.crl_file_hash,
                 timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_crl_report_rejects_missing_fractional_path_upper_bound(self):
+        gen_time = "2026-11-19T12:00:00.1Z"
+        crl = dict(
+            self.crl,
+            at_time=gen_time,
+            effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600],
+        )
+        timestamp = dict(
+            self.timestamp,
+            gen_time=gen_time,
+            tsa_chain_validation_time=gen_time,
+        )
+        with self.assertRaisesRegex(ValueError, "exact floor/ceiling"):
+            build_report(
+                gen_time,
+                crl,
+                self.crl_file_hash,
+                timestamp_result=timestamp,
+                timestamp_result_sha256=self.timestamp_file_hash,
+            )
 
     def test_crl_alone_produces_historical_assessment(self):
         report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
@@ -310,6 +351,11 @@ class TsaValidationReportTests(unittest.TestCase):
                 "key_cert_sign": True, "crl_sign": True,
                 "time_basis": "CRL signer authorization is evaluated at CRL thisUpdate; target certificate status is evaluated separately at RFC3161 genTime",
             },
+            "path_validation_times": [1795089600],
+            "path_validation_scope": (
+                "OpenSSL target certificate PKIX path validation at the exact floor/ceiling "
+                "Unix-second bound(s) of RFC 3161 genTime"
+            ),
             "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
             "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
             "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
@@ -331,6 +377,54 @@ class TsaValidationReportTests(unittest.TestCase):
         self.assertEqual(report["historical_ocsp_responder_revocation_assessment"]["status"],
                          "not_revoked_at_gen_time")
 
+
+    def test_responder_crl_requires_floor_and_ceiling_path_provenance(self):
+        gen_time = "2026-11-19T12:00:00.5Z"
+        crl = dict(
+            self.crl,
+            at_time=gen_time,
+            effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600, 1795089601],
+        )
+        timestamp = dict(self.timestamp, gen_time=gen_time, tsa_chain_validation_time=gen_time)
+        historical_ocsp = self.historical_ocsp_result(
+            historical_at_time=gen_time,
+            validation_time=gen_time,
+            responder_chain_validation_times=[1795089600, 1795089601],
+        )
+        responder_crl = self.responder_result(
+            at_time=gen_time,
+            path_validation_times=[1795089600, 1795089601],
+        )
+        result_hash = hashlib.sha256(b"responder result").hexdigest()
+        report = build_report(
+            gen_time,
+            crl,
+            self.crl_file_hash,
+            historical_ocsp,
+            self.ocsp_file_hash,
+            responder_crl,
+            result_hash,
+            timestamp,
+            self.timestamp_file_hash,
+        )
+        self.assertEqual(
+            report["historical_ocsp_responder_revocation_assessment"]["path_validation_times"],
+            [1795089600, 1795089601],
+        )
+        responder_crl["path_validation_times"] = [1795089600]
+        with self.assertRaisesRegex(ValueError, "target certificate path must be checked"):
+            build_report(
+                gen_time,
+                crl,
+                self.crl_file_hash,
+                historical_ocsp,
+                self.ocsp_file_hash,
+                responder_crl,
+                result_hash,
+                timestamp,
+                self.timestamp_file_hash,
+            )
 
     def test_rejects_responder_crl_without_signature_policy(self):
         bad = self.responder_result()
