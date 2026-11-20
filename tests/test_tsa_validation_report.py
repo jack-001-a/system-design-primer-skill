@@ -60,7 +60,7 @@ class TsaValidationReportTests(unittest.TestCase):
             "tsa_chain_valid_at_gen_time": True,
             "tsa_chain_validation_time": self.gen_time,
             "tsa_chain_validation_scope": "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; RFC 3161 Accuracy is reported separately and does not widen the -attime interval",
-            "tsa_chain_validation_policy": "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, -auth_level 2, -purpose timestampsign, and -x509_strict at both floor and ceiling seconds of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL",
+            "tsa_chain_validation_policy": "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, -auth_level 2, -purpose timestampsign, and -x509_strict at the exact floor/ceiling Unix-second bound(s) of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL",
             "accuracy": None, "ordering": False, "nonce_present": True,
             "verification_scope": {
                 "cms_signature": "verified", "request_imprint": "verified",
