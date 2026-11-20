@@ -354,7 +354,9 @@ Next Update: Nov 19 12:05:00 2026 GMT
         self.assertIn(str(verification_time_bounds(target)[0]), commands[0])
 
     def test_fractional_historical_time_checks_both_responder_chain_bounds(self):
-        target = self.now + timedelta(microseconds=500000)
+        # Leave room for the response builder's wall-clock producedAt while
+        # retaining a fractional target that exercises both path-time bounds.
+        target = self.now + timedelta(minutes=1, microseconds=500000)
         result, _, commands = self.run_historical(target)
         expected = list(verification_time_bounds(target))
         self.assertEqual(len(expected), 2)
