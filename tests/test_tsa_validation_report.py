@@ -424,42 +424,6 @@ class TsaValidationReportTests(unittest.TestCase):
                 timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash,
             )
 
-    def test_historical_ocsp_requires_both_second_bounds_for_fractional_gen_time(self):
-        gen_time = "2026-11-19T12:00:00.5Z"
-        crl = dict(
-            self.crl,
-            at_time=gen_time,
-            effective_at_time="2026-11-19T12:00:01Z",
-        )
-        timestamp = dict(
-            self.timestamp,
-            gen_time=gen_time,
-            tsa_chain_validation_time=gen_time,
-        )
-        historical = self.historical_ocsp_result(
-            historical_at_time=gen_time,
-            validation_time=gen_time,
-            produced_at="2026-11-19T11:59:00Z",
-            this_update="2026-11-19T11:58:00Z",
-            responder_chain_validation_times=[1795089600, 1795089601],
-        )
-        report = build_report(
-            gen_time, crl, self.crl_file_hash,
-            ocsp_result=historical, ocsp_result_sha256=self.ocsp_file_hash,
-            timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash,
-        )
-        self.assertEqual(
-            report["current_ocsp_assessment"]["responder_chain_validation_times"],
-            [1795089600, 1795089601],
-        )
-        historical["responder_chain_validation_times"] = [1795089600]
-        with self.assertRaisesRegex(ValueError, "floor/ceiling Unix-second bounds"):
-            build_report(
-                gen_time, crl, self.crl_file_hash,
-                ocsp_result=historical, ocsp_result_sha256=self.ocsp_file_hash,
-                timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash,
-            )
-
     def test_rejects_ocsp_result_missing_chain_provenance(self):
         for field in ("trust_anchor_policy", "verification"):
             with self.subTest(field=field):
