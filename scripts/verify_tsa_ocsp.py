@@ -174,16 +174,55 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
             raise ValueError("OpenSSL OCSP verification failed: " + output.strip()[-2000:])
     if not re.search(r"Response verify OK", output, re.I):
         raise ValueError("OpenSSL did not confirm OCSP response signature and responder-chain verification")
-    status_match = re.search(r"Cert Status:\s*(good|revoked|unknown)\b", output, re.I)
-    produced_match = re.search(r"Produced At:\s*(.+)", output, re.I)
-    this_match = re.search(r"This Update:\s*(.+)", output, re.I)
-    next_match = re.search(r"Next Update:\s*(.+)", output, re.I)
-    if not all((status_match, produced_match, this_match, next_match)):
-        raise ValueError("OCSP response lacks an unambiguous status, producedAt, thisUpdate, or nextUpdate")
-    status = status_match.group(1).lower()
-    produced = parse_openssl_time(produced_match.group(1))
-    this_update = parse_openssl_time(this_match.group(1))
-    next_update = parse_openssl_time(next_match.group(1))
+    try:
+        parsed_response = ocsp.load_der_ocsp_response(response.read_bytes())
+        target_certificate = x509.load_pem_x509_certificate(certificate.read_bytes())
+    except ValueError:
+        try:
+            target_certificate = x509.load_der_x509_certificate(certificate.read_bytes())
+        except ValueError as exc:
+            raise ValueError("could not parse target certificate or OCSP response") from exc
+        parsed_response = ocsp.load_der_ocsp_response(response.read_bytes())
+    try:
+        issuer_certificate = x509.load_pem_x509_certificate(issuer.read_bytes())
+    except ValueError:
+        try:
+            issuer_certificate = x509.load_der_x509_certificate(issuer.read_bytes())
+        except ValueError as exc:
+            raise ValueError("could not parse OCSP issuer certificate") from exc
+    if parsed_response.response_status is not ocsp.OCSPResponseStatus.SUCCESSFUL:
+        raise ValueError("OCSP response status is not successful")
+    matching_responses = []
+    for single in parsed_response.responses:
+        request = (ocsp.OCSPRequestBuilder()
+                   .add_certificate(target_certificate, issuer_certificate, single.hash_algorithm)
+                   .build())
+        if (single.serial_number == request.serial_number
+                and single.issuer_name_hash == request.issuer_name_hash
+                and single.issuer_key_hash == request.issuer_key_hash
+                and single.hash_algorithm.name == request.hash_algorithm.name):
+            matching_responses.append(single)
+    if len(matching_responses) != 1:
+        raise ValueError("OCSP response must contain exactly one unambiguous CertID match for the target certificate")
+    target_response = matching_responses[0]
+    status = target_response.certificate_status.name.lower()
+    produced = parsed_response.produced_at
+    this_update = target_response.this_update
+    next_update = target_response.next_update
+    if next_update is None:
+        raise ValueError("OCSP target response lacks nextUpdate")
+    if produced.tzinfo is None:
+        produced = produced.replace(tzinfo=timezone.utc)
+    else:
+        produced = produced.astimezone(timezone.utc)
+    if this_update.tzinfo is None:
+        this_update = this_update.replace(tzinfo=timezone.utc)
+    else:
+        this_update = this_update.astimezone(timezone.utc)
+    if next_update.tzinfo is None:
+        next_update = next_update.replace(tzinfo=timezone.utc)
+    else:
+        next_update = next_update.astimezone(timezone.utc)
     instant = at_time or now or datetime.now(timezone.utc)
     if instant.tzinfo is None or instant.utcoffset() is None:
         raise ValueError("validation clock must be timezone-aware")
