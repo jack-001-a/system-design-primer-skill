@@ -84,6 +84,28 @@ def format_utc_datetime(value: datetime) -> str:
     return value.astimezone(timezone.utc).isoformat(timespec="microseconds").replace("+00:00", "Z")
 
 
+def decimal_digits_to_int(digits: str) -> int:
+    """Convert decimal digits in small chunks to avoid Python's global digit cap."""
+    result = 0
+    for offset in range(0, len(digits), 9):
+        chunk = digits[offset:offset + 9]
+        result = result * (10 ** len(chunk)) + int(chunk)
+    return result
+
+
+def int_to_fixed_decimal(value: int, width: int) -> str:
+    """Render a non-negative integer with a fixed decimal width in bounded chunks."""
+    if value < 0:
+        raise ValueError("fixed decimal conversion requires a non-negative integer")
+    chunks = []
+    base = 10 ** 9
+    while value:
+        value, remainder = divmod(value, base)
+        chunks.append(f"{remainder:09d}")
+    rendered = "".join(reversed(chunks)) if chunks else "0"
+    return rendered.zfill(width)
+
+
 def calculate_accuracy_bounds(
     gen_time: str, accuracy: dict[str, int]
 ) -> tuple[str, str]:
@@ -94,7 +116,9 @@ def calculate_accuracy_bounds(
     epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
     delta = whole_second - epoch
     whole_epoch_seconds = delta.days * 86400 + delta.seconds
-    instant_ticks = whole_epoch_seconds * scale + int(fraction.ljust(width, "0") or "0")
+    instant_ticks = whole_epoch_seconds * scale + decimal_digits_to_int(
+        fraction.ljust(width, "0") or "0"
+    )
     uncertainty_ticks = (
         accuracy.get("seconds", 0) * scale
         + accuracy.get("millis", 0) * (scale // 1000)
@@ -108,7 +132,7 @@ def calculate_accuracy_bounds(
         except (OverflowError, ValueError) as exc:
             raise ValueError("RFC 3161 timestamp accuracy exceeds the supported datetime range") from exc
         prefix = value.strftime("%Y-%m-%dT%H:%M:%S")
-        return prefix + "." + f"{fractional_ticks:0{width}d}" + "Z"
+        return prefix + "." + int_to_fixed_decimal(fractional_ticks, width) + "Z"
 
     try:
         return render(instant_ticks - uncertainty_ticks), render(instant_ticks + uncertainty_ticks)
