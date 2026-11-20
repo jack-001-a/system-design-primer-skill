@@ -25,17 +25,25 @@ HEX256 = re.compile(r"^[0-9a-f]{64}$")
 UTC = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
 
 
-def parse_utc_epoch(value: str) -> int:
+def parse_utc_epoch_bounds(value: str) -> tuple[int, ...]:
+    """Return exact floor/ceiling Unix-second bounds for a UTC historical instant."""
     if not isinstance(value, str) or not UTC.fullmatch(value):
         raise ValueError("at-time must be an RFC 3339 UTC timestamp ending in Z")
     try:
         parsed = datetime.fromisoformat(value[:-1] + "+00:00")
     except ValueError as exc:
         raise ValueError("at-time is not a valid UTC timestamp") from exc
-    whole_second = int(parsed.replace(microsecond=0).timestamp())
+    whole_second = parsed.replace(microsecond=0)
+    delta = whole_second - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    floor_second = delta.days * 86400 + delta.seconds
     fraction = re.search(r"\.(\d+)Z$", value)
     has_fractional_time = fraction is not None and any(digit != "0" for digit in fraction.group(1))
-    return whole_second + (1 if has_fractional_time else 0)
+    return (floor_second, floor_second + 1) if has_fractional_time else (floor_second,)
+
+
+def parse_utc_epoch(value: str) -> int:
+    """Return the conservative ceiling second used for CRL status evaluation."""
+    return parse_utc_epoch_bounds(value)[-1]
 
 
 def load_certificates(path: Path) -> list[x509.Certificate]:
@@ -594,7 +602,8 @@ def _verify_crl_status_with_snapshot(
     intermediates: Path | None = None,
     expected_crl_sha256: str | None = None,
 ) -> dict[str, Any]:
-    epoch = parse_utc_epoch(at_time)
+    path_validation_times = parse_utc_epoch_bounds(at_time)
+    epoch = path_validation_times[-1]
     target_instant = datetime.fromisoformat(at_time[:-1] + "+00:00")
     instant = datetime.fromtimestamp(epoch, timezone.utc)
     effective_at_time = instant.isoformat(timespec="seconds").replace("+00:00", "Z")
@@ -641,18 +650,30 @@ def _verify_crl_status_with_snapshot(
     executable = os.path.abspath(executable)
     openssl_version = _require_supported_openssl(executable)
     command = [
-        executable, "verify", "-verbose", "-attime", str(epoch), "-crl_check",
+        executable, "verify", "-verbose", "-crl_check",
         "-CRLfile", str(crl), "-CAfile", str(issuer_roots), "-no-CApath", "-no-CAstore", "-auth_level", "2", "-x509_strict",
     ]
     if intermediates is not None:
         command.extend(["-untrusted", str(intermediates)])
     command.append(str(certificate))
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
-    detail = (result.stdout or result.stderr).strip()
-    if result.returncode:
-        raise ValueError("historical certificate/CRL validation failed: " + detail[-2000:])
-    if not detail or not re.search(r":\s*OK(?:\s|$)", detail):
-        raise ValueError("OpenSSL did not return an explicit successful certificate verification")
+    for validation_time in path_validation_times:
+        # Validate the entire enclosing second, not only its upper bound.
+        # The CRL entry/freshness assessment remains conservatively evaluated
+        # at the upper bound, while PKIX validity must also hold at the lower.
+        verification_command = [
+            *command[:3], "-attime", str(validation_time), *command[3:]
+        ]
+        result = subprocess.run(
+            verification_command, capture_output=True, text=True, check=False
+        )
+        detail = (result.stdout or result.stderr).strip()
+        if result.returncode:
+            raise ValueError(
+                "historical certificate/CRL validation failed at Unix second "
+                + str(validation_time) + ": " + detail[-2000:]
+            )
+        if not detail or not re.search(r":\s*OK(?:\s|$)", detail):
+            raise ValueError("OpenSSL did not return an explicit successful certificate verification")
 
     return {
         "verified": True,
@@ -661,6 +682,8 @@ def _verify_crl_status_with_snapshot(
         "at_time": at_time,
         "effective_at_time": effective_at_time,
         "time_rounding": "ceil_to_next_whole_second_for_conservative_historical_evaluation",
+        "path_validation_times": list(path_validation_times),
+        "path_validation_scope": "OpenSSL target certificate PKIX path validation at the exact floor/ceiling Unix-second bound(s) of RFC 3161 genTime",
         "certificate_sha256": hashlib.sha256(cert_bytes).hexdigest(),
         "issuer_roots_sha256": roots_digest,
         "issuer_intermediates_sha256": hashlib.sha256(intermediates.read_bytes()).hexdigest() if intermediates is not None else None,
@@ -672,7 +695,7 @@ def _verify_crl_status_with_snapshot(
         "crl_signature_algorithm_oid": parsed_crl.signature_algorithm_oid.dotted_string,
         "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
         "revocation_entry": entry_assessment,
-        "verification": "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, AKI, scope, freshness, signature-policy and entry-semantic preflight",
+        "verification": "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, target certificate PKIX path validation at exact floor/ceiling Unix-second bound(s), AKI, scope, freshness, signature-policy and entry-semantic preflight",
     }
 
 
