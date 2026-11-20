@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import stat
 import shutil
@@ -49,6 +50,40 @@ def _require_regular_file(path: Path, label: str) -> None:
         raise ValueError(f"{label} must identify an existing regular file") from exc
     if not stat.S_ISREG(mode):
         raise ValueError(f"{label} must identify an existing regular file, not a symlink or special file")
+
+
+def _copy_regular_file_snapshot(source: Path, destination: Path, label: str) -> None:
+    """Copy from one verified file descriptor, rejecting path swaps and observed writes."""
+    try:
+        before = source.lstat()
+    except OSError as exc:
+        raise ValueError(f"{label} must identify an existing regular file") from exc
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError(f"{label} must identify an existing regular file, not a symlink or special file")
+
+    flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(source, flags)
+    except OSError as exc:
+        raise ValueError(f"{label} could not be opened as a regular file") from exc
+
+    try:
+        with os.fdopen(descriptor, "rb") as source_stream:
+            opened = os.fstat(source_stream.fileno())
+            if not stat.S_ISREG(opened.st_mode) or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
+                raise ValueError(f"{label} changed identity while being opened")
+            with destination.open("xb") as destination_stream:
+                shutil.copyfileobj(source_stream, destination_stream)
+            after = os.fstat(source_stream.fileno())
+            stable_fields = ("st_size", "st_mtime_ns", "st_ctime_ns")
+            if any(getattr(opened, field, None) != getattr(after, field, None) for field in stable_fields):
+                raise ValueError(f"{label} changed while being snapshotted")
+    except Exception:
+        try:
+            destination.unlink()
+        except FileNotFoundError:
+            pass
+        raise
 
 
 def _version_tuple(output: str) -> tuple[int, int, int]:
@@ -163,18 +198,18 @@ def verify_build_provenance(
         snapshot_dir = Path(temp_dir)
         artifact_snapshot = snapshot_dir / "artifact" / artifact.name
         artifact_snapshot.parent.mkdir()
-        shutil.copyfile(artifact, artifact_snapshot)
+        _copy_regular_file_snapshot(artifact, artifact_snapshot, "artifact")
         artifact_sha256 = hashlib.sha256(artifact_snapshot.read_bytes()).hexdigest()
         bundle_snapshot = None
         if bundle is not None:
             bundle_snapshot = snapshot_dir / "bundle" / bundle.name
             bundle_snapshot.parent.mkdir()
-            shutil.copyfile(bundle, bundle_snapshot)
+            _copy_regular_file_snapshot(bundle, bundle_snapshot, "bundle")
         trusted_root_snapshot = None
         if trusted_root is not None:
             trusted_root_snapshot = snapshot_dir / "trusted-root" / trusted_root.name
             trusted_root_snapshot.parent.mkdir()
-            shutil.copyfile(trusted_root, trusted_root_snapshot)
+            _copy_regular_file_snapshot(trusted_root, trusted_root_snapshot, "trusted_root")
         command = [
             executable, "attestation", "verify", str(artifact_snapshot),
             "--repo", repository,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import tempfile
 import unittest
@@ -8,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.verify_build_provenance import (
-    PREDICATE_TYPE, _version_tuple, verify_build_provenance,
+    PREDICATE_TYPE, _copy_regular_file_snapshot, _version_tuple, verify_build_provenance,
 )
 
 
@@ -252,6 +253,31 @@ class BuildProvenanceTests(unittest.TestCase):
         root.write_text("{}\n", encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "only be used with an offline bundle"):
             verify_build_provenance(self.artifact, **self.policy, trusted_root=root)
+
+    def test_descriptor_snapshot_copies_verified_regular_file(self):
+        source = Path(self.temp.name) / "source.bin"
+        snapshot = Path(self.temp.name) / "snapshot.bin"
+        source.write_bytes(b"stable input")
+        _copy_regular_file_snapshot(source, snapshot, "source")
+        self.assertEqual(snapshot.read_bytes(), b"stable input")
+
+    def test_descriptor_snapshot_rejects_path_replacement(self):
+        source = Path(self.temp.name) / "source.bin"
+        replacement = Path(self.temp.name) / "replacement.bin"
+        snapshot = Path(self.temp.name) / "snapshot.bin"
+        source.write_bytes(b"original")
+        replacement.write_bytes(b"replacement")
+        original_open = os.open
+
+        def open_replacement(path, flags, *args, **kwargs):
+            if Path(path) == source:
+                return original_open(replacement, flags, *args, **kwargs)
+            return original_open(path, flags, *args, **kwargs)
+
+        with patch("scripts.verify_build_provenance.os.open", side_effect=open_replacement):
+            with self.assertRaisesRegex(ValueError, "changed identity"):
+                _copy_regular_file_snapshot(source, snapshot, "source")
+        self.assertFalse(snapshot.exists())
 
     def test_rejects_symlink_inputs(self):
         if not hasattr(Path, "symlink_to"):
