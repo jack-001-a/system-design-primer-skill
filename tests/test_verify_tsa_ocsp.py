@@ -14,7 +14,10 @@ from cryptography.hazmat.primitives.serialization import Encoding
 from cryptography.x509.oid import NameOID
 from cryptography.x509 import ocsp
 from scripts.verify_tsa_ocsp import bind_responder_certificate
-from scripts.verify_tsa_ocsp import verify_ocsp_response, validate_trust_anchor_bundle, verification_time_bounds
+from scripts.verify_tsa_ocsp import (
+    verify_ocsp_response, validate_trust_anchor_bundle, verification_time_bounds,
+    parse_historical_at_time,
+)
 
 class TsaOcspTests(unittest.TestCase):
     def setUp(self):
@@ -333,6 +336,12 @@ Next Update: Nov 19 12:05:00 2026 GMT
     def test_rejects_root_pin_mismatch(self):
         with self.assertRaisesRegex(ValueError, "pin mismatch"):
             verify_ocsp_response(self.cert,self.issuer,self.roots,self.response,"0"*64,now=self.now)
+    def test_historical_at_time_rejects_sub_microsecond_precision_truncation(self):
+        parsed = parse_historical_at_time("2026-11-19T12:00:00.123456Z")
+        self.assertEqual(parsed.microsecond, 123456)
+        with self.assertRaisesRegex(ValueError, "at most six fractional digits"):
+            parse_historical_at_time("2026-11-19T12:00:00.0000001Z")
+
     def test_historical_mode_uses_target_time_for_responder_chain_and_status_window(self):
         target = self.now + timedelta(minutes=1)
         result, _, commands = self.run_historical(target)
