@@ -83,7 +83,13 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertTrue(result["nonce_present"])
         self.assertEqual(len(result["request_sha256"]), 64)
         self.assertEqual(len(result["response_sha256"]), 64)
-        self.assertEqual(run.call_args_list[1].args[0][:3], ["ts", "-verify", "-queryfile"])
+        historical = run.call_args_list[2].args[0]
+        self.assertEqual(historical[:2], ["ts", "-verify"])
+        self.assertIn("-attime", historical)
+        self.assertIn("-purpose", historical)
+        self.assertIn("timestampsign", historical)
+        self.assertTrue(result["tsa_chain_valid_at_gen_time"])
+        self.assertEqual(result["tsa_chain_validation_time"], result["gen_time"])
 
 
     def test_rejects_response_token_imprint_mismatch(self):
@@ -187,20 +193,10 @@ class EvidenceTimestampTests(unittest.TestCase):
                 Path(command[command.index("-out") + 1]).write_bytes(b"content")
                 return type("Result", (), {"returncode": 0, "stdout": "", "stderr": ""})()
             raise AssertionError(command)
-        intermediates = self.root / "tsa-intermediates.pem"
-        intermediates.write_bytes(b"intermediate")
         with patch("scripts.evidence_timestamp.openssl_path", return_value="openssl"), patch(
             "scripts.evidence_timestamp.subprocess.run", side_effect=fake_run
-        ), patch("scripts.evidence_timestamp.run_openssl") as verify_path:
-            result = inspect_tsa_signer_certificate(
-                self.response, now.isoformat().replace("+00:00", "Z"), self.ca, intermediates
-            )
-        command = verify_path.call_args.args[0]
-        self.assertEqual(command[:5], ["verify", "-purpose", "timestampsign", "-attime", str(int(now.timestamp()))])
-        self.assertIn("-CAfile", command)
-        self.assertIn(str(self.ca), command)
-        self.assertIn("-untrusted", command)
-        self.assertIn(str(intermediates), command)
+        ):
+            result = inspect_tsa_signer_certificate(self.response, now.isoformat().replace("+00:00", "Z"))
         self.assertEqual(result["tsa_signer_certificate_sha256"], cert.fingerprint(hashes.SHA256()).hex())
         self.assertIn("cms", calls[1])
         self.assertIn("-signer", calls[1])
