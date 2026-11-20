@@ -302,15 +302,40 @@ class TsaRevocationTests(unittest.TestCase):
             verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
 
     def test_rejects_v1_certificate_in_user_only_crl_scope(self):
-        self.issuer, self.leaf, self.listing = make_material(only_user_idp=True, legacy_leaf=True)
+        self.issuer, self.leaf, self.listing = make_material(only_user_idp=True)
+        legacy_certificate = Mock()
+        legacy_certificate.issuer = self.listing.issuer
+        legacy_certificate.version = x509.Version.v1
+        legacy_certificate.extensions.get_extension_for_oid.side_effect = x509.ExtensionNotFound("missing")
         with self.assertRaisesRegex(ValueError, "cannot cover X.509 v1/v2"):
-            validate_direct_crl_scope(self.leaf, [self.issuer], self.listing, NOW, NOW)
+            validate_direct_crl_scope(legacy_certificate, [self.issuer], self.listing, NOW, NOW)
 
     def test_rejects_empty_issuing_distribution_point(self):
-        self.issuer, self.leaf, self.listing = make_material(empty_idp=True)
-        self.write_material()
+        class ExtensionCollection(list):
+            def get_extension_for_oid(self, oid):
+                for extension in self:
+                    if extension.oid == oid:
+                        return extension
+                raise x509.ExtensionNotFound("missing", oid)
+
+        self.issuer, self.leaf, self.listing = make_material()
+        empty_scope = Mock()
+        empty_scope.full_name = None
+        empty_scope.relative_name = None
+        empty_scope.only_contains_user_certs = False
+        empty_scope.only_contains_ca_certs = False
+        empty_scope.only_some_reasons = None
+        empty_scope.indirect_crl = False
+        empty_scope.only_contains_attribute_certs = False
+        extension = Mock()
+        extension.oid = x509.oid.ExtensionOID.ISSUING_DISTRIBUTION_POINT
+        extension.critical = True
+        extension.value = empty_scope
+        crl = Mock()
+        crl.issuer = self.listing.issuer
+        crl.extensions = ExtensionCollection([extension])
         with self.assertRaisesRegex(ValueError, "must not be an empty scope"):
-            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin())
+            validate_direct_crl_scope(self.leaf, [self.issuer], crl, NOW, NOW)
 
     def test_rejects_noncritical_issuing_distribution_point(self):
         self.issuer, self.leaf, self.listing = make_material(indirect=True, idp_critical=False)
