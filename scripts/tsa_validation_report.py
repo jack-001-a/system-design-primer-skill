@@ -293,8 +293,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         )
         if ocsp_result.get("responder_chain_validation_policy") != responder_chain_policy:
             raise ValueError("OCSP responder-chain validation policy is missing or unsupported")
-        responder_chain_times = ocsp_result.get("responder_chain_validation_times")
-        if not isinstance(responder_chain_times, list) or any(type(value) is not int for value in responder_chain_times):
+        responder_chain_validation_times = ocsp_result.get("responder_chain_validation_times")
+        if not isinstance(responder_chain_validation_times, list) or any(type(value) is not int for value in responder_chain_validation_times):
             raise ValueError("OCSP responder-chain validation times must be a list of Unix-second integers")
         historical_at_time = ocsp_result.get("historical_at_time")
         if scope == historical_scope:
