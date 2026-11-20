@@ -163,6 +163,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(result, ("pending", 0, win32.ERROR_IO_PENDING))
         self.assertEqual(operation.state, operation.PENDING)
         self.assertIs(seen[0][-1]._obj, operation.overlapped)
+        self.assertEqual(operation.overlapped.hEvent, 20)
 
     def test_start_overlapped_write_immediate_completion(self):
         fake = FakeKernel32()

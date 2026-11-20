@@ -224,6 +224,9 @@ def start_overlapped_io(bindings: Kernel32Bindings, operation: "OverlappedOperat
         pointer = ctypes.cast(buffer, LPVOID) if buffer is not None else None
     except (TypeError, ctypes.ArgumentError) as exc:
         raise TypeError("buffer must expose a ctypes-compatible address") from exc
+    if not operation.event_handle:
+        raise ValueError("overlapped I/O requires an event handle")
+    operation.overlapped.hEvent = operation.event_handle
     transferred = DWORD(0)
     function = bindings.WriteFile if write else bindings.ReadFile
     succeeded = bool(function(operation.file_handle, pointer, DWORD(length), ctypes.byref(transferred), ctypes.byref(operation.overlapped)))
