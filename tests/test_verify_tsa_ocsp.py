@@ -378,6 +378,64 @@ Next Update: Nov 19 12:05:00 2026 GMT
             self.assertIn("-verify_other", command)
             self.assertEqual(result["responder_certificate_sha256"], digest)
 
+    def test_verification_uses_immutable_snapshots_of_all_evidence_inputs(self):
+        responder_digest = self.make_responder_response(ocsp.OCSPResponderEncoding.NAME)
+        originals = {
+            "certificate": self.cert.read_bytes(),
+            "issuer": self.issuer.read_bytes(),
+            "roots": self.roots.read_bytes(),
+            "response": self.response.read_bytes(),
+            "responder": self.responder.read_bytes(),
+        }
+        roots_digest = hashlib.sha256(originals["roots"]).hexdigest()
+        responder_fingerprint = x509.load_pem_x509_certificate(
+            originals["responder"]
+        ).fingerprint(hashes.SHA256())
+        calls = []
+
+        def fake_run(command, **kwargs):
+            calls.append(command)
+            if len(calls) == 1:
+                self.assertEqual(Path(command[command.index("-cert") + 1]).read_bytes(),
+                                 originals["certificate"])
+                self.assertEqual(Path(command[command.index("-issuer") + 1]).read_bytes(),
+                                 originals["issuer"])
+                # Simulate a concurrent writer replacing every source after snapshotting.
+                self.cert.write_bytes(b"replaced target")
+                self.issuer.write_bytes(b"replaced issuer")
+                self.roots.write_bytes(b"replaced trust anchors")
+                self.response.write_bytes(b"replaced OCSP response")
+                self.responder.write_bytes(b"replaced responder certificate")
+                return Mock(returncode=0, stdout="", stderr="")
+
+            self.assertEqual(Path(command[command.index("-respin") + 1]).read_bytes(),
+                             originals["response"])
+            self.assertEqual(Path(command[command.index("-CAfile") + 1]).read_bytes(),
+                             originals["roots"])
+            self.assertEqual(Path(command[command.index("-issuer") + 1]).read_bytes(),
+                             originals["issuer"])
+            signer_bundle = Path(command[command.index("-verify_other") + 1]).read_bytes()
+            signer_from_bundle = x509.load_pem_x509_certificate(signer_bundle)
+            self.assertEqual(signer_from_bundle.fingerprint(hashes.SHA256()),
+                             responder_fingerprint)
+            return Mock(returncode=0, stdout=self.output, stderr="")
+
+        with patch("scripts.verify_tsa_ocsp.shutil.which", return_value="openssl"), \\
+             patch("scripts.verify_tsa_ocsp.subprocess.run", side_effect=fake_run):
+            result = verify_ocsp_response(
+                self.cert, self.issuer, self.roots, self.response, roots_digest,
+                now=self.now, responder_certificate=self.responder,
+                expected_responder_certificate_sha256=responder_digest,
+            )
+
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(result["certificate_sha256"],
+                         hashlib.sha256(originals["certificate"]).hexdigest())
+        self.assertEqual(result["issuer_roots_sha256"], roots_digest)
+        self.assertEqual(result["response_sha256"],
+                         hashlib.sha256(originals["response"]).hexdigest())
+        self.assertEqual(result["responder_certificate_sha256"], responder_digest)
+
     def test_rejects_responder_certificate_without_independent_pin(self):
         with self.assertRaisesRegex(ValueError, "must be supplied together"):
             verify_ocsp_response(self.cert, self.issuer, self.roots, self.response,
