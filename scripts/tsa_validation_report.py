@@ -345,7 +345,7 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
         if ocsp_result.get("verification") != (
             "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, "
             "empty -CApath/-CAstore, -x509_strict, and -auth_level 2; historical validation repeats "
-            "path verification at floor/ceiling Unix-second bounds; Python verifies exact target CertID, status, and freshness"
+            "path verification at exact floor/ceiling Unix-second bound(s); Python verifies exact target CertID, status, and freshness"
         ):
             raise ValueError("OCSP verification method provenance is missing or unsupported")
         ocsp_section = {
