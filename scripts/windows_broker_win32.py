@@ -434,11 +434,13 @@ def disconnect_named_pipe(
             raise OverlappedLifecycleError(
                 "cannot disconnect a pipe while overlapped I/O is pending"
             )
-        if operation.state != operation.COMPLETED:
+        if operation.state not in (operation.COMPLETED, operation.CLOSED):
             raise OverlappedLifecycleError(
                 "disconnect requires a completed operation"
             )
-        if operation.file_handle != connection.file_handle:
+        # A closed operation clears its native handle reference, but its exact
+        # registered identity still proves which pipe lifecycle completed.
+        if operation.state != operation.CLOSED and operation.file_handle != connection.file_handle:
             raise OverlappedLifecycleError(
                 "operation handle does not belong to this pipe connection"
             )

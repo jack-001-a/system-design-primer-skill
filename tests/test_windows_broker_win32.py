@@ -735,7 +735,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertFalse(unregister.is_alive())
         self.assertEqual(len(close_errors), 1)
         self.assertTrue(unregister_errors)
-        self.assertEqual(operation.state, operation.COMPLETED)
+        self.assertEqual(operation.state, operation.CLOSING)
         self.assertEqual(operation.event_handle, 20)
         self.assertIn(operation, connection._operations)
 
@@ -1536,7 +1536,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         operation, _ = self.make_operation(close=lambda _: next(outcomes))
         with self.assertRaises(OSError):
             operation.close()
-        self.assertEqual(operation.state, win32.OverlappedOperation.CREATED)
+        self.assertEqual(operation.state, win32.OverlappedOperation.CLOSING)
         operation.close()
         self.assertEqual(operation.state, win32.OverlappedOperation.CLOSED)
 
@@ -1602,15 +1602,22 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertFalse(closer.is_alive())
         self.assertFalse(disconnector.is_alive())
         self.assertEqual(len(close_errors), 1)
-        self.assertEqual(disconnect_errors, [])
-        self.assertEqual(disconnect_results, [(True, None)])
-        self.assertEqual(disconnect_calls, [10])
-        self.assertEqual(operation.state, operation.COMPLETED)
+        self.assertEqual(len(disconnect_errors), 1)
+        self.assertIsInstance(disconnect_errors[0], win32.OverlappedLifecycleError)
+        self.assertEqual(disconnect_results, [])
+        self.assertEqual(disconnect_calls, [])
+        self.assertEqual(operation.state, operation.CLOSING)
         self.assertEqual(operation.event_handle, 20)
-        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertEqual(connection.state, connection.CONNECTED)
         self.assertIn(operation, connection._operations)
 
+        # Once the event close retry succeeds, the retained registered identity
+        # can safely authorize disconnect even though its native handle is gone.
         operation.close()
+        self.assertEqual(
+            win32.disconnect_named_pipe(bindings, connection, operation), (True, None)
+        )
+        self.assertEqual(disconnect_calls, [10])
         connection.unregister_operation(operation)
         self.assertEqual(close_calls, [20, 20])
         self.assertEqual(
