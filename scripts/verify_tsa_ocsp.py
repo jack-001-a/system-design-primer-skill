@@ -321,7 +321,7 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
         "verification": (
             "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, "
             "empty -CApath/-CAstore, -x509_strict, and -auth_level 2; historical validation repeats "
-            "path verification at floor/ceiling Unix-second bounds; Python verifies exact target CertID, status, and freshness"
+            "path verification at exact floor/ceiling Unix-second bound(s); Python verifies exact target CertID, status, and freshness"
         ),
         "response_sha256": hashlib.sha256(response.read_bytes()).hexdigest(),
         "nonce_checked": False,
