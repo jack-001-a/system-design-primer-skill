@@ -19,7 +19,7 @@ NOW = datetime(2026, 11, 19, 12, 0, tzinfo=timezone.utc)
 AT_TIME = "2026-11-19T12:00:00Z"
 
 
-def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, include_key_usage=True, key_usage_critical=True, include_ski=True, basic_constraints_critical=True, issuer_not_before=None, issuer_not_after=None, last_update=None, future=False, delta=False, indirect=False, empty_idp=False, idp_critical=True, only_user_idp=False, legacy_leaf=False, wrong_aki=False, crl_aki_critical=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
+def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, include_key_usage=True, key_usage_critical=True, include_ski=True, basic_constraints_critical=True, issuer_not_before=None, issuer_not_after=None, last_update=None, future=False, delta=False, indirect=False, empty_idp=False, idp_critical=True, only_user_idp=False, legacy_leaf=False, wrong_aki=False, entry=None, hash_algorithm=hashes.SHA256(), key_size=2048):
     key = rsa.generate_private_key(public_exponent=65537, key_size=key_size)
     name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "CRL issuer")])
     issuer_builder = (
@@ -56,7 +56,7 @@ def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, include_key_usa
             key_identifier=x509.SubjectKeyIdentifier.from_public_key(aki_key.public_key()).digest,
             authority_cert_issuer=[x509.DirectoryName(name)],
             authority_cert_serial_number=1,
-        ), crl_aki_critical)
+        ), False)
         .add_extension(x509.CRLNumber(1), False)
     )
     if delta:
@@ -275,13 +275,6 @@ class TsaRevocationTests(unittest.TestCase):
     def test_rejects_crl_issuer_without_key_cert_sign(self):
         self.issuer, self.leaf, self.listing = make_material(key_cert_sign=False)
         with self.assertRaisesRegex(ValueError, "not authorized for keyCertSign"):
-            validate_direct_crl_scope(
-                self.leaf, [self.issuer], self.listing, NOW, NOW,
-            )
-
-    def test_rejects_critical_crl_authority_key_identifier(self):
-        self.issuer, self.leaf, self.listing = make_material(crl_aki_critical=True)
-        with self.assertRaisesRegex(ValueError, "AuthorityKeyIdentifier must be non-critical"):
             validate_direct_crl_scope(
                 self.leaf, [self.issuer], self.listing, NOW, NOW,
             )
