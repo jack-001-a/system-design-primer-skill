@@ -343,8 +343,8 @@ def build_validation_report(gen_time: str, crl_result: dict[str, Any],
             if (compare_utc_values(this_update, gen_time, "historical OCSP thisUpdate") > 0
                     or compare_utc_values(next_update, gen_time, "historical OCSP nextUpdate") < 0):
                 raise ValueError("historical OCSP signed validity interval does not cover RFC 3161 genTime")
-            epoch = datetime(1970, 1, 1, tzinfo=validation_dt.tzinfo)
-            delta = validation_dt - epoch
+            epoch = datetime(1970, 1, 1, tzinfo=gen_whole_second.tzinfo)
+            delta = gen_whole_second - epoch
             floor_second = delta.days * 86400 + delta.seconds
             has_fraction = any(digit != "0" for digit in gen_fraction)
             expected_chain_times = (
