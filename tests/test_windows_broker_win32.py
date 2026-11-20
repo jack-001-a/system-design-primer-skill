@@ -644,14 +644,16 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         entered_close = threading.Event()
         release_close = threading.Event()
         reconnect_started = threading.Event()
+        reconnect_finished = threading.Event()
         close_results = []
+        close_errors = []
         reconnect_errors = []
 
         fake = FakeKernel32()
         def blocking_close(handle):
             self.assertEqual(handle, 10)
             entered_close.set()
-            if not release_close.wait(2):
+            if not release_close.wait(5):
                 raise AssertionError("pipe close failure was not released")
             return 0
 
@@ -666,9 +668,12 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         connection._state = connection.DISCONNECTED
 
         def close_pipe():
-            close_results.append(
-                win32.close_named_pipe(bindings, connection, get_last_error=lambda: 6)
-            )
+            try:
+                close_results.append(
+                    win32.close_named_pipe(bindings, connection, get_last_error=lambda: 6)
+                )
+            except Exception as exc:
+                close_errors.append(exc)
 
         def reconnect():
             reconnect_started.set()
@@ -676,6 +681,8 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
                 connection.mark_connected()
             except win32.OverlappedLifecycleError as exc:
                 reconnect_errors.append(str(exc))
+            finally:
+                reconnect_finished.set()
 
         closer = threading.Thread(target=close_pipe)
         closer.start()
@@ -683,16 +690,19 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         reconnecter = threading.Thread(target=reconnect)
         reconnecter.start()
         self.assertTrue(reconnect_started.wait(2))
-        self.assertEqual(connection.state, connection.DISCONNECTED)
-        self.assertFalse(reconnect_errors)
+        # The completion signal is set only after mark_connected returns.
+        # It must remain unset while CloseHandle is blocked on the connection lock.
+        self.assertFalse(reconnect_finished.wait(0.05))
 
         release_close.set()
         closer.join(2)
         reconnecter.join(2)
         self.assertFalse(closer.is_alive())
         self.assertFalse(reconnecter.is_alive())
+        self.assertEqual(close_errors, [])
         self.assertEqual(close_results, [(False, 6)])
         self.assertEqual(reconnect_errors, [])
+        self.assertTrue(reconnect_finished.is_set())
         self.assertEqual(connection.state, connection.CONNECTED)
         self.assertEqual(connection.file_handle, 10)
 
