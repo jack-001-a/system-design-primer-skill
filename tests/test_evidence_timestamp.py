@@ -466,6 +466,16 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0, diagnostic)
         self.assertRegex(diagnostic, rf"\berror\s+{expected_code}\b", diagnostic)
 
+    def test_openssl_timestamp_cli_exposes_auth_level_option(self):
+        import subprocess
+        result = subprocess.run(
+            ["openssl", "ts", "-help"],
+            capture_output=True, text=True, check=False,
+        )
+        help_text = result.stdout + "\\n" + result.stderr
+        self.assertEqual(result.returncode, 0, help_text)
+        self.assertRegex(help_text, r"(?m)^\\s+-auth_level(?:\\s|$)")
+
     def test_openssl_rejects_undersized_tsa_signer_key_at_auth_level_two(self):
         self._make_chain(leaf_key_size=1024)
         result = self._verify()
