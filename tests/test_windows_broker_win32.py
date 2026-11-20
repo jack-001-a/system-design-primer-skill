@@ -238,6 +238,42 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         connection.mark_connected()
         self.assertEqual(connection.state, connection.CONNECTED)
 
+    def test_reconnected_pipe_uses_fresh_operation_resources(self):
+        fake = FakeKernel32()
+        disconnect_calls = []
+        fake.DisconnectNamedPipe = lambda handle: disconnect_calls.append(handle) or 1
+        bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
+            fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
+            fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
+            fake.ConnectNamedPipe, fake.SetEvent, fake.DisconnectNamedPipe)
+
+        first, _ = self.make_operation()
+        first.mark_completed()
+        connection = win32.NamedPipeConnection(10)
+        connection.register_operation(first)
+        self.assertEqual(
+            win32.disconnect_named_pipe(bindings, connection, first),
+            (True, None),
+        )
+        first.close()
+        connection.unregister_operation(first)
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+
+        connection.mark_connected()
+        second, _ = self.make_operation()
+        self.assertIsNot(first.overlapped, second.overlapped)
+        self.assertIsNot(first.event_handle, second.event_handle)
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            connection.register_operation(first)
+        connection.register_operation(second)
+        second.mark_completed()
+        self.assertEqual(
+            win32.disconnect_named_pipe(bindings, connection, second),
+            (True, None),
+        )
+        self.assertEqual(disconnect_calls, [10, 10])
+        self.assertEqual(connection._operations, {second})
+
     def test_disconnect_checks_all_registered_operations(self):
         fake = FakeKernel32()
         calls = []
