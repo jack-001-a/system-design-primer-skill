@@ -139,6 +139,29 @@ class TsaRevocationTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "AlgorithmIdentifiers must match exactly"):
             validate_crl_der_profile(bytes(malformed), self.listing)
 
+    def test_crl_der_rejects_invalid_signature_bit_string_unused_count(self):
+        der = self.listing.public_bytes(serialization.Encoding.DER)
+        _, outer_start, _, _ = _read_der_tlv(der, 0)
+        _, _, _, tbs_next = _read_der_tlv(der, outer_start)
+        _, _, _, alg_next = _read_der_tlv(der, tbs_next)
+        _, signature_start, _, _ = _read_der_tlv(der, alg_next)
+        malformed = bytearray(der)
+        malformed[signature_start] = 8
+        with self.assertRaisesRegex(ValueError, "invalid unused-bit count"):
+            validate_crl_der_profile(bytes(malformed), self.listing)
+
+    def test_crl_der_rejects_nonzero_signature_bit_string_padding(self):
+        der = self.listing.public_bytes(serialization.Encoding.DER)
+        _, outer_start, _, _ = _read_der_tlv(der, 0)
+        _, _, _, tbs_next = _read_der_tlv(der, outer_start)
+        _, _, _, alg_next = _read_der_tlv(der, tbs_next)
+        _, signature_start, signature_end, _ = _read_der_tlv(der, alg_next)
+        malformed = bytearray(der)
+        malformed[signature_start] = 1
+        malformed[signature_end - 1] |= 1
+        with self.assertRaisesRegex(ValueError, "nonzero padding bits"):
+            validate_crl_der_profile(bytes(malformed), self.listing)
+
     def test_load_crl_accepts_valid_pem_and_der_inputs(self):
         expected = self.listing.fingerprint(hashes.SHA256())
         self.crl.write_bytes(self.listing.public_bytes(serialization.Encoding.PEM))
