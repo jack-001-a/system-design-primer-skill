@@ -328,7 +328,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(connection.start_connect(bindings, reconnect_operation), ("connected", None))
         reconnect_operation.close()
         connection.unregister_operation(reconnect_operation)
-        self.assertEqual(connection.state, connection.DISCONNECTING)
+        self.assertEqual(connection.state, connection.CONNECTED)
         self.assertEqual(calls, [10, 10])
 
     def test_pipe_close_api_exception_preserves_handle_for_retry(self):
@@ -410,7 +410,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         connection.register_operation(operation)
         self.assertEqual(win32.disconnect_named_pipe(bindings, connection, operation,
             get_last_error=lambda: 109), (False, 109))
-        self.assertEqual(connection.state, connection.CONNECTED)
+        self.assertEqual(connection.state, connection.DISCONNECTING)
         self.assertEqual(seen, [10])
 
     def test_disconnect_transitions_connection_and_rejects_duplicate(self):
@@ -869,7 +869,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertNotIn(operation, connection._operations)
         reconnect_operation.close()
 
-    def test_pipe_close_failure_serializes_reconnect_after_state_preservation(self):
+    def test_pipe_close_failure_blocks_reconnect_after_serialized_close(self):
         entered_close = threading.Event()
         release_close = threading.Event()
         reconnect_started = threading.Event()
@@ -920,8 +920,7 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         reconnecter = threading.Thread(target=reconnect)
         reconnecter.start()
         self.assertTrue(reconnect_started.wait(2))
-        # The completion signal is set only after mark_connected returns.
-        # It must remain unset while CloseHandle is blocked on the connection lock.
+        # Reconnect must remain blocked while CloseHandle is in progress.
         self.assertFalse(reconnect_finished.wait(0.05))
 
         release_close.set()
@@ -931,16 +930,18 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertFalse(reconnecter.is_alive())
         self.assertEqual(close_errors, [])
         self.assertEqual(close_results, [(False, 6)])
-        self.assertEqual(reconnect_errors, [])
+        self.assertEqual(
+            reconnect_errors, ["cannot start pipe connect in state closing"]
+        )
         self.assertTrue(reconnect_finished.is_set())
-        self.assertEqual(connection.state, connection.CONNECTED)
+        self.assertEqual(connection.state, connection.CLOSING)
         self.assertEqual(connection.file_handle, 10)
         reconnect_operation.close()
-        connection.unregister_operation(reconnect_operation)
 
-    def test_pipe_handle_close_failure_preserves_disconnected_handle(self):
+    def test_pipe_handle_close_failure_preserves_closing_handle(self):
         fake = FakeKernel32()
-        fake.CloseHandle = lambda handle: 0
+        close_results = iter([0, 1])
+        fake.CloseHandle = lambda handle: next(close_results)
         bindings = win32.Kernel32Bindings(fake, fake.CreateEventW, fake.CloseHandle,
             fake.WaitForSingleObject, fake.CancelIoEx, fake.GetOverlappedResult,
             fake.GetOverlappedResultEx, fake.ReadFile, fake.WriteFile,
@@ -948,8 +949,17 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         connection = win32.NamedPipeConnection(10)
         connection._state = connection.DISCONNECTED
         self.assertEqual(win32.close_named_pipe(bindings, connection, get_last_error=lambda: 6), (False, 6))
-        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertEqual(connection.state, connection.CLOSING)
         self.assertEqual(connection.file_handle, 10)
+        reconnect_operation, _ = self.make_operation()
+        with self.assertRaisesRegex(
+            win32.OverlappedLifecycleError, "cannot start pipe connect in state closing"
+        ):
+            connection.start_connect(bindings, reconnect_operation)
+        reconnect_operation.close()
+        self.assertEqual(win32.close_named_pipe(bindings, connection), (True, None))
+        self.assertEqual(connection.state, connection.CLOSED)
+        self.assertIsNone(connection.file_handle)
 
     def test_loader_binds_connect_named_pipe_signature(self):
         fake = FakeKernel32()
