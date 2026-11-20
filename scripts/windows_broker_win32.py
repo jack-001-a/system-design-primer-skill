@@ -1,19 +1,19 @@
-"""Lazy ctypes bindings for the Windows broker's overlapped-I/O primitives.
+"""Lazy ctypes bindings and guarded overlapped-operation lifetimes.
 
-Importing this module is safe on non-Windows hosts. No DLL is loaded until
-load_kernel32() is explicitly called. This module binds APIs only; it does not
-claim to implement a complete, production-ready pipe transport.
+Importing this module is safe on non-Windows hosts. Native DLL loading is
+explicit; the lifecycle object is callback-driven so its state machine can be
+tested without pretending that mocked tests exercise the Windows kernel.
 """
 from __future__ import annotations
 
 import ctypes
 import os
+import threading
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 
-# Use fixed-width Win32 scalar types. ctypes.wintypes follows the host C ABI on
-# POSIX systems (where c_ulong may be 64-bit), not the Windows LLP64 ABI.
+# Fixed-width Win32 scalar types (POSIX c_ulong is commonly 64-bit).
 DWORD = ctypes.c_uint32
 BOOL = ctypes.c_int32
 HANDLE = ctypes.c_void_p
@@ -24,16 +24,14 @@ LPCWSTR = ctypes.c_wchar_p
 ERROR_IO_PENDING = 997
 ERROR_IO_INCOMPLETE = 996
 ERROR_NOT_FOUND = 1168
+ERROR_OPERATION_ABORTED = 995
 WAIT_OBJECT_0 = 0
 WAIT_TIMEOUT = 258
 INFINITE = 0xFFFFFFFF
 
 
 class _OffsetUnion(ctypes.Union):
-    _fields_ = [
-        ("_offset", DWORD * 2),
-        ("_pointer", LPVOID),
-    ]
+    _fields_ = [("_offset", DWORD * 2), ("_pointer", LPVOID)]
 
 
 class OVERLAPPED(ctypes.Structure):
@@ -50,6 +48,22 @@ class OVERLAPPED(ctypes.Structure):
 
 class Win32ApiUnavailable(RuntimeError):
     """Raised when native Windows APIs cannot be loaded."""
+
+
+class OverlappedLifecycleError(RuntimeError):
+    """Raised when an operation is used outside its valid lifecycle."""
+
+
+class OverlappedStillPending(OverlappedLifecycleError):
+    """Raised when a drain attempt has not established completion."""
+
+
+@dataclass(frozen=True)
+class OverlappedResult:
+    succeeded: bool
+    bytes_transferred: int
+    error_code: int
+    cancel_error: int | None
 
 
 @dataclass(frozen=True)
@@ -79,16 +93,12 @@ def load_kernel32(*, loader: Any = None) -> Kernel32Bindings:
     try:
         library = load_library("kernel32", use_last_error=True)
         create_event = _set_signature(
-            library.CreateEventW,
-            [LPVOID, BOOL, BOOL, LPCWSTR],
-            HANDLE,
+            library.CreateEventW, [LPVOID, BOOL, BOOL, LPCWSTR], HANDLE
         )
         close_handle = _set_signature(library.CloseHandle, [HANDLE], BOOL)
         wait = _set_signature(library.WaitForSingleObject, [HANDLE, DWORD], DWORD)
         cancel = _set_signature(
-            library.CancelIoEx,
-            [HANDLE, ctypes.POINTER(OVERLAPPED)],
-            BOOL,
+            library.CancelIoEx, [HANDLE, ctypes.POINTER(OVERLAPPED)], BOOL
         )
         get_result = _set_signature(
             library.GetOverlappedResult,
@@ -111,13 +121,7 @@ def load_kernel32(*, loader: Any = None) -> Kernel32Bindings:
             "kernel32 is missing a required overlapped-I/O API"
         ) from exc
     return Kernel32Bindings(
-        library=library,
-        CreateEventW=create_event,
-        CloseHandle=close_handle,
-        WaitForSingleObject=wait,
-        CancelIoEx=cancel,
-        GetOverlappedResult=get_result,
-        GetOverlappedResultEx=get_result_ex,
+        library, create_event, close_handle, wait, cancel, get_result, get_result_ex
     )
 
 
@@ -127,3 +131,118 @@ def last_error() -> int:
     if getter is None:
         raise Win32ApiUnavailable("Win32 last-error state is unavailable")
     return int(getter())
+
+
+class OverlappedOperation:
+    """Own one event, OVERLAPPED object and buffer until I/O is truly complete.
+
+    Callbacks return (success, error_code) for CancelIoEx and
+    (success, bytes_transferred, error_code) for GetOverlappedResult. The latter
+    must be invoked with wait=True so a terminal result is obtained before the
+    operation releases any memory. ERROR_NOT_FOUND from cancellation is treated
+    as a completion race, never as proof that the OVERLAPPED can be freed.
+    """
+
+    CREATED = "created"
+    PENDING = "pending"
+    COMPLETED = "completed"
+    CLOSED = "closed"
+
+    def __init__(
+        self,
+        *,
+        file_handle: Any,
+        overlapped: OVERLAPPED,
+        event_handle: Any,
+        buffer: Any,
+        close_handle: Callable[[Any], bool],
+    ) -> None:
+        if not callable(close_handle):
+            raise TypeError("close_handle must be callable")
+        self.file_handle = file_handle
+        self.overlapped = overlapped
+        self.event_handle = event_handle
+        self.buffer = buffer
+        self._close_handle = close_handle
+        self._state = self.CREATED
+        self._lock = threading.RLock()
+
+    @property
+    def state(self) -> str:
+        with self._lock:
+            return self._state
+
+    def mark_pending(self) -> None:
+        with self._lock:
+            if self._state != self.CREATED:
+                raise OverlappedLifecycleError(
+                    f"cannot start operation in state {self._state}"
+                )
+            self._state = self.PENDING
+
+    def mark_completed(self) -> None:
+        """Record completion observed by the normal (non-cancellation) path."""
+        with self._lock:
+            if self._state != self.PENDING:
+                raise OverlappedLifecycleError(
+                    f"cannot complete operation in state {self._state}"
+                )
+            self._state = self.COMPLETED
+
+    def cancel_and_drain(
+        self,
+        *,
+        cancel_io_ex: Callable[[Any, OVERLAPPED], tuple[bool, int]],
+        get_overlapped_result: Callable[
+            [Any, OVERLAPPED, bool], tuple[bool, int, int]
+        ],
+    ) -> OverlappedResult:
+        """Request targeted cancellation, then wait for a terminal I/O result."""
+        with self._lock:
+            if self._state != self.PENDING:
+                raise OverlappedLifecycleError(
+                    f"cannot cancel operation in state {self._state}"
+                )
+
+            cancel_ok, cancel_error = cancel_io_ex(
+                self.file_handle, self.overlapped
+            )
+            # Always drain, including ERROR_NOT_FOUND: completion may have won
+            # the race with cancellation. The callbacks must capture last-error
+            # immediately on the calling thread.
+            result_ok, transferred, result_error = get_overlapped_result(
+                self.file_handle, self.overlapped, True
+            )
+            if not result_ok and result_error in (
+                ERROR_IO_INCOMPLETE,
+                ERROR_IO_PENDING,
+            ):
+                raise OverlappedStillPending(
+                    "GetOverlappedResult did not establish terminal completion"
+                )
+
+            self._state = self.COMPLETED
+            return OverlappedResult(
+                succeeded=bool(result_ok),
+                bytes_transferred=int(transferred),
+                error_code=int(result_error),
+                cancel_error=None if cancel_ok else int(cancel_error),
+            )
+
+    def close(self) -> None:
+        """Close the event exactly once, but only after I/O is no longer pending."""
+        with self._lock:
+            if self._state == self.CLOSED:
+                return
+            if self._state == self.PENDING:
+                raise OverlappedLifecycleError(
+                    "cannot release OVERLAPPED resources while I/O is pending"
+                )
+            if self.event_handle:
+                if not self._close_handle(self.event_handle):
+                    raise OSError("CloseHandle failed for overlapped event")
+            self.event_handle = None
+            self.buffer = None
+            self.overlapped = None
+            self.file_handle = None
+            self._state = self.CLOSED
