@@ -6,7 +6,7 @@ import unittest
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
-from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verify_timestamp
+from scripts.evidence_timestamp import create_request, inspect_tsa_signer_certificate, load_signature, verification_time_bounds, verify_timestamp
 
 class EvidenceTimestampTests(unittest.TestCase):
     def setUp(self):
@@ -27,6 +27,23 @@ class EvidenceTimestampTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
+
+    def test_verification_time_bounds_preserve_fractional_seconds_exactly(self):
+        future = datetime(9999, 12, 31, 23, 59, 59, 999999, tzinfo=timezone.utc)
+        self.assertEqual(verification_time_bounds(future), (253402300799, 253402300800))
+        self.assertEqual(verification_time_bounds(
+            datetime(2026, 11, 19, 12, 0, 0, 1, tzinfo=timezone.utc)),
+            (1795099200, 1795099201))
+        self.assertEqual(verification_time_bounds(
+            datetime(2026, 11, 19, 12, 0, 0, tzinfo=timezone.utc)),
+            (1795099200,))
+        self.assertEqual(verification_time_bounds(
+            datetime(1969, 12, 31, 23, 59, 59, 999999, tzinfo=timezone.utc)),
+            (-1, 0))
+
+    def test_verification_time_bounds_reject_naive_datetime(self):
+        with self.assertRaisesRegex(ValueError, "timezone-aware"):
+            verification_time_bounds(datetime(2026, 1, 1))
 
     def test_load_signature_accepts_tsa_attestation_envelope(self):
         from scripts.evidence_timestamp import load_signature

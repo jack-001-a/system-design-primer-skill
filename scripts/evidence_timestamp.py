@@ -4,7 +4,6 @@ import argparse
 import base64
 import hashlib
 import json
-import math
 import re
 import shutil
 import subprocess
@@ -63,6 +62,15 @@ def create_request(signature_path: Path, output_path: Path) -> dict[str, str]:
     run_openssl(["ts", "-query", "-digest", digest, "-sha256", "-cert", "-out", str(output_path)])
     return {"request_created": True, "signature_sha256": digest, "output": str(output_path)}
 
+
+
+def verification_time_bounds(value: datetime) -> tuple[int, ...]:
+    """Return exact floor/ceiling Unix seconds without float precision loss."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError("timestamp verification time must be timezone-aware")
+    delta = value.astimezone(timezone.utc) - datetime(1970, 1, 1, tzinfo=timezone.utc)
+    floor_second = delta.days * 86400 + delta.seconds
+    return (floor_second, floor_second + 1) if delta.microseconds else (floor_second,)
 
 
 def parse_openssl_gen_time(value: str) -> str:
@@ -197,8 +205,8 @@ def verify_timestamp(
     if not gen_time:
         raise ValueError("timestamp token did not expose a generation time for historical chain verification")
     canonical_gen_time = parse_openssl_gen_time(gen_time.group(1))
-    target_epoch = datetime.fromisoformat(canonical_gen_time.replace("Z", "+00:00")).timestamp()
-    verification_times = sorted({math.floor(target_epoch), math.ceil(target_epoch)})
+    target_instant = datetime.fromisoformat(canonical_gen_time.replace("Z", "+00:00"))
+    verification_times = verification_time_bounds(target_instant)
     command = ["ts", "-verify", "-queryfile", str(request_path), "-in", str(response_path), "-CAfile", str(tsa_ca_path),
                "-purpose", "timestampsign"]
     if chain_path is not None:
