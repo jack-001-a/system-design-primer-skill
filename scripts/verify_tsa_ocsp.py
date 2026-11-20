@@ -298,7 +298,7 @@ def _verify_ocsp_response_snapshot(certificate: Path, issuer: Path, roots: Path,
         "certificate_sha256": hashlib.sha256(certificate.read_bytes()).hexdigest(),
         "responder_certificate_sha256": responder_digest,
         "responder_chain_validation_scope": (
-            "OpenSSL responder PKIX path validation at both floor and ceiling Unix-second bounds of historical validation_time"
+            "OpenSSL responder PKIX path validation at the exact floor/ceiling Unix-second bound(s) of historical validation_time"
             if at_time is not None else
             "OpenSSL responder PKIX path validation at the host wall-clock time"
         ),
