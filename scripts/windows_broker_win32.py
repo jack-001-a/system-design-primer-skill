@@ -377,6 +377,10 @@ class NamedPipeConnection:
                 raise OverlappedLifecycleError(
                     f"cannot complete pipe connect in state {self._state}"
                 )
+            if operation is not self._connect_operation:
+                raise OverlappedLifecycleError(
+                    "operation is not the active ConnectNamedPipe operation"
+                )
             if operation not in self._operations:
                 raise OverlappedLifecycleError(
                     "connect operation is not registered with this pipe"

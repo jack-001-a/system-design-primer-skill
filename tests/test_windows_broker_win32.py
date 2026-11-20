@@ -1002,6 +1002,13 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         )
         self.assertEqual(connection.state, connection.CONNECTING)
         self.assertIn(operation, connection._operations)
+        wrong_operation, _ = self.make_operation()
+        wrong_operation.mark_completed()
+        with self.assertRaisesRegex(
+            win32.OverlappedLifecycleError, "not the active ConnectNamedPipe operation"
+        ):
+            connection.complete_connect(wrong_operation, connected=True)
+        self.assertEqual(connection.state, connection.CONNECTING)
         with self.assertRaises(win32.OverlappedLifecycleError):
             connection.mark_connected()
 
