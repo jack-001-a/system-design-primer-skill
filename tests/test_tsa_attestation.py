@@ -5,7 +5,10 @@ from pathlib import Path
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from unittest.mock import patch
-from scripts.tsa_attestation import create_attestation, verify_attestation, digest_file
+from scripts.tsa_attestation import (
+    create_attestation, verify_attestation, digest_file,
+    calculate_accuracy_bounds, compare_utc_values,
+)
 from scripts.tsa_validation_report import _build_limitations
 
 class TsaAttestationTests(unittest.TestCase):
@@ -567,6 +570,15 @@ class TsaAttestationTests(unittest.TestCase):
         )
         self.assertTrue(result["timestamp_accuracy_assessed"])
         self.assertFalse(result["signature_existed_before_revocation"])
+
+    def test_accuracy_arithmetic_handles_fractional_digits_beyond_python_int_limit(self):
+        fraction = "1234567891" * 450
+        gen_time = "2026-11-19T12:00:00." + fraction + "Z"
+        lower, upper = calculate_accuracy_bounds(gen_time, {"micros": 1})
+        self.assertEqual(len(lower), len(gen_time))
+        self.assertEqual(len(upper), len(gen_time))
+        self.assertLess(compare_utc_values(lower, gen_time), 0)
+        self.assertGreater(compare_utc_values(upper, gen_time), 0)
 
     @patch("scripts.tsa_attestation.verify_timestamp")
     def test_accuracy_outside_datetime_range_is_rejected_cleanly(self, timestamp):
