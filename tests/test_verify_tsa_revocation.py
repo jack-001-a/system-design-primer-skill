@@ -314,6 +314,45 @@ class TsaRevocationTests(unittest.TestCase):
                 self.leaf, [self.issuer, cross_signed], self.listing, NOW, NOW,
             )
 
+    def test_rejects_ambiguous_target_aki_for_cross_signed_same_subject_ski(self):
+        self.issuer, self.leaf, self.listing = make_material()
+        cross_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        cross_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Alternate issuer")])
+        cross_signed = (
+            x509.CertificateBuilder().subject_name(self.issuer.subject).issuer_name(cross_name)
+            .public_key(self.issuer.public_key()).serial_number(99)
+            .not_valid_before(NOW-timedelta(days=30)).not_valid_after(NOW+timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=True, path_length=None), True)
+            .add_extension(x509.KeyUsage(digital_signature=True, content_commitment=False,
+                key_encipherment=False, data_encipherment=False, key_agreement=False,
+                key_cert_sign=True, crl_sign=True, encipher_only=None, decipher_only=None), True)
+            .add_extension(x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()), False)
+            .sign(cross_key, hashes.SHA256())
+        )
+        target_with_ambiguous_aki = (
+            x509.CertificateBuilder().subject_name(self.leaf.subject).issuer_name(self.issuer.subject)
+            .public_key(self.leaf.public_key()).serial_number(77)
+            .not_valid_before(NOW-timedelta(days=10)).not_valid_after(NOW+timedelta(days=90))
+            .add_extension(x509.BasicConstraints(ca=False, path_length=None), True)
+            .add_extension(x509.AuthorityKeyIdentifier(
+                key_identifier=x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()).digest,
+                authority_cert_issuer=None, authority_cert_serial_number=None), False)
+            .sign(cross_key, hashes.SHA256())
+        )
+        crl_aki = x509.AuthorityKeyIdentifier(
+            key_identifier=x509.SubjectKeyIdentifier.from_public_key(self.issuer.public_key()).digest,
+            authority_cert_issuer=[x509.DirectoryName(cross_name)],
+            authority_cert_serial_number=99,
+        )
+        listing = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
+            .last_update(NOW-timedelta(days=1)).next_update(NOW+timedelta(days=30))
+            .add_extension(crl_aki, False).add_extension(x509.CRLNumber(3), False)
+            .sign(cross_key, hashes.SHA256()))
+        with self.assertRaisesRegex(ValueError, "does not uniquely identify its issuer certificate"):
+            validate_direct_crl_scope(
+                target_with_ambiguous_aki, [self.issuer, cross_signed], listing, NOW, NOW,
+            )
+
     def test_aki_authority_issuer_and_serial_disambiguate_cross_signed_same_subject_ski(self):
         self.issuer, self.leaf, self.listing = make_material()
         cross_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
