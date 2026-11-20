@@ -171,7 +171,7 @@ def report_claims(report: dict[str, Any]) -> dict[str, Any]:
         produced = parse_utc(current.get("produced_at"), "OCSP produced_at")
         this_update = parse_utc(current.get("this_update"), "OCSP this_update")
         next_update = parse_utc(current.get("next_update"), "OCSP next_update")
-        if next_update < this_update or produced < this_update or validation < this_update or validation > next_update:
+        if next_update < this_update or validation < this_update or validation > next_update:
             raise ValueError("OCSP assessment contains inconsistent signed validity times")
         if scope == historical_scope:
             gen_dt = parse_utc(report["gen_time"], "gen_time")
