@@ -36,14 +36,20 @@ def synthetic_ocsp_response(
     this_update: bytes,
     next_update: bytes,
     extension: bytes | None = None,
+    revocation_time: bytes | None = None,
 ) -> bytes:
     """Build a minimal BasicOCSPResponse envelope for GeneralizedTime profile tests."""
     single_response_extensions = (
         der_value(0xA1, der_value(0x30, extension)) if extension is not None else b""
     )
+    revoked_status = (
+        der_value(0xA1, der_value(0x18, revocation_time))
+        if revocation_time is not None else b""
+    )
     single_response = der_value(
         0x30,
-        der_value(0x18, this_update)
+        revoked_status
+        + der_value(0x18, this_update)
         + der_value(0xA0, der_value(0x18, next_update))
         + single_response_extensions,
     )
@@ -173,6 +179,40 @@ Next Update: Nov 19 12:05:00 2026 GMT
                         b"20261120120000Z", b"20261120115800Z", b"20261120120500Z",
                         der_value(0x30, invalid_extension),
                     ))
+
+    def test_ocsp_generalized_time_profile_rejects_fractional_revocation_time(self):
+        response = synthetic_ocsp_response(
+            b"20261120120000Z",
+            b"20261120115800Z",
+            b"20261120120500Z",
+            revocation_time=b"20261120115900.5Z",
+        )
+        with self.assertRaisesRegex(ValueError, "no fractional seconds"):
+            validate_ocsp_generalized_time_profile(response)
+
+    def test_ocsp_response_envelope_rejects_unexpected_trailing_field(self):
+        valid = synthetic_ocsp_response(
+            b"20261120120000Z", b"20261120115800Z", b"20261120120500Z"
+        )
+        # The generated outer SEQUENCE uses short-form DER length and starts
+        # with the one-byte successful ENUMERATED value.
+        malformed = der_value(0x30, valid[2:] + der_value(0x05, b""))
+        with self.assertRaisesRegex(ValueError, "unexpected responseStatus envelope fields"):
+            validate_ocsp_generalized_time_profile(malformed)
+
+    def test_ocsp_error_response_must_not_include_response_bytes(self):
+        valid = synthetic_ocsp_response(
+            b"20261120120000Z", b"20261120115800Z", b"20261120120500Z"
+        )
+        # Replace successful(0) with malformedRequest(1), retaining responseBytes.
+        malformed = der_value(0x30, der_value(0x0A, b"\\x01") + valid[5:])
+        with self.assertRaisesRegex(ValueError, "OCSP error response must not contain responseBytes"):
+            validate_ocsp_generalized_time_profile(malformed)
+
+    def test_successful_ocsp_response_requires_response_bytes(self):
+        malformed = der_value(0x30, der_value(0x0A, b"\\x00"))
+        with self.assertRaisesRegex(ValueError, "successful OCSPResponse is missing responseBytes"):
+            validate_ocsp_generalized_time_profile(malformed)
 
     def test_rejects_fractional_ocsp_time_before_invoking_openssl(self):
         self.response.write_bytes(synthetic_ocsp_response(
