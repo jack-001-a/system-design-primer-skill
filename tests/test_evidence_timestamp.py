@@ -449,6 +449,7 @@ class OpenSSLPathConstraintIntegrationTests(unittest.TestCase):
         when = self.now if verification_time is None else verification_time
         return subprocess.run([
             "openssl", "verify", "-verbose", "-CAfile", str(self.root / "root.pem"),
+            "-no-CApath", "-no-CAstore",
             "-untrusted", str(self.root / "chain.pem"), "-purpose", "timestampsign",
             "-attime", str(int(when.timestamp())), str(self.root / "leaf.pem")
         ], capture_output=True, text=True, check=False)
