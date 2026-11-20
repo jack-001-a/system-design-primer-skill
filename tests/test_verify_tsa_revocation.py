@@ -41,6 +41,11 @@ def make_material(*, crl_sign=True, key_cert_sign=True, ca=True, include_key_usa
         .not_valid_before(NOW-timedelta(days=10)).not_valid_after(NOW+timedelta(days=90)))
     if not legacy_leaf:
         leaf_builder = leaf_builder.add_extension(x509.BasicConstraints(ca=False, path_length=None), True)
+        leaf_builder = leaf_builder.add_extension(x509.AuthorityKeyIdentifier(
+            key_identifier=x509.SubjectKeyIdentifier.from_public_key(key.public_key()).digest,
+            authority_cert_issuer=[x509.DirectoryName(name)],
+            authority_cert_serial_number=1,
+        ), False)
     leaf = leaf_builder.sign(key, hashes.SHA256())
     aki_key = rsa.generate_private_key(public_exponent=65537, key_size=2048) if wrong_aki else key
     builder = (
