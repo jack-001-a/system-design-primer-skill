@@ -388,6 +388,9 @@ class TsaAttestationTests(unittest.TestCase):
             path.write_bytes(b"fixture")
         store = json.loads(self.store.read_text())
         store["keys"]["tsa-attester"]["status"] = "revoked"
+        # The fixed genTime is 2026-11-19T12:00:00Z; keep the key's validity
+        # start before that instant so this test isolates revocation ordering.
+        store["keys"]["tsa-attester"]["not_before"] = "2026-11-18T00:00:00Z"
         store["keys"]["tsa-attester"]["revoked_at"] = "2026-11-20T00:00:00Z"
         self.store.write_text(json.dumps(store, sort_keys=True))
         result = verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
