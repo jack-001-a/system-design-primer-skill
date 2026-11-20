@@ -506,8 +506,10 @@ Next Update: Nov 19 12:05:00 2026 GMT
                              originals["response"])
             self.assertEqual(Path(command[command.index("-CAfile") + 1]).read_bytes(),
                              originals["roots"])
-            self.assertEqual(Path(command[command.index("-issuer") + 1]).read_bytes(),
-                             originals["issuer"])
+            # The response-verification command must omit -issuer when an
+            # explicit responder pin is configured; otherwise OpenSSL 3.5.x
+            # can retry with issuer candidates and lose OCSP_NOINTERN.
+            self.assertNotIn("-issuer", command)
             signer_bundle = Path(command[command.index("-verify_other") + 1]).read_bytes()
             signer_from_bundle = x509.load_pem_x509_certificate(signer_bundle)
             self.assertEqual(signer_from_bundle.fingerprint(hashes.SHA256()),
