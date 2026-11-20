@@ -189,6 +189,7 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertTrue(result["nonce_present"])
         self.assertEqual(len(result["request_sha256"]), 64)
         self.assertEqual(len(result["response_sha256"]), 64)
+        self.assertIsNone(result["tsa_chain_sha256"])
         historical = run.call_args_list[2].args[0]
         self.assertEqual(historical[:2], ["ts", "-verify"])
         self.assertIn("-attime", historical)
@@ -294,6 +295,10 @@ class EvidenceTimestampTests(unittest.TestCase):
         self.assertEqual(result["request_sha256"], hashlib.sha256(originals[self.request]).hexdigest())
         self.assertEqual(result["response_sha256"], hashlib.sha256(originals[self.response]).hexdigest())
         self.assertEqual(result["tsa_ca_sha256"], hashlib.sha256(originals[self.ca]).hexdigest())
+        self.assertEqual(
+            result["tsa_chain_sha256"],
+            hashlib.sha256(originals[chain]).hexdigest(),
+        )
         self.assertEqual(len(verification_commands), 1)
 
     def test_oversized_timestamp_evidence_is_rejected_before_openssl(self):
