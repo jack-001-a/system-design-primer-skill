@@ -153,8 +153,9 @@ def verify_ocsp_response(certificate: Path, issuer: Path, roots: Path, response:
         if request_result.returncode:
             detail = (request_result.stderr or request_result.stdout).strip()
             raise ValueError("OpenSSL could not construct the certificate-bound OCSP request: " + detail[-2000:])
-        command = [executable, "ocsp", "-reqin", str(request_path), "-respin", str(response),
-                   "-CAfile", str(roots), "-no-CApath", "-no-CAstore", "-x509_strict", "-no_nonce"]
+        command = [executable, "ocsp", "-issuer", str(issuer), "-reqin", str(request_path),
+                   "-respin", str(response), "-CAfile", str(roots), "-no-CApath", "-no-CAstore",
+                   "-x509_strict", "-no_nonce"]
         if responder_certificate is not None:
             signer_bundle = Path(temporary) / "responder-signer-bundle.pem"
             signer_pem = x509.load_pem_x509_certificate(responder_certificate.read_bytes()).public_bytes(
