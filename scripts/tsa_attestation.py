@@ -249,6 +249,26 @@ def create_attestation(report_path: Path, private_key_path: Path, key_id: str,
     return envelope
 
 
+def validate_timestamp_verification_scope(result: dict[str, Any]) -> None:
+    scope = result.get("verification_scope")
+    required = {"cms_signature", "request_imprint", "response_imprint",
+                "request_response_binding", "nonce_binding",
+                "tsa_pkix_chain_at_gen_time", "tsa_signer_certificate_profile",
+                "tsa_signer_validity_at_gen_time"}
+    if not isinstance(scope, dict) or set(scope) != required:
+        raise ValueError("RFC 3161 timestamp verification scope is missing or malformed")
+    for field in required - {"nonce_binding"}:
+        if scope[field] != "verified":
+            raise ValueError("RFC 3161 timestamp scope does not establish " + field)
+    if type(result.get("nonce_present")) is not bool:
+        raise ValueError("RFC 3161 timestamp nonce_present must be an explicit boolean")
+    expected = "verified" if result["nonce_present"] else "not_requested"
+    if scope["nonce_binding"] != expected:
+        raise ValueError("RFC 3161 timestamp nonce scope contradicts nonce_present")
+    limits = result.get("not_established")
+    if not isinstance(limits, list) or not limits or any(not isinstance(x, str) or not x.strip() for x in limits):
+        raise ValueError("RFC 3161 timestamp limitations must be a non-empty list of descriptions")
+
 def verify_attestation(report_path: Path, attestation_path: Path, trust_store_path: Path,
                        expected_trust_store_sha256: str,
                        timestamp_request_path: Path | None = None,
@@ -327,6 +347,7 @@ def verify_attestation(report_path: Path, attestation_path: Path, trust_store_pa
             tsa_ca_path, expected_tsa_ca_sha256, tsa_chain_path)
         if not trusted_timestamp.get("verified") or not trusted_timestamp.get("tsa_signer_valid_at_gen_time"):
             raise ValueError("RFC 3161 timestamp did not establish a verified, valid TSA signer")
+        validate_timestamp_verification_scope(trusted_timestamp)
         timestamp_gen_time = parse_utc(trusted_timestamp.get("gen_time"), "timestamp gen_time")
         require_sha256(trusted_timestamp.get("tsa_signer_certificate_sha256"), "TSA signer certificate SHA-256")
         expected_signature_digest = hashlib.sha256(signature_bytes).hexdigest()

@@ -293,7 +293,15 @@ class TsaAttestationTests(unittest.TestCase):
         import base64
         signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
         timestamp.return_value = {
-            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "verified": True, "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "nonce_present": False,
+            "not_established": ["trust policy", "policy OID suitability", "CRL/OCSP revocation", "archive integrity"],
+            "signature_sha256": hashlib.sha256(signature).hexdigest(),
             "gen_time": "2026-11-19T12:00:00Z", "accuracy": {"seconds": 0},
             "tsa_signer_valid_at_gen_time": True,
             "tsa_signer_certificate_sha256": "a" * 64,
@@ -462,6 +470,47 @@ class TsaAttestationTests(unittest.TestCase):
         for path in (request, response, ca):
             path.write_bytes(b"fixture")
         with self.assertRaisesRegex(ValueError, "timestamp gen_time must be an RFC3339 UTC"):
+            verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
+                request, response, ca, hashlib.sha256(b"fixture").hexdigest())
+
+    @patch("scripts.tsa_attestation.verify_timestamp")
+    def test_rejects_timestamp_result_without_explicit_verification_scope(self, timestamp):
+        import base64
+        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
+        timestamp.return_value = {
+            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "gen_time": "2026-11-19T12:00:00Z",
+            "tsa_signer_valid_at_gen_time": True,
+            "tsa_signer_certificate_sha256": "a" * 64,
+        }
+        request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
+        for path in (request, response, ca):
+            path.write_bytes(b"fixture")
+        with self.assertRaisesRegex(ValueError, "verification scope is missing"):
+            verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
+                request, response, ca, hashlib.sha256(b"fixture").hexdigest())
+
+    @patch("scripts.tsa_attestation.verify_timestamp")
+    def test_rejects_timestamp_scope_nonce_contradiction(self, timestamp):
+        import base64
+        signature = base64.b64decode(json.loads(self.attestation.read_text())["signature"])
+        timestamp.return_value = {
+            "verified": True, "signature_sha256": hashlib.sha256(signature).hexdigest(),
+            "gen_time": "2026-11-19T12:00:00Z", "nonce_present": True,
+            "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "not_requested", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "not_established": ["scope limitation"],
+            "tsa_signer_valid_at_gen_time": True,
+            "tsa_signer_certificate_sha256": "a" * 64,
+        }
+        request, response, ca = (self.root / "request.tsq", self.root / "response.tsr", self.root / "tsa-ca.pem")
+        for path in (request, response, ca):
+            path.write_bytes(b"fixture")
+        with self.assertRaisesRegex(ValueError, "nonce scope contradicts"):
             verify_attestation(self.report, self.attestation, self.store, digest_file(self.store),
                 request, response, ca, hashlib.sha256(b"fixture").hexdigest())
 
