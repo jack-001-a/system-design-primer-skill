@@ -40,30 +40,56 @@ def synthetic_ocsp_response(
     extension: bytes | None = None,
     revocation_time: bytes | None = None,
     extra_certs: bytes = b"",
+    responder_id: bytes | None = None,
+    cert_status: bytes | None = None,
+    version: bytes = b"",
+    response_extensions: bytes = b"",
 ) -> bytes:
-    """Build a minimal BasicOCSPResponse envelope for GeneralizedTime profile tests."""
+    """Build a structurally valid minimal BasicOCSPResponse for DER profile tests."""
     single_response_extensions = (
         der_value(0xA1, der_value(0x30, extension)) if extension is not None else b""
     )
     revoked_status = (
         der_value(0xA1, der_value(0x18, revocation_time))
-        if revocation_time is not None else b""
+        if revocation_time is not None else der_value(0x80, b"")
+    )
+    selected_status = cert_status if cert_status is not None else revoked_status
+    cert_id = der_value(
+        0x30,
+        der_value(
+            0x30,
+            der_value(0x06, bytes.fromhex("2b0e03021a")) + der_value(0x05, b""),
+        )
+        + der_value(0x04, b"\x00" * 20)
+        + der_value(0x04, b"\x00" * 20)
+        + der_value(0x02, b"\x01"),
     )
     single_response = der_value(
         0x30,
-        revoked_status
+        cert_id
+        + selected_status
         + der_value(0x18, this_update)
         + der_value(0xA0, der_value(0x18, next_update))
         + single_response_extensions,
     )
+    selected_responder = (
+        responder_id
+        if responder_id is not None
+        else der_value(0xA2, der_value(0x04, b"\x00" * 20))
+    )
     response_data = der_value(
         0x30,
-        der_value(0x18, produced_at) + der_value(0x30, single_response),
+        version
+        + selected_responder
+        + der_value(0x18, produced_at)
+        + der_value(0x30, single_response)
+        + response_extensions,
     )
     basic = der_value(
         0x30,
         response_data
-        + der_value(0x30, der_value(0x06, bytes.fromhex("2b0e03021a")))
+        + der_value(0x30, der_value(0x06, bytes.fromhex("2b0e03021a"))
+                    + der_value(0x05, b""))
         + der_value(0x03, b"\x00signature")
         + extra_certs,
     )
@@ -207,6 +233,108 @@ Next Update: Nov 19 12:05:00 2026 GMT
                 )
                 with self.assertRaisesRegex(ValueError, message):
                     validate_ocsp_generalized_time_profile(response)
+
+    def test_ocsp_profile_rejects_context_tag_confusion(self):
+        valid_time = b"20261120120000Z"
+        cases = (
+            (
+                {"responder_id": der_value(0x82, b"\x00" * 20)},
+                "invalid ResponderID CHOICE tag",
+            ),
+            (
+                {"responder_id": der_value(0xA2, der_value(0x04, b"\x00" * 20)
+                                           + der_value(0x05, b""))},
+                "not one complete DER value",
+            ),
+            (
+                {"cert_status": der_value(0xA0, b"")},
+                "invalid CertStatus CHOICE tag",
+            ),
+            (
+                {"cert_status": der_value(0x80, b"\x00")},
+                "IMPLICIT NULL must be empty",
+            ),
+            (
+                {"cert_status": der_value(0xA1, der_value(0x30, der_value(0x18, valid_time)))},
+                "invalid implicit RevokedInfo",
+            ),
+            (
+                {"version": der_value(0xA0, der_value(0x02, b"\x00"))},
+                "DEFAULT v1 version must be omitted",
+            ),
+        )
+        for options, message in cases:
+            with self.subTest(options=options):
+                response = synthetic_ocsp_response(
+                    valid_time, valid_time, valid_time, **options
+                )
+                with self.assertRaisesRegex(ValueError, message):
+                    validate_ocsp_generalized_time_profile(response)
+
+    def test_ocsp_profile_accepts_each_cert_status_choice(self):
+        valid_time = b"20261120120000Z"
+        statuses = (
+            der_value(0x80, b""),
+            der_value(0x82, b""),
+            der_value(0xA1, der_value(0x18, valid_time)),
+        )
+        for status in statuses:
+            with self.subTest(status=status):
+                response = synthetic_ocsp_response(
+                    valid_time, valid_time, valid_time, cert_status=status
+                )
+                validate_ocsp_generalized_time_profile(response)
+
+    def test_ocsp_profile_enforces_explicit_optional_field_wrappers(self):
+        valid_time = b"20261120120000Z"
+        wrong_next_update = der_value(0x80, der_value(0x18, valid_time))
+        response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            response_extensions=der_value(0xA1, der_value(0x30, b"")),
+        )
+        with self.assertRaisesRegex(ValueError, "must contain at least one Extension"):
+            validate_ocsp_generalized_time_profile(response)
+
+        # A context-specific tag cannot replace the explicitly wrapped universal time.
+        wrong_single_response = der_value(
+            0x30,
+            # Reuse the builder's canonical CertID and good status.
+            der_value(0x30,
+                der_value(0x30, der_value(0x06, bytes.fromhex("2b0e03021a"))
+                          + der_value(0x05, b""))
+                + der_value(0x04, b"\x00" * 20)
+                + der_value(0x04, b"\x00" * 20)
+                + der_value(0x02, b"\x01"))
+            + der_value(0x80, b"")
+            + der_value(0x18, valid_time)
+            + wrong_next_update,
+        )
+        response = synthetic_ocsp_response(
+            valid_time, valid_time, valid_time,
+            cert_status=der_value(0x80, b""),
+        )
+        # Replace the one canonical SingleResponse with the malformed one.
+        outer_content = _require_single_der_value(response, 0x30, "OCSPResponse")
+        outer = list(_der_children(outer_content))
+        response_bytes = _require_single_der_value(outer[1][1], 0x30, "responseBytes")
+        rb = list(_der_children(response_bytes))
+        basic = _require_single_der_value(rb[1][1], 0x30, "BasicOCSPResponse")
+        basic_fields = list(_der_children(basic))
+        rd = list(_der_children(basic_fields[0][1]))
+        malformed_rd = der_value(0x30, rd[0][1] + rd[1][1]
+                                 + der_value(0x18, valid_time)
+                                 + der_value(0x30, wrong_single_response[2:-2]))
+        malformed_basic = der_value(0x30, malformed_rd + b"".join(
+            der_value(tag, value) for tag, value in basic_fields[1:]
+        ))
+        malformed_rb = der_value(0x30, rb[0][0].to_bytes(1, "big") + b"")
+        # Build the response envelope explicitly to avoid mutating TLV offsets.
+        rebuilt_rb = der_value(0x30, der_value(0x06, rb[0][1])
+                               + der_value(0x04, malformed_basic))
+        malformed = der_value(0x30, der_value(0x0A, b"\x00")
+                              + der_value(0xA0, rebuilt_rb))
+        with self.assertRaisesRegex(ValueError, "nextUpdate"):
+            validate_ocsp_generalized_time_profile(malformed)
 
     def test_ocsp_generalized_time_profile_accepts_whole_second_utc_values(self):
         response = synthetic_ocsp_response(
