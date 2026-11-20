@@ -246,6 +246,38 @@ class WindowsBrokerWin32Tests(unittest.TestCase):
         self.assertEqual(connection.state, connection.CONNECTED)
         self.assertEqual(calls, [10, 10])
 
+    def test_pipe_close_api_exception_preserves_handle_for_retry(self):
+        calls = []
+        fake = FakeKernel32()
+
+        def close_handle(handle):
+            calls.append(handle)
+            if len(calls) == 1:
+                raise RuntimeError("close-api")
+            return 1
+
+        fake.CloseHandle = close_handle
+        bindings = win32.Kernel32Bindings(
+            fake, fake.CreateEventW, fake.CloseHandle, fake.WaitForSingleObject,
+            fake.CancelIoEx, fake.GetOverlappedResult, fake.GetOverlappedResultEx,
+            fake.ReadFile, fake.WriteFile, fake.ConnectNamedPipe, fake.SetEvent,
+            fake.DisconnectNamedPipe,
+        )
+        connection = win32.NamedPipeConnection(10)
+        connection._state = connection.DISCONNECTED
+
+        with self.assertRaisesRegex(RuntimeError, "close-api"):
+            win32.close_named_pipe(bindings, connection)
+        self.assertEqual(connection.state, connection.DISCONNECTED)
+        self.assertEqual(connection.file_handle, 10)
+        with self.assertRaises(win32.OverlappedLifecycleError):
+            connection.mark_connected()
+
+        self.assertEqual(win32.close_named_pipe(bindings, connection), (True, None))
+        self.assertEqual(calls, [10, 10])
+        self.assertEqual(connection.state, connection.CLOSED)
+        self.assertIsNone(connection.file_handle)
+
     def test_pipe_close_error_lookup_exception_preserves_handle_for_retry(self):
         fake = FakeKernel32()
         calls = []
