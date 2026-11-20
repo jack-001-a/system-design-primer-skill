@@ -241,6 +241,12 @@ def verify_timestamp(
     signature_path: Path, request_path: Path, response_path: Path,
     tsa_ca_path: Path, expected_ca_sha256: str, chain_path: Path | None = None,
 ) -> dict[str, Any]:
+    """Verify RFC 3161 token binding and TSA path, not the wider evidence trust model.
+
+    The caller selects and pins the trust bundle. Revocation evidence, policy-OID
+    acceptability, the Ed25519 signature itself, and evidence-archive completeness
+    require separate policy and verification steps.
+    """
     if not HEX256.fullmatch(expected_ca_sha256):
         raise ValueError("expected TSA CA SHA-256 must be 64 lowercase hex characters")
     actual_ca_sha256 = hashlib.sha256(tsa_ca_path.read_bytes()).hexdigest()
@@ -255,6 +261,7 @@ def verify_timestamp(
         raise ValueError("timestamp request must use SHA-256")
     if not imprint or imprint.group(1).lower() != expected_imprint:
         raise ValueError("timestamp request does not bind the supplied Ed25519 signature")
+    request_nonce = re.search(r"^Nonce:\\s*(\\S+)", request_text, re.I | re.M)
     details = run_openssl(["ts", "-reply", "-in", str(response_path), "-text"])
     gen_time = re.search(r"^Time(?: stamp)?\s*:\s*(.+)$", details, re.I | re.M)
     if not gen_time:
@@ -285,6 +292,22 @@ def verify_timestamp(
     nonce = re.search(r"^Nonce:\s*(\S+)", details, re.I | re.M)
     return {
         "verified": True,
+        "verification_scope": {
+            "cms_signature": "verified",
+            "request_imprint": "verified",
+            "response_imprint": "verified",
+            "request_response_binding": "verified",
+            "nonce_binding": "verified" if request_nonce else "not_requested",
+            "tsa_pkix_chain_at_gen_time": "verified",
+            "tsa_signer_certificate_profile": "verified",
+            "tsa_signer_validity_at_gen_time": "verified",
+        },
+        "not_established": [
+            "The caller is responsible for deciding whether the pinned CA bundle and its trust anchors satisfy the relying party trust policy.",
+            "The TSA policy OID is reported but its acceptability for a particular use is not assessed.",
+            "This command does not retrieve or independently validate CRL or OCSP revocation evidence; use the separate revocation verification workflow.",
+            "The Ed25519 signature itself and the completeness or integrity of the wider evidence archive are not verified by timestamp-token verification.",
+        ],
         "signature_sha256": expected_imprint,
         "gen_time": parse_openssl_gen_time(gen_time.group(1)),
         "policy_oid": policy.group(1),

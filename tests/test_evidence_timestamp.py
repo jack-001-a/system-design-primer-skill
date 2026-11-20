@@ -143,6 +143,18 @@ class EvidenceTimestampTests(unittest.TestCase):
             import hashlib as h
             result = verify_timestamp(self.signature, self.request, self.response, self.ca, h.sha256(b"test CA bytes").hexdigest())
         self.assertTrue(result["verified"])
+        self.assertEqual(result["verification_scope"], {
+            "cms_signature": "verified",
+            "request_imprint": "verified",
+            "response_imprint": "verified",
+            "request_response_binding": "verified",
+            "nonce_binding": "not_requested",
+            "tsa_pkix_chain_at_gen_time": "verified",
+            "tsa_signer_certificate_profile": "verified",
+            "tsa_signer_validity_at_gen_time": "verified",
+        })
+        self.assertEqual(len(result["not_established"]), 4)
+        self.assertTrue(any("CRL or OCSP" in item for item in result["not_established"]))
         self.assertEqual(result["tsa_signer_certificate_sha256"], "a" * 64)
         self.assertTrue(result["tsa_signer_valid_at_gen_time"])
         self.assertIn("CMS SignerInfo", result["tsa_signer_identity_source"])
