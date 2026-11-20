@@ -337,7 +337,7 @@ class TsaRevocationTests(unittest.TestCase):
         self.assertEqual(result["crl_issuer_certificate_sha256"],
                          hashlib.sha256(self.issuer.public_bytes(serialization.Encoding.DER)).hexdigest())
 
-    def test_aki_key_identifier_alone_rejects_cross_signed_ambiguity(self):
+    def test_target_certificate_aki_disambiguates_crl_aki_key_identifier_only(self):
         self.issuer, self.leaf, self.listing = make_material()
         cross_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
         cross_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Cross signer")])
@@ -362,8 +362,11 @@ class TsaRevocationTests(unittest.TestCase):
             .add_extension(aki_only, False).add_extension(x509.CRLNumber(2), False).sign(
                 rsa.generate_private_key(public_exponent=65537, key_size=2048), hashes.SHA256()))
         self.crl.write_bytes(self.listing.public_bytes(serialization.Encoding.PEM))
-        with self.assertRaisesRegex(ValueError, "exactly one supplied certificate after AKI matching"):
-            verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(), intermediates=self.intermediates)
+        with patch("scripts.verify_tsa_revocation.shutil.which", return_value="openssl"), patch("scripts.verify_tsa_revocation.subprocess.run") as run:
+            run.return_value.returncode, run.return_value.stdout, run.return_value.stderr = 0, str(self.cert)+": OK", ""
+            result = verify_crl_status(self.cert, self.roots, self.crl, AT_TIME, self.roots_pin(), intermediates=self.intermediates)
+        self.assertEqual(result["crl_issuer_certificate_sha256"],
+                         hashlib.sha256(self.issuer.public_bytes(serialization.Encoding.DER)).hexdigest())
 
     def test_rejects_crl_without_authority_key_identifier(self):
         builder = (x509.CertificateRevocationListBuilder().issuer_name(self.issuer.subject)
