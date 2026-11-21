@@ -4,7 +4,7 @@
 
 An installable Agent Skill for software architecture design, architecture reviews, performance optimization, technology evaluation, and migration planning. It uses Donne Martin's System Design Primer as its knowledge foundation and adds modern production engineering practices.
 
-- **Version:** 2.3.0
+- **Version:** 2.4.0
 - **Language:** English, with standard technical terminology
 - **Runtime dependencies:** The Skill itself has no third-party runtime dependencies. Installation and validation require only Bash, PowerShell, or Python 3.
 
@@ -19,9 +19,9 @@ An installable Agent Skill for software architecture design, architecture review
 
 ## Quality, task routing, and evaluation
 
-Version 2.3.0 adds an evidence-first task-routing guide, explicit reference-loading paths, repository-review traceability rules, and a compact regression case set for design, review, optimization, security, and migration tasks. The validator checks the evaluation dataset structure and keeps the README, Skill metadata, package manifest, changelog, and VERSION aligned.
+Version 2.4.0 adds a provider-neutral evaluation runner, a seventeen-case regression catalog, human-reviewed scoring with a separate security gate, reproducibility manifests, review provenance, integrity chains, and cryptographic evidence verification. The validator checks the evaluation dataset structure and keeps the README, Skill metadata, package manifest, changelog, and VERSION aligned.
 
-The evaluation workflow now includes a provider-neutral model runner and a dependency-free human-review aggregator. Run the thirteen fixture prompts through a user-supplied Python adapter, then review and aggregate the responses:
+The evaluation workflow includes a provider-neutral model runner, a dependency-free human-review aggregator, reproducibility manifests, review-provenance records, and optional evidence signing and RFC 3161 timestamp verification. Run the seventeen fixture prompts through a user-supplied Python adapter, then review and aggregate the responses:
 
     python scripts/run_evals.py --adapter ./adapter.py --model provider/model-and-version --output evals/responses.jsonl
     python scripts/evaluate.py --responses evals/responses.jsonl --output evals/report.json
