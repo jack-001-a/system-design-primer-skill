@@ -15,6 +15,7 @@ try {
   $Destination = '.agents/skills/system-design-primer'
   if (-not (Test-Path (Join-Path $Destination 'SKILL.md'))) { throw 'Skill entrypoint missing' }
   if (-not (Test-Path (Join-Path $Destination 'evals/README.md')) -or -not (Test-Path (Join-Path $Destination 'evals/system-design-cases.json'))) { throw 'Evaluation assets missing from installation' }
+  if (-not (Test-Path (Join-Path $Destination 'requirements-evidence-signing.txt'))) { throw 'Evidence-signing dependency manifest missing from installation' }
   if (Test-Path (Join-Path $Destination '.git')) { throw '.git leaked into installed Skill' }
   if (Test-Path (Join-Path $Destination 'scripts/validate.py')) { throw 'Repository-only validator leaked into installed Skill' }
 

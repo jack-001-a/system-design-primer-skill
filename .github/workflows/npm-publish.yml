@@ -97,6 +97,7 @@ jobs:
             'templates/adr-template.md',
             'scripts/install.sh',
             'scripts/install.ps1',
+            'requirements-evidence-signing.txt',
           ];
           const missing = required.filter((path) => !paths.has(path));
           if (missing.length) throw new Error('npm archive is missing: ' + missing.join(', '));

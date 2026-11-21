@@ -29,6 +29,7 @@ def collect_files() -> list[Path]:
         ROOT / "ATTRIBUTION.md",
         ROOT / "LICENSE",
         ROOT / "VERSION",
+        ROOT / "requirements-evidence-signing.txt",
     ]
     for folder in ("references", "templates", "scripts", "evals"):
         files.extend(

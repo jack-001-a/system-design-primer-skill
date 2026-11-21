@@ -120,7 +120,7 @@ REQUIRED_TEMPLATES = {
 }
 PACKAGE_ENTRIES = (
     "SKILL.md", "README.md", "references", "templates", "scripts", "evals",
-    "ATTRIBUTION.md", "LICENSE", "VERSION",
+    "ATTRIBUTION.md", "LICENSE", "VERSION", "requirements-evidence-signing.txt",
 )
 LOCAL_LINK_RE = re.compile(r"\]\(([^)]+)\)")
 

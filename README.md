@@ -21,7 +21,9 @@ An installable Agent Skill for software architecture design, architecture review
 
 Version 2.4.0 adds a provider-neutral evaluation runner, a seventeen-case regression catalog, human-reviewed scoring with a separate security gate, reproducibility manifests, review provenance, integrity chains, and cryptographic evidence verification. The validator checks the evaluation dataset structure and keeps the README, Skill metadata, package manifest, changelog, and VERSION aligned.
 
-The evaluation workflow includes a provider-neutral model runner, a dependency-free human-review aggregator, reproducibility manifests, review-provenance records, and optional evidence signing and RFC 3161 timestamp verification. Run the seventeen fixture prompts through a user-supplied Python adapter, then review and aggregate the responses:
+The evaluation workflow includes a provider-neutral model runner, a dependency-free human-review aggregator, reproducibility manifests, review-provenance records, and optional evidence signing and RFC 3161 timestamp verification. The optional signing tools require the dependency listed in `requirements-evidence-signing.txt`; install it with `python -m pip install -r requirements-evidence-signing.txt` from the repository root or extracted Skill package. This dependency manifest is included in the npm and ZIP distributions and copied by both installers.
+
+Run the seventeen fixture prompts through a user-supplied Python adapter, then review and aggregate the responses:
 
     python scripts/run_evals.py --adapter ./adapter.py --model provider/model-and-version --output evals/responses.jsonl
     python scripts/evaluate.py --responses evals/responses.jsonl --output evals/report.json

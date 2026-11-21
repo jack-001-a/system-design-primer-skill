@@ -11,7 +11,7 @@ mkdir -p "$TMP/project" "$TMP/home" "$TMP/custom-dsh"
   [[ ! -e .agents/skills/system-design-primer ]]
   bash "$SCRIPT" --agent codex --scope project
   DEST=".agents/skills/system-design-primer"
-  [[ -f "$DEST/SKILL.md" && -d "$DEST/references" && -f "$DEST/evals/README.md" && -f "$DEST/evals/system-design-cases.json" ]]
+  [[ -f "$DEST/SKILL.md" && -d "$DEST/references" && -f "$DEST/evals/README.md" && -f "$DEST/evals/system-design-cases.json" && -f "$DEST/requirements-evidence-signing.txt" ]]
   [[ ! -e "$DEST/.git" && ! -e "$DEST/.github" ]]
   [[ ! -e "$DEST/scripts/__pycache__" && ! -e "$DEST/scripts/test_install.sh" && ! -e "$DEST/scripts/validate.py" ]]
   if bash "$SCRIPT" --agent codex --scope project >/dev/null 2>&1; then

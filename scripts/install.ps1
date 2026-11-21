@@ -48,7 +48,7 @@ switch ($Agent + ':' + $Scope) {
   'copilot:user' { $Parents += (Join-Path $Base '.copilot/skills') }
 }
 
-$Items = @('SKILL.md','references','templates','evals','ATTRIBUTION.md','LICENSE','VERSION')
+$Items = @('SKILL.md','references','templates','evals','ATTRIBUTION.md','LICENSE','VERSION','requirements-evidence-signing.txt')
 $ScriptItems = @('install.sh','install.ps1')
 foreach ($Item in $Items) {
   if (-not (Test-Path -LiteralPath (Join-Path $Source $Item))) {

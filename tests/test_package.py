@@ -26,6 +26,8 @@ class DistributionTests(unittest.TestCase):
     def test_npm_package_includes_documented_evaluation_workflow(self):
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
         self.assertIn("evals/", package.get("files", []))
+        self.assertIn("requirements-evidence-signing.txt", package.get("files", []))
+        self.assertTrue((ROOT / "requirements-evidence-signing.txt").is_file())
         self.assertTrue((ROOT / "evals" / "README.md").is_file())
         self.assertTrue((ROOT / "evals" / "system-design-cases.json").is_file())
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
@@ -52,6 +54,7 @@ class DistributionTests(unittest.TestCase):
                 self.assertEqual(names, expected)
                 self.assertIn(prefix + "evals/README.md", names)
                 self.assertIn(prefix + "evals/system-design-cases.json", names)
+                self.assertIn(prefix + "requirements-evidence-signing.txt", names)
                 self.assertFalse(any("/tests/" in name for name in names))
                 self.assertFalse(any("__pycache__" in name for name in names))
             digest, filename = checksum.read_text(encoding="ascii").split()
@@ -70,6 +73,7 @@ class DistributionTests(unittest.TestCase):
             self.assertTrue((extracted_root / "SKILL.md").is_file())
             self.assertTrue((extracted_root / "references" / "69-task-routing-and-evidence.md").is_file())
             self.assertTrue((extracted_root / "evals" / "README.md").is_file())
+            self.assertTrue((extracted_root / "requirements-evidence-signing.txt").is_file())
             self.assertTrue((extracted_root / "scripts" / "install.sh").is_file())
 
     def test_verifier_rejects_payload_tampering_even_with_updated_outer_checksum(self):
