@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to validate and publish (for example, v2.4.0)"
+        required: true
+        default: "v2.4.0"
+        type: string
 
 permissions:
   contents: read
@@ -16,6 +23,8 @@ jobs:
   validate:
     name: Release validation (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     strategy:
       fail-fast: false
       matrix:
@@ -24,11 +33,13 @@ jobs:
       - name: Check out tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
           fetch-depth: 0
       - name: Require tag commit to be on main
         shell: bash
         run: |
-          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+          release_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          git merge-base --is-ancestor "$release_commit" refs/remotes/origin/main || {
             echo "::error::Refusing to publish a tag whose commit is not reachable from main"
             exit 1
           }
@@ -57,11 +68,16 @@ jobs:
     name: Build and publish GitHub Release
     needs: validate
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     permissions:
       contents: write
     steps:
       - name: Check out tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+          fetch-depth: 0
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -70,8 +86,7 @@ jobs:
         shell: bash
         run: |
           expected_tag="v$(tr -d '[:space:]' < VERSION)"
-          test "$GITHUB_REF_TYPE" = "tag"
-          test "$GITHUB_REF_NAME" = "$expected_tag"
+          test "$RELEASE_TAG" = "$expected_tag"
       - name: Build and verify ZIP and checksums
         run: |
           python tools/package.py --output-dir dist
@@ -79,8 +94,8 @@ jobs:
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:
-          tag_name: ${{ github.ref_name }}
-          name: System Design Primer ${{ github.ref_name }}
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: System Design Primer ${{ env.RELEASE_TAG }}
           generate_release_notes: true
           fail_on_unmatched_files: true
           make_latest: true
