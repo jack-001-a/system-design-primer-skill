@@ -4,6 +4,13 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Existing release tag to stage for npm (for example, v2.4.0)"
+        required: true
+        default: "v2.4.0"
+        type: string
 permissions:
   contents: read
 
@@ -15,6 +22,8 @@ jobs:
   publish:
     name: Validate and publish to npm
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
     permissions:
       contents: read
       id-token: write
@@ -22,12 +31,14 @@ jobs:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
           fetch-depth: 0
 
       - name: Require tag commit to be on main
         shell: bash
         run: |
-          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+          release_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+          git merge-base --is-ancestor "$release_commit" refs/remotes/origin/main || {
             echo "::error::Refusing to publish a tag whose commit is not reachable from main"
             exit 1
           }
@@ -58,9 +69,7 @@ jobs:
           package_version="$(node -p "require('./package.json').version")"
           package_name="$(node -p "require('./package.json').name")"
           test "$version" = "$package_version"
-          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
-            test "$GITHUB_REF_NAME" = "v$version"
-          fi
+          test "$RELEASE_TAG" = "v$version"
           echo "Publishing $package_name@$version"
 
       - name: Verify npm package contents
