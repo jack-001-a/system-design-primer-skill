@@ -1,10 +1,6 @@
-## Unreleased
-
-### Fixed
+## 2.4.0 — 2026-11-21
 
 - Include the optional evidence-signing dependency manifest in npm and ZIP distributions and copy it into installs made by the Bash and PowerShell installers.
-
-## 2.4.0 — 2026-11-21
 
 - Add a provider-neutral evaluation runner and a seventeen-case scenario catalog for architecture, security, reliability, migration, and agent-tool workflows.
 - Add human-reviewed scoring, criterion-level coverage, tool-trace review, and an independent security gate that hard-fails reviewed security violations and reports missing evidence as incomplete.
