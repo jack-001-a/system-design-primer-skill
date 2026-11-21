@@ -2,6 +2,10 @@
 
 Do not conflate model context, conversation history, long-term memory, and durable workflow state. Each has different ownership, consistency, retention, privacy, and recovery requirements.
 
+## Scope and boundaries
+
+This document owns agent-specific state taxonomy, durable run/checkpoint design, conversation history, and memory lifecycle. Use [privacy engineering](54-privacy-engineering-and-data-governance.md) for retention, deletion, legal holds, and downstream processor obligations; [workflow orchestration](32-workflow-orchestration-and-temporal.md) for durable timers, replay, and orchestration semantics; and [distributed transactions](37-consensus-and-distributed-transactions.md) for atomic coordination with external side effects. Deleting a conversation record does not prove deletion of derived memory, embeddings, caches, replicas, or backups.
+
 ## 1. State taxonomy
 
 | State type | Purpose | Typical lifecycle and controls |

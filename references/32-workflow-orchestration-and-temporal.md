@@ -2,6 +2,10 @@
 
 Workflow orchestration coordinates long-running business processes across services, human tasks, timers, and retries. Choose between a task queue, scheduler, state machine, and durable workflow engine based on process duration, recovery, visibility, and compensation needs.
 
+## Scope and boundaries
+
+This document owns durable business-process orchestration: workflow state, deterministic replay, activity execution, timers, signals, cancellation, versioning, and workflow-engine operations. Use [asynchronous processing](05-async-and-messaging.md) for queue and broker delivery semantics, [consensus and distributed transactions](37-consensus-and-distributed-transactions.md) for cross-resource atomicity and saga guarantees, and [incident management](61-incident-management-and-postmortems.md) for operational response. A workflow engine's durable history does not make an external activity exactly once.
+
 ## Workflow model
 Represent the process as explicit states and transitions. Define start conditions, inputs, outputs, deadlines, cancellation, pause/resume, human approval, terminal states, and invariants. Separate workflow definition from activity implementation. Give each workflow a stable ID and each activity a deterministic or unique execution identity.
 

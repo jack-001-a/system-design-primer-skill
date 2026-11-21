@@ -13,6 +13,8 @@ Use this guide when designing or diagnosing PostgreSQL-backed systems. Confirm t
 ## MVCC, transactions, and vacuum
 PostgreSQL MVCC retains row versions so readers and writers can often proceed concurrently. Updates and deletes create dead tuples; vacuum makes space reusable and maintains visibility information, but does not normally shrink relation files for the operating system.
 - Explain READ COMMITTED, REPEATABLE READ, and SERIALIZABLE semantics, including serialization failures and retry requirements.
+- PostgreSQL's REPEATABLE READ is snapshot isolation: it prevents the standard phantom-read phenomenon but can still permit serialization anomalies. SERIALIZABLE adds Serializable Snapshot Isolation checks and may abort transactions with SQLSTATE `40001`; retry the entire transaction, not only the failed statement. Treat this as versioned PostgreSQL behavior and verify the deployed major release in the [official transaction isolation documentation](https://www.postgresql.org/docs/current/transaction-iso.html).
+- Sequence changes (including `nextval`) are not rolled back with the surrounding transaction; do not use gap-free sequence values as a transactional business invariant.
 - Monitor transaction age, long-running snapshots, idle-in-transaction sessions, dead tuples, autovacuum progress, bloat indicators, and replication slots retaining WAL.
 - Set autovacuum thresholds and scale factors based on table size and churn; do not disable autovacuum globally.
 - Diagnose lock waits and deadlocks with lock graphs and transaction traces. Keep transactions short and acquire locks consistently.

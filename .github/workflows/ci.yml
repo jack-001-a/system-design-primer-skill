@@ -24,6 +24,10 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+      - name: Record OpenSSL version
+        run: openssl version -a
+      - name: Install evidence-signing dependency
+        run: python -m pip install -r requirements-evidence-signing.txt
       - name: Validate Skill package
         run: python scripts/validate.py
       - name: Run Python unit tests
@@ -32,8 +36,14 @@ jobs:
         run: bash -n scripts/install.sh tests/test_install.sh
       - name: Test Bash installer
         run: bash tests/test_install.sh
-      - name: Build deterministic distribution
-        run: python tools/package.py --output-dir dist
+      - name: Build and verify deterministic distribution
+        run: |
+          python tools/package.py --output-dir dist
+          python tools/verify_package.py dist/system-design-primer-v$(tr -d '[:space:]' < VERSION).zip
+      - name: Verify npm package contents
+        run: |
+          npm pack --dry-run --json > npm-pack.json
+          python -c "import json; files={item['path'] for item in json.load(open('npm-pack.json', encoding='utf-8'))[0]['files']}; required={'evals/README.md','evals/system-design-cases.json','SKILL.md'}; missing=required-files; assert not missing, f'npm package missing: {sorted(missing)}'"
       - name: Upload distribution
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
@@ -54,6 +64,10 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+      - name: Record OpenSSL version
+        run: openssl version -a
+      - name: Install evidence-signing dependency
+        run: python -m pip install -r requirements-evidence-signing.txt
       - name: Validate Skill package
         run: python scripts/validate.py
       - name: Run Python unit tests
@@ -73,6 +87,10 @@ jobs:
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
+      - name: Record OpenSSL version
+        run: openssl version -a
+      - name: Install evidence-signing dependency
+        run: python -m pip install -r requirements-evidence-signing.txt
       - name: Validate Skill package
         run: python scripts/validate.py
       - name: Run Python unit tests
@@ -80,3 +98,24 @@ jobs:
       - name: Test PowerShell installer
         shell: pwsh
         run: ./tests/test_install.ps1
+
+  attest:
+    name: Attest main-branch distribution
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: linux
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+      artifact-metadata: write
+    steps:
+      - name: Download verified distribution
+        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          name: system-design-primer-skill-linux
+          path: dist
+      - name: Generate SLSA build provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: dist/*.zip

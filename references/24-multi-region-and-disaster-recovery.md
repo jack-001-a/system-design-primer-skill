@@ -2,6 +2,10 @@
 
 Multi-region architecture is a business continuity and latency decision, not a checkbox for availability. Begin with business impact analysis, failure scenarios, and tested recovery objectives.
 
+## Scope and boundaries
+
+This document owns regional topology, data ownership across regions, replication/failover/failback, and business recovery objectives. Use [service reliability](07-reliability-and-resilience.md) for service-level timeout, retry, degradation, and availability design; [storage and database references](03-data-and-storage.md) plus the engine-specific guides for local transaction semantics; and [incident management](61-incident-management-and-postmortems.md) for live incident command. DNS or traffic steering changes do not fence a former writer, and a regional recovery plan must prove data ownership and write safety independently of routing.
+
 ## Objectives and failure domains
 For each critical journey define RTO, RPO, availability target, error-budget policy, residency constraints, and dependencies that must recover together. Distinguish zone, region, provider, control-plane, account, and global dependency failures. A second region is not independent if both share identity, DNS, deployment, encryption-key, or quota dependencies.
 
@@ -9,14 +13,14 @@ For each critical journey define RTO, RPO, availability target, error-budget pol
 Compare backup and restore, pilot light, warm standby, active-passive, and active-active. Choose per workload and data domain. Stateless services may be active-active while transactional data remains single-writer. Do not claim active-active availability without proving write semantics and dependency independence.
 
 ## Data replication and consistency
-For every dataset define source of truth, replication mode, lag objective, ordering, conflict policy, deletion propagation, encryption, and restore procedure. Synchronous replication can increase write latency and couple regional availability; asynchronous replication permits nonzero RPO and stale reads. Multi-primary writes require conflict resolution that preserves business invariants, not merely last-write-wins timestamps.
+For every dataset define source of truth, replication mode, lag objective, ordering, conflict policy, deletion propagation, encryption, and restore procedure. Synchronous replication can increase write latency and couple regional availability; asynchronous replication permits nonzero RPO and stale reads. Specify whether consistency is per-key, per-entity, per-session, or global, and what a read in each region can observe after a write. Multi-primary writes require conflict resolution that preserves business invariants, not merely last-write-wins timestamps. For invariants that cannot be merged safely (for example, spending a shared balance or allocating a unique scarce item), use a single-writer/ownership boundary or coordination rather than assuming merge or timestamp ordering can preserve correctness.
 
 Test replication lag, network partition, duplicate delivery, out-of-order updates, tombstones, schema changes, and recovery from corrupted or logically deleted data. Backups must be isolated from production credentials and deletion paths. Replication is not a backup.
 
 ## Failover and failback
 Specify detection signals, decision authority, fencing of the old primary, traffic steering, data promotion, write enablement, queue ownership, cache invalidation, and customer communication. Prevent split brain with leases, quorum, or an operator-controlled fencing mechanism appropriate to the data system. DNS TTL alone is not a failover strategy.
 
-Failback is a separate migration: reconcile writes made in the recovery region, validate consistency, re-establish replication, and switch traffic only after safety gates pass. Document manual and automated paths, including when automation must stop for human approval.
+Failback is a separate migration: reconcile writes made in the recovery region, validate consistency, re-establish replication, and switch traffic only after safety gates pass. Define the cutover epoch/ownership change and fence the former writer before enabling writes in the restored region; DNS convergence or a routing change is not a write-fencing mechanism. Document manual and automated paths, including when automation must stop for human approval.
 
 ## Validation and economics
 Run game days for region isolation, degraded inter-region links, unavailable KMS, exhausted quotas, stale DNS, failed deployment, and data corruption. Measure actual RTO/RPO from detection through verified business recovery. Perform restore tests, not just backup-job checks. Record evidence, gaps, owners, and remediation dates.

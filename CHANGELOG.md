@@ -1,4 +1,12 @@
-# Changelog
+## 2.4.0 — 2026-11-21
+
+- Add a provider-neutral evaluation runner and a seventeen-case scenario catalog for architecture, security, reliability, migration, and agent-tool workflows.
+- Add human-reviewed scoring, criterion-level coverage, tool-trace review, and an independent security gate that hard-fails reviewed security violations and reports missing evidence as incomplete.
+- Add reproducibility manifests and fingerprints for model, prompt, dataset, rubric, adapter, permissions, run configuration, and runtime metadata.
+- Add append-only SHA-256 audit chains, reviewer-history provenance, evidence-root construction, and Ed25519 signing with pinned trust-store verification.
+- Add optional RFC 3161 timestamp-token verification, TSA certificate-path checks, and separate historical OCSP/CRL evidence validation with explicit scope and limitations.
+- Add evidence comparison and integrity utilities, plus Windows process-broker hardening for controlled evaluation subprocesses.
+- Clarify the trust boundary: signer-asserted signing times are not trusted timestamps; historical signing validity remains unproven without independent timestamp and revocation evidence.
 
 ## 2.3.0 — 2026-11-19
 

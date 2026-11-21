@@ -1,0 +1,690 @@
+from __future__ import annotations
+import hashlib
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from scripts.tsa_validation_report import build_validation_report as build_report, load_json, write_report
+
+class TsaValidationReportTests(unittest.TestCase):
+    def setUp(self):
+        self.gen_time = "2026-11-19T12:00:00Z"
+        self.cert = hashlib.sha256(b"tsa cert").hexdigest()
+        self.crl = {
+            "verified": True,
+            "status": "not_revoked_at_validation_time",
+            "at_time": self.gen_time,
+            "effective_at_time": self.gen_time,
+            "time_rounding": "ceil_to_next_whole_second_for_conservative_historical_evaluation",
+            "path_validation_times": [1795089600],
+            "path_validation_scope": (
+                "OpenSSL target certificate PKIX path validation at the exact floor/ceiling "
+                "Unix-second bound(s) of RFC 3161 genTime"
+            ),
+            "certificate_sha256": self.cert,
+            "crl_sha256": hashlib.sha256(b"crl").hexdigest(),
+            "issuer_roots_sha256": hashlib.sha256(b"crl roots").hexdigest(),
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued trust-anchor certificates; CRL issuer CA/keyCertSign/cRLSign are checked independently; intermediates are supplied separately via -untrusted",
+            "crl_issuer_certificate_sha256": hashlib.sha256(b"crl issuer").hexdigest(),
+            "crl_issuer_certificate_validity": {
+                "crl_this_update": "2026-11-19T11:00:00Z",
+                "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
+                "valid_at_this_update": True, "basic_constraints_ca": True,
+                "key_cert_sign": True, "crl_sign": True,
+                "time_basis": "CRL issuer certificate validity and CA/keyCertSign/cRLSign authorization are checked at CRL thisUpdate; OpenSSL validates the full target certificate PKIX path, including the issuer path to the pinned trust anchor, at RFC3161 genTime bounds",
+            },
+            "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
+            "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
+            "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
+            "verification": (
+                "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, "
+                "CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, target certificate "
+                "PKIX path validation at exact floor/ceiling Unix-second bound(s), AKI, scope, "
+                "freshness, signature-policy and entry-semantic preflight"
+            ),
+            "revocation_entry": {"present": False, "status_at_time": "not_listed"},
+        }
+        self.ocsp = {
+            "verified": True,
+            "status": "good",
+            "scope": "current-time OCSP response validation; not a historical status determination",
+            "nonce_checked": False,
+            "certificate_sha256": self.cert,
+            "validation_time": "2026-11-19T12:02:00Z",
+            "produced_at": "2026-11-19T12:01:00Z",
+            "this_update": "2026-11-19T12:00:00Z",
+            "next_update": "2026-11-19T12:10:00Z",
+            "response_sha256": hashlib.sha256(b"response").hexdigest(),
+            "issuer_roots_sha256": hashlib.sha256(b"ocsp roots").hexdigest(),
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle is SHA-256 pinned and restricted to self-issued CA certificates with critical BasicConstraints and keyCertSign; optional responder certificates/intermediates are supplied separately via -verify_other",
+            "responder_chain_validation_scope": "OpenSSL responder PKIX path validation at the host wall-clock time",
+            "responder_chain_validation_times": [],
+            "responder_chain_validation_policy": "OpenSSL ocsp uses the SHA-256-pinned -CAfile, empty -CApath/-CAstore, -x509_strict, and -auth_level 2",
+            "verification": "OpenSSL OCSP response signature and responder-chain validation uses pinned -CAfile, empty -CApath/-CAstore, -x509_strict, and -auth_level 2; historical validation repeats path verification at exact floor/ceiling Unix-second bound(s); Python verifies exact target CertID, status, and freshness",
+        }
+        self.timestamp = {
+            "verified": True, "signature_sha256": hashlib.sha256(b"signature").hexdigest(),
+            "gen_time": self.gen_time, "policy_oid": "1.2.3", "serial_number": "1234",
+            "tsa_chain_valid_at_gen_time": True,
+            "tsa_chain_validation_time": self.gen_time,
+            "tsa_chain_validation_scope": "PKIX path validation at the floor/ceiling Unix-second bounds of genTime; RFC 3161 Accuracy is reported separately and does not widen the -attime interval",
+            "tsa_chain_validation_policy": "OpenSSL ts -verify uses the caller-pinned -CAfile and explicit empty -CApath/-CAstore, -auth_level 2, -purpose timestampsign, and -x509_strict at the exact floor/ceiling Unix-second bound(s) of genTime; pathLenConstraint and Name Constraints enforced by OpenSSL",
+            "accuracy": None, "ordering": False, "nonce_present": True,
+            "verification_scope": {
+                "cms_signature": "verified", "request_imprint": "verified",
+                "response_imprint": "verified", "request_response_binding": "verified",
+                "nonce_binding": "verified", "tsa_pkix_chain_at_gen_time": "verified",
+                "tsa_signer_certificate_profile": "verified", "tsa_signer_validity_at_gen_time": "verified",
+            },
+            "not_established": [
+                "Caller selects the trust anchors.", "Policy OID acceptability is not assessed.",
+                "CRL/OCSP revocation evidence is handled separately.", "Evidence archive integrity is not established.",
+            ],
+            "request_sha256": hashlib.sha256(b"request").hexdigest(),
+            "response_sha256": hashlib.sha256(b"timestamp token").hexdigest(),
+            "tsa_ca_sha256": hashlib.sha256(b"tsa ca").hexdigest(),
+            "tsa_chain_sha256": None,
+            "tsa_signer_certificate_sha256": self.cert,
+            "tsa_signer_valid_at_gen_time": True, "tsa_signer_serial_number": "1234",
+            "tsa_signer_identity_source": "CMS SignerInfo certificate selected by OpenSSL cms -verify -signer",
+            "verification": "OpenSSL RFC 3161 CMS signature, request/response imprint, nonce (when requested), and TSA chain verification",
+        }
+        self.timestamp_file_hash = hashlib.sha256(b"timestamp result").hexdigest()
+        self.crl_file_hash = hashlib.sha256(b"crl result").hexdigest()
+        self.ocsp_file_hash = hashlib.sha256(b"ocsp result").hexdigest()
+    def historical_ocsp_result(self, **overrides):
+        value = dict(
+            self.ocsp,
+            scope="historical OCSP status validation at the supplied target time",
+            historical_at_time=self.gen_time,
+            validation_time=self.gen_time,
+            produced_at="2026-11-19T11:59:00Z",
+            this_update="2026-11-19T11:58:00Z",
+            responder_chain_validation_scope=(
+                "OpenSSL responder PKIX path validation at the exact floor/ceiling Unix-second bound(s) of historical validation_time"
+            ),
+            responder_chain_validation_times=[1795089600],
+        )
+        value.update(overrides)
+        return value
+
+    def build_report_with_timestamp(self, gen_time, crl_result, crl_result_sha256,
+                                ocsp_result=None, ocsp_result_sha256=None,
+                                responder_revocation_result=None,
+                                responder_revocation_result_sha256=None):
+        return build_report(gen_time, crl_result, crl_result_sha256,
+            ocsp_result, ocsp_result_sha256, responder_revocation_result,
+            responder_revocation_result_sha256, self.timestamp, self.timestamp_file_hash)
+
+    def test_rejects_timestamp_signer_fingerprint_mismatch(self):
+        bad = dict(self.timestamp, tsa_signer_certificate_sha256=hashlib.sha256(b"other").hexdigest())
+        with self.assertRaisesRegex(ValueError, "differs from verified timestamp"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_timestamp_gen_time_mismatch(self):
+        bad = dict(self.timestamp, gen_time="2026-11-19T12:00:01Z")
+        with self.assertRaisesRegex(ValueError, "genTime"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_unverified_timestamp_result(self):
+        bad = dict(self.timestamp, verified=False)
+        with self.assertRaisesRegex(ValueError, "not explicitly verified"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_preserves_tsa_chain_policy_and_validation_time_in_report(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        chain = report["timestamp_chain_validation"]
+        self.assertEqual(chain["status"], "verified")
+        self.assertEqual(chain["validation_time"], self.gen_time)
+        self.assertEqual(chain["scope"], self.timestamp["tsa_chain_validation_scope"])
+        self.assertEqual(chain["policy"], self.timestamp["tsa_chain_validation_policy"])
+        self.assertIsNone(chain["intermediates_sha256"])
+        self.assertIn("empty -CApath/-CAstore", chain["policy"])
+        self.assertIn("-auth_level 2", chain["policy"])
+
+    def test_rejects_timestamp_chain_validation_time_mismatch(self):
+        bad = dict(self.timestamp, tsa_chain_validation_time="2026-11-19T12:00:01Z")
+        with self.assertRaisesRegex(ValueError, "does not exactly match genTime"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_preserves_and_validates_tsa_intermediate_chain_digest(self):
+        digest = hashlib.sha256(b"tsa intermediate chain").hexdigest()
+        timestamp = dict(self.timestamp, tsa_chain_sha256=digest)
+        report = build_report(
+            self.gen_time, self.crl, self.crl_file_hash,
+            timestamp_result=timestamp,
+            timestamp_result_sha256=self.timestamp_file_hash,
+        )
+        self.assertEqual(
+            report["timestamp_chain_validation"]["intermediates_sha256"], digest
+        )
+        for invalid in ("not-a-digest", "A" * 64, ""):
+            bad = dict(timestamp, tsa_chain_sha256=invalid)
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(
+                ValueError, "tsa_chain_sha256"
+            ):
+                build_report(
+                    self.gen_time, self.crl, self.crl_file_hash,
+                    timestamp_result=bad,
+                    timestamp_result_sha256=self.timestamp_file_hash,
+                )
+
+    def test_rejects_missing_tsa_intermediate_chain_digest_contract(self):
+        bad = dict(self.timestamp)
+        bad.pop("tsa_chain_sha256")
+        with self.assertRaisesRegex(ValueError, "intermediate-chain digest"):
+            build_report(
+                self.gen_time, self.crl, self.crl_file_hash,
+                timestamp_result=bad,
+                timestamp_result_sha256=self.timestamp_file_hash,
+            )
+
+    def test_rejects_missing_or_unsupported_timestamp_chain_policy(self):
+        for field, value in (
+            ("tsa_chain_valid_at_gen_time", False),
+            ("tsa_chain_validation_policy", "OpenSSL default policy"),
+            ("tsa_chain_validation_scope", "only checks signer certificate validity"),
+        ):
+            with self.subTest(field=field):
+                bad = dict(self.timestamp, **{field: value})
+                with self.assertRaisesRegex(ValueError, r"(TSA chain validation|timestamp TSA chain)"):
+                    build_report(self.gen_time, self.crl, self.crl_file_hash,
+                                 timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_preserves_timestamp_scope_and_limitations_in_report(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        self.assertEqual(report["timestamp_verification_scope"], self.timestamp["verification_scope"])
+        self.assertEqual(report["timestamp_not_established"], self.timestamp["not_established"])
+        for limitation in self.timestamp["not_established"]:
+            self.assertIn(limitation, report["limitations"])
+
+    def test_report_discloses_caller_asserted_gen_time_and_pin_provenance(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        self.assertEqual(report["gen_time_source"], "caller_asserted_from_external_timestamp_verification")
+        self.assertEqual(report["gen_time_provenance"], {
+            "source": "caller_supplied_gen_time_argument",
+            "independently_verified_by_this_report": False,
+        })
+        self.assertEqual(report["result_digest_policy"],
+                         "caller_supplied_sha256_pins_checked_for_byte_equality_only")
+        self.assertEqual(report["result_digest_pin_provenance"], {
+            "source": "caller_supplied_command_line_arguments",
+            "independently_authenticated_by_this_report": False,
+        })
+        joined = " ".join(report["limitations"]).lower()
+        self.assertIn("caller-asserted", joined)
+        self.assertIn("does not authenticate the pin source", joined)
+
+    def test_rejects_timestamp_result_missing_scope(self):
+        bad = dict(self.timestamp)
+        bad.pop("verification_scope")
+        with self.assertRaisesRegex(ValueError, "verification scope is missing"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_timestamp_nonce_scope_contradiction(self):
+        bad = dict(self.timestamp, verification_scope=dict(self.timestamp["verification_scope"],
+                   nonce_binding="not_requested"))
+        with self.assertRaisesRegex(ValueError, "nonce scope contradicts"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_empty_timestamp_limitations(self):
+        bad = dict(self.timestamp, not_established=[])
+        with self.assertRaisesRegex(ValueError, "not_established must be a non-empty list"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_rejects_timestamp_result_missing_verification_provenance(self):
+        bad = dict(self.timestamp, verification="caller says verified")
+        with self.assertRaisesRegex(ValueError, "provenance"):
+            build_report(self.gen_time, self.crl, self.crl_file_hash,
+                         timestamp_result=bad, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_fractional_gen_time_requires_ceiling_evaluation_bound(self):
+        gen_time = "2026-11-19T12:00:00.000000000000000000000001Z"
+        crl = dict(
+            self.crl,
+            at_time=gen_time,
+            effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600, 1795089601],
+        )
+        timestamp = dict(self.timestamp, gen_time=gen_time, tsa_chain_validation_time=gen_time)
+        report = build_report(gen_time, crl, self.crl_file_hash,
+            timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash)
+        self.assertEqual(report["historical_revocation_assessment"]["evaluation_time_upper_bound"],
+                         "2026-11-19T12:00:01Z")
+        self.assertEqual(
+            report["historical_revocation_assessment"]["path_validation_times"],
+            [1795089600, 1795089601],
+        )
+        bad = dict(crl, effective_at_time="2026-11-19T12:00:00Z")
+        with self.assertRaisesRegex(ValueError, "conservatively ceil"):
+            build_report(gen_time, bad, self.crl_file_hash,
+                timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash)
+
+    def test_crl_report_rejects_missing_fractional_path_upper_bound(self):
+        gen_time = "2026-11-19T12:00:00.1Z"
+        crl = dict(
+            self.crl,
+            at_time=gen_time,
+            effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600],
+        )
+        timestamp = dict(
+            self.timestamp,
+            gen_time=gen_time,
+            tsa_chain_validation_time=gen_time,
+        )
+        with self.assertRaisesRegex(ValueError, "exact floor/ceiling"):
+            build_report(
+                gen_time,
+                crl,
+                self.crl_file_hash,
+                timestamp_result=timestamp,
+                timestamp_result_sha256=self.timestamp_file_hash,
+            )
+
+    def test_crl_alone_produces_historical_assessment(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        assessment = report["historical_revocation_assessment"]
+        self.assertEqual(assessment["status"], "not_revoked_at_gen_time")
+        self.assertEqual(assessment["claim_scope"]["crl_coverage"], "supplied_crl_only")
+        self.assertEqual(assessment["claim_scope"]["distribution_points"], "not_evaluated")
+        self.assertEqual(assessment["claim_scope"]["all_applicable_crl_sources"], "not_established")
+        self.assertEqual(assessment["claim_scope"]["all_chain_certificates"], "not_assessed")
+        self.assertIs(assessment["claim_scope"]["complete_revocation_status"], False)
+        self.assertIn("single supplied", assessment["claim_scope"]["meaning"])
+        self.assertEqual(report["current_ocsp_assessment"]["assessment"], "not_provided")
+    def test_overall_assessment_distinguishes_historical_ocsp_revoked(self):
+        historical = self.historical_ocsp_result(status="revoked")
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+            historical, self.ocsp_file_hash)
+        self.assertEqual(report["overall_assessment"],
+            "historical_crl_passed_but_historical_ocsp_reports_revoked")
+        self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")
+
+    def test_overall_assessment_distinguishes_current_ocsp_revoked(self):
+        current = dict(self.ocsp, status="revoked")
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+            current, self.ocsp_file_hash)
+        self.assertEqual(report["overall_assessment"],
+            "historical_crl_passed_but_current_ocsp_reports_revoked")
+        self.assertFalse(report["current_ocsp_assessment"]["historical_status_claim"])
+
+    def test_overall_assessment_marks_ocsp_not_provided(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        self.assertEqual(report["overall_assessment"],
+            "historical_crl_passed_ocsp_not_provided_with_scope_limitations")
+    def test_ocsp_is_kept_separate_from_historical_status(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                                         self.ocsp, self.ocsp_file_hash)
+        self.assertEqual(report["current_ocsp_assessment"]["assessment"], "good")
+        self.assertFalse(report["current_ocsp_assessment"]["historical_status_claim"])
+        self.assertEqual(report["historical_revocation_assessment"]["status"], "not_revoked_at_gen_time")
+    def test_accepts_historical_ocsp_only_when_bound_to_gen_time(self):
+        historical = self.historical_ocsp_result()
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                                         historical, self.ocsp_file_hash)
+        self.assertTrue(report["current_ocsp_assessment"]["historical_status_claim"])
+        self.assertEqual(report["historical_ocsp_responder_revocation_assessment"]["status"], "not_assessed")
+
+    def test_rejects_historical_ocsp_time_not_bound_to_gen_time(self):
+        historical = self.historical_ocsp_result(historical_at_time="2026-11-19T12:00:01Z")
+        with self.assertRaisesRegex(ValueError, "does not exactly match"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                                    historical, self.ocsp_file_hash)
+
+
+    def test_accepts_preproduced_historical_ocsp_response(self):
+        historical = self.historical_ocsp_result(produced_at="2026-11-19T11:57:00Z")
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+            historical, self.ocsp_file_hash)
+        self.assertTrue(report["current_ocsp_assessment"]["historical_status_claim"])
+
+    def test_rejects_historical_ocsp_produced_after_gen_time(self):
+        historical = self.historical_ocsp_result(produced_at="2026-11-19T12:00:01Z")
+        with self.assertRaisesRegex(ValueError, "producedAt is later"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                                    historical, self.ocsp_file_hash)
+
+    def test_rejects_historical_ocsp_validation_time_drift(self):
+        historical = self.historical_ocsp_result(validation_time="2026-11-19T12:00:01Z")
+        with self.assertRaisesRegex(ValueError, "validation_time must exactly match"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                                    historical, self.ocsp_file_hash)
+
+    def test_rejects_historical_ocsp_interval_not_covering_gen_time(self):
+        historical = self.historical_ocsp_result(next_update="2026-11-19T11:59:59Z")
+        with self.assertRaisesRegex(ValueError, "does not cover its validation_time"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                                    historical, self.ocsp_file_hash)
+
+
+    def responder_result(self, **overrides):
+        value = {
+            "verified": True,
+            "status": "not_revoked_at_validation_time",
+            "at_time": self.gen_time,
+            "certificate_sha256": hashlib.sha256(b"responder").hexdigest(),
+            "crl_sha256": hashlib.sha256(b"responder crl").hexdigest(),
+            "issuer_roots_sha256": hashlib.sha256(b"responder roots").hexdigest(),
+            "issuer_intermediates_sha256": None,
+            "trust_anchor_policy": "issuer-roots bundle contains only self-issued trust-anchor certificates; CRL issuer CA/keyCertSign/cRLSign are checked independently; intermediates are supplied separately via -untrusted",
+            "crl_issuer_certificate_sha256": hashlib.sha256(b"responder issuer").hexdigest(),
+            "crl_issuer_certificate_validity": {
+                "crl_this_update": "2026-11-19T11:00:00Z",
+                "not_before": "2026-10-20T00:00:00Z", "not_after": "2027-11-19T00:00:00Z",
+                "valid_at_this_update": True, "basic_constraints_ca": True,
+                "key_cert_sign": True, "crl_sign": True,
+                "time_basis": "CRL issuer certificate validity and CA/keyCertSign/cRLSign authorization are checked at CRL thisUpdate; OpenSSL validates the full target certificate PKIX path, including the issuer path to the pinned trust anchor, at RFC3161 genTime bounds",
+            },
+            "path_validation_times": [1795089600],
+            "path_validation_scope": (
+                "OpenSSL target certificate PKIX path validation at the exact floor/ceiling "
+                "Unix-second bound(s) of RFC 3161 genTime"
+            ),
+            "crl_scope": "direct_only; certificate CRLDistributionPoints unsupported",
+            "crl_signature_algorithm_oid": "1.2.840.113549.1.1.11",
+            "crl_signature_policy": "RSA/DSA >= 2048 bits or EC >= 256 bits with SHA-256/384/512; Ed25519/Ed448 allowed",
+            "verification": (
+                "OpenSSL path auth_level 2 and CRL signature validation plus direct-CRL issuer, "
+                "CA/keyCertSign/cRLSign, issuer validity at CRL thisUpdate, target certificate "
+                "PKIX path validation at exact floor/ceiling Unix-second bound(s), AKI, scope, "
+                "freshness, signature-policy and entry-semantic preflight"
+            ),
+            "revocation_entry": {"present": False, "status_at_time": "not_listed"},
+        }
+        value.update(overrides)
+        return value
+
+    def historical_ocsp_with_signer(self):
+        return self.historical_ocsp_result(
+            responder_certificate_sha256=hashlib.sha256(b"responder").hexdigest()
+        )
+
+    def test_binds_responder_crl_to_exact_ocsp_signer_and_gen_time(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+            self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+            self.responder_result(), hashlib.sha256(b"responder result").hexdigest())
+        self.assertEqual(report["historical_ocsp_responder_revocation_assessment"]["status"],
+                         "not_revoked_at_gen_time")
+
+
+    def test_responder_crl_requires_floor_and_ceiling_path_provenance(self):
+        gen_time = "2026-11-19T12:00:00.5Z"
+        crl = dict(
+            self.crl,
+            at_time=gen_time,
+            effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600, 1795089601],
+        )
+        timestamp = dict(self.timestamp, gen_time=gen_time, tsa_chain_validation_time=gen_time)
+        historical_ocsp = dict(
+            self.historical_ocsp_with_signer(),
+            historical_at_time=gen_time,
+            validation_time=gen_time,
+            responder_chain_validation_times=[1795089600, 1795089601],
+        )
+        responder_crl = self.responder_result(
+            at_time=gen_time,
+            path_validation_times=[1795089600, 1795089601],
+        )
+        result_hash = hashlib.sha256(b"responder result").hexdigest()
+        report = build_report(
+            gen_time,
+            crl,
+            self.crl_file_hash,
+            historical_ocsp,
+            self.ocsp_file_hash,
+            responder_crl,
+            result_hash,
+            timestamp,
+            self.timestamp_file_hash,
+        )
+        self.assertEqual(
+            report["historical_ocsp_responder_revocation_assessment"]["path_validation_times"],
+            [1795089600, 1795089601],
+        )
+        responder_crl["path_validation_times"] = [1795089600]
+        with self.assertRaisesRegex(ValueError, "target certificate path must be checked"):
+            build_report(
+                gen_time,
+                crl,
+                self.crl_file_hash,
+                historical_ocsp,
+                self.ocsp_file_hash,
+                responder_crl,
+                result_hash,
+                timestamp,
+                self.timestamp_file_hash,
+            )
+
+    def test_rejects_responder_crl_without_signature_policy(self):
+        bad = self.responder_result()
+        bad.pop("crl_signature_policy")
+        with self.assertRaisesRegex(ValueError, "signature policy evidence is missing"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+                bad, hashlib.sha256(b"responder result").hexdigest())
+
+    def test_rejects_responder_crl_without_verification_provenance(self):
+        bad = self.responder_result()
+        bad.pop("verification")
+        with self.assertRaisesRegex(ValueError, "verification provenance is missing"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+                bad, hashlib.sha256(b"responder result").hexdigest())
+
+    def test_rejects_responder_crl_for_different_certificate(self):
+        with self.assertRaisesRegex(ValueError, "different certificate"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+                self.responder_result(certificate_sha256=hashlib.sha256(b"other").hexdigest()),
+                hashlib.sha256(b"responder result").hexdigest())
+
+    def test_rejects_responder_crl_at_different_time(self):
+        with self.assertRaisesRegex(ValueError, "does not exactly match"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash,
+                self.historical_ocsp_with_signer(), self.ocsp_file_hash,
+                self.responder_result(at_time="2026-11-19T12:00:01Z"),
+                hashlib.sha256(b"responder result").hexdigest())
+
+    def test_rejects_crl_time_not_equal_to_token_gen_time(self):
+        bad = dict(self.crl, at_time="2026-11-19T12:00:01Z")
+        with self.assertRaisesRegex(ValueError, "does not exactly match"):
+            self.build_report_with_timestamp(self.gen_time, bad, self.crl_file_hash)
+    def test_rejects_certificate_mismatch_between_sources(self):
+        bad = dict(self.ocsp, certificate_sha256=hashlib.sha256(b"other cert").hexdigest())
+        with self.assertRaisesRegex(ValueError, "different TSA certificates"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash)
+    def test_preserves_ocsp_chain_provenance_in_report(self):
+        report = self.build_report_with_timestamp(
+            self.gen_time, self.crl, self.crl_file_hash, self.ocsp, self.ocsp_file_hash
+        )
+        assessment = report["current_ocsp_assessment"]
+        self.assertIsNone(assessment["issuer_intermediates_sha256"])
+        self.assertEqual(assessment["trust_anchor_policy"], self.ocsp["trust_anchor_policy"])
+        self.assertEqual(assessment["verification"], self.ocsp["verification"])
+        self.assertEqual(
+            assessment["responder_chain_validation_scope"],
+            self.ocsp["responder_chain_validation_scope"],
+        )
+        self.assertEqual(assessment["responder_chain_validation_times"], [])
+        self.assertEqual(
+            assessment["responder_chain_validation_policy"],
+            self.ocsp["responder_chain_validation_policy"],
+        )
+
+    def test_historical_ocsp_requires_both_second_bounds_for_fractional_gen_time(self):
+        gen_time = "2026-11-19T12:00:00.5Z"
+        crl = dict(
+            self.crl,
+            at_time=gen_time,
+            effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600, 1795089601],
+        )
+        timestamp = dict(
+            self.timestamp,
+            gen_time=gen_time,
+            tsa_chain_validation_time=gen_time,
+        )
+        # The verifier normalizes Python datetime fractions to six digits;
+        # compare the represented instant, not the textual decimal width.
+        historical = self.historical_ocsp_result(
+            historical_at_time="2026-11-19T12:00:00.500000Z",
+            validation_time="2026-11-19T12:00:00.500000Z",
+            produced_at="2026-11-19T11:59:00Z",
+            this_update="2026-11-19T11:58:00Z",
+            responder_chain_validation_times=[1795089600, 1795089601],
+        )
+        report = build_report(
+            gen_time, crl, self.crl_file_hash,
+            ocsp_result=historical, ocsp_result_sha256=self.ocsp_file_hash,
+            timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash,
+        )
+        self.assertEqual(
+            report["current_ocsp_assessment"]["responder_chain_validation_times"],
+            [1795089600, 1795089601],
+        )
+        historical["responder_chain_validation_times"] = [1795089600]
+        with self.assertRaisesRegex(ValueError, "floor/ceiling Unix-second bounds"):
+            build_report(
+                gen_time, crl, self.crl_file_hash,
+                ocsp_result=historical, ocsp_result_sha256=self.ocsp_file_hash,
+                timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash,
+            )
+
+    def test_historical_ocsp_rejects_gen_time_beyond_microsecond_precision(self):
+        gen_time = "2026-11-19T12:00:00.0000001Z"
+        crl = dict(
+            self.crl,
+            at_time=gen_time,
+            effective_at_time="2026-11-19T12:00:01Z",
+            path_validation_times=[1795089600, 1795089601],
+        )
+        timestamp = dict(
+            self.timestamp,
+            gen_time=gen_time,
+            tsa_chain_validation_time=gen_time,
+        )
+        historical = self.historical_ocsp_result(
+            historical_at_time="2026-11-19T12:00:00.000000Z",
+            validation_time="2026-11-19T12:00:00.000000Z",
+            responder_chain_validation_times=[1795089600, 1795089601],
+        )
+        with self.assertRaisesRegex(ValueError, "more than six fractional digits"):
+            build_report(
+                gen_time, crl, self.crl_file_hash,
+                ocsp_result=historical, ocsp_result_sha256=self.ocsp_file_hash,
+                timestamp_result=timestamp, timestamp_result_sha256=self.timestamp_file_hash,
+            )
+
+    def test_rejects_ocsp_result_missing_chain_provenance(self):
+        for field in ("trust_anchor_policy", "verification"):
+            with self.subTest(field=field):
+                bad = dict(self.ocsp)
+                bad.pop(field)
+                with self.assertRaisesRegex(ValueError, "OCSP"):
+                    self.build_report_with_timestamp(
+                        self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash
+                    )
+
+    def test_rejects_malformed_ocsp_intermediates_digest(self):
+        bad = dict(self.ocsp, issuer_intermediates_sha256="not-a-sha256")
+        with self.assertRaisesRegex(ValueError, "issuer_intermediates_sha256"):
+            self.build_report_with_timestamp(
+                self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash
+            )
+
+    def test_rejects_ocsp_unknown_scope_or_nonce_claim(self):
+        bad = dict(self.ocsp, scope="historical verified")
+        with self.assertRaisesRegex(ValueError, "scope"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash)
+        bad = dict(self.ocsp, nonce_checked=True)
+        with self.assertRaisesRegex(ValueError, "nonce_checked"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash)
+    def test_rejects_ocsp_interval_not_covering_validation_time(self):
+        bad = dict(self.ocsp, next_update="2026-11-19T12:01:00Z")
+        with self.assertRaisesRegex(ValueError, "does not cover"):
+            self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash, bad, self.ocsp_file_hash)
+
+    def test_rejects_legacy_crl_result_without_strict_scope(self):
+        legacy = dict(self.crl)
+        legacy.pop("crl_scope")
+        with self.assertRaisesRegex(ValueError, "strict direct-CRL scope"):
+            self.build_report_with_timestamp(self.gen_time, legacy, self.crl_file_hash)
+
+    def test_rejects_crl_result_with_revoked_entry(self):
+        revoked = dict(self.crl, revocation_entry={"present": True, "status_at_time": "revoked"})
+        with self.assertRaisesRegex(ValueError, "does not establish a non-revoked status"):
+            self.build_report_with_timestamp(self.gen_time, revoked, self.crl_file_hash)
+
+    def test_load_json_requires_independent_digest_pin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "result.json"
+            path.write_text('{"verified":true}', encoding="utf-8")
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            value, actual = load_json(path, digest)
+            self.assertEqual(value, {"verified": True})
+            self.assertEqual(actual, digest)
+            with self.assertRaisesRegex(ValueError, "independently supplied pin"):
+                load_json(path, hashlib.sha256(b"other").hexdigest())
+
+    def test_report_is_non_overwriting_and_hashable(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "report.json"
+            report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+            digest = write_report(path, report)
+            self.assertEqual(digest, hashlib.sha256(path.read_bytes()).hexdigest())
+            with self.assertRaises(FileExistsError):
+                write_report(path, report)
+    def test_rejects_unverified_crl_result(self):
+        bad = dict(self.crl, verified=False)
+        with self.assertRaisesRegex(ValueError, "not explicitly verified"):
+            self.build_report_with_timestamp(self.gen_time, bad, self.crl_file_hash)
+
+    def test_limitations_are_specific_when_ocsp_is_omitted(self):
+        report = self.build_report_with_timestamp(self.gen_time, self.crl, self.crl_file_hash)
+        limitations = report["limitations"]
+        joined = " ".join(limitations).lower()
+        self.assertTrue(any("neither current-time nor historical ocsp" in item.lower() for item in limitations))
+        self.assertTrue(any("responder certificate revocation" in item.lower() for item in limitations))
+        self.assertFalse(any("nonce" in item.lower() for item in limitations))
+        self.assertTrue(any("delta, indirect" in item.lower() for item in limitations))
+
+    def test_limitations_distinguish_current_time_ocsp_scope(self):
+        report = self.build_report_with_timestamp(
+            self.gen_time, self.crl, self.crl_file_hash, self.ocsp, self.ocsp_file_hash)
+        limitations = " ".join(report["limitations"]).lower()
+        self.assertIn("current-time evidence only", limitations)
+        self.assertIn("does not check a request nonce", limitations)
+        self.assertIn("responder certificate revocation at gentime was not assessed", limitations)
+
+    def test_historical_ocsp_without_responder_crl_keeps_only_responder_gap(self):
+        historical = self.historical_ocsp_with_signer()
+        report = self.build_report_with_timestamp(
+            self.gen_time, self.crl, self.crl_file_hash, historical, self.ocsp_file_hash)
+        limitations = " ".join(report["limitations"]).lower()
+        self.assertIn("assessed only at rfc 3161 gentime", limitations)
+        self.assertIn("responder certificate revocation at gentime was not assessed", limitations)
+        self.assertNotIn("current-time evidence only", limitations)
+
+    def test_historical_ocsp_with_responder_crl_removes_not_assessed_claim(self):
+        historical = self.historical_ocsp_with_signer()
+        report = self.build_report_with_timestamp(
+            self.gen_time, self.crl, self.crl_file_hash, historical, self.ocsp_file_hash,
+            self.responder_result(), hashlib.sha256(b"responder result").hexdigest())
+        limitations = " ".join(report["limitations"]).lower()
+        self.assertNotIn("responder certificate revocation at gentime was not assessed", limitations)
+        self.assertIn("responder non-revocation finding covers only the supplied", limitations)
+        self.assertIn("does not prove that all applicable revocation sources", limitations)
+        self.assertIn("does not check a request nonce", limitations)
+
+if __name__ == "__main__": unittest.main()

@@ -23,6 +23,15 @@ jobs:
     steps:
       - name: Check out tagged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - name: Require tag commit to be on main
+        shell: bash
+        run: |
+          git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+            echo "::error::Refusing to publish a tag whose commit is not reachable from main"
+            exit 1
+          }
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
@@ -61,8 +70,10 @@ jobs:
           expected_tag="v$(tr -d '[:space:]' < VERSION)"
           test "$GITHUB_REF_TYPE" = "tag"
           test "$GITHUB_REF_NAME" = "$expected_tag"
-      - name: Build ZIP and checksums
-        run: python tools/package.py --output-dir dist
+      - name: Build and verify ZIP and checksums
+        run: |
+          python tools/package.py --output-dir dist
+          python tools/verify_package.py "dist/system-design-primer-${GITHUB_REF_NAME#v}.zip"
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@8a0cd651e5b2365bd640854a3fa5dfc70e4875f3 # v3.0.4
         with:

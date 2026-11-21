@@ -2,6 +2,10 @@
 
 Analyze failures across the full request, event, and operational lifecycle. A component diagram is not a failure model. Identify how faults propagate, what users observe, how the system degrades, and how it recovers.
 
+## Scope and boundaries
+
+This document owns the reusable method for identifying failure modes, tracing blast radius, analyzing degraded states, and defining recovery evidence. It is a diagnostic framework, not a substitute for [reliability architecture](07-reliability-and-resilience.md), [multi-region failover design](24-multi-region-and-disaster-recovery.md), [controlled resilience experiments](60-chaos-engineering-and-resilience-experiments.md), or [incident command and postmortems](61-incident-management-and-postmortems.md). Use those references for their respective operational procedures.
+
 ## 1. Failure-analysis sequence
 
 1. Identify critical business journeys, assets, and invariants.

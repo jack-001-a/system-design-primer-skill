@@ -16,7 +16,7 @@ Set resource requests from measured steady-state and burst behavior. Use HPA onl
 
 Avoid feedback loops where HPA, KEDA, cluster autoscaler, and application concurrency controls amplify one another. Bound queue consumers and scale on backlog age or processing demand when appropriate, not CPU alone.
 
-Use immutable image digests, signed artifacts where available, SBOMs, vulnerability scanning, admission policy, and provenance verification. Pin and review Helm charts, operators, CRDs, and controller versions. Separate build permissions from deploy permissions. Prefer declarative delivery with drift detection and auditable promotion.
+Use immutable image digests, signed artifacts where available, SBOMs, vulnerability scanning, admission policy, and provenance verification. Pin and review Helm charts, operators, CRDs, and controller versions. Separate build permissions from deploy permissions. Prefer declarative delivery with drift detection and auditable promotion. Kubernetes component version-skew limits and supported release branches change over time; check the current [Kubernetes version-skew policy](https://kubernetes.io/releases/version-skew-policy/) and the compatibility matrix for each add-on before planning control-plane or node upgrades. Do not encode a remembered skew allowance as a timeless rule.
 
 Rollouts must define max unavailable/surge, readiness gates, canary or progressive delivery, automated abort criteria, and rollback compatibility. Database and event schema changes must remain compatible with old and new application versions during rollout.
 

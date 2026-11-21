@@ -1,5 +1,9 @@
 # Data modeling, databases, and storage scaling
 
+## Scope and boundaries
+
+This document owns vendor-neutral data modeling, storage selection, transaction boundaries, durability, and consistency requirements. Use [PostgreSQL internals](34-postgresql-internals-and-performance.md) and [MySQL/InnoDB](35-mysql-innodb-and-performance.md) for engine-specific isolation, locking, indexing, and query-plan behavior; use [sharding and Distributed SQL](36-sharding-and-distributed-sql.md) for partition ownership and online resharding; use [consensus and distributed transactions](37-consensus-and-distributed-transactions.md) for cross-resource coordination. Do not infer portable behavior from an isolation-level name alone.
+
 ## 1. Choose by access patterns and invariants
 
 Select storage after defining entities, queries, update patterns, consistency, transaction boundaries, retention, and operational skills. “SQL vs NoSQL” is not a speed contest.
@@ -29,7 +33,9 @@ Select storage after defining entities, queries, update patterns, consistency, t
 - Isolation: concurrent transactions obey a defined isolation behavior.
 - Durability: committed data survives the failures covered by the database's guarantees.
 
-Isolation levels differ by database and implementation. Consider dirty reads, non-repeatable reads, phantom reads, write skew, lost updates, and serialization failures. Do not assume a level's name fully describes exact behavior across products.
+Isolation levels differ by database and implementation. Consider dirty reads, non-repeatable reads, phantom reads, write skew, lost updates, and serialization failures. Do not assume a level's name fully describes exact behavior across products: vendor implementations may map a named level to different snapshot and locking rules. State the database/version and the anomaly the application must prevent. Serializable execution may reject or abort transactions under contention, so callers need bounded retries of the entire transaction when safe; retrying only the final statement is not equivalent.
+
+**Engine-specific examples (verify the deployed major version):** PostgreSQL `REPEATABLE READ` uses a transaction snapshot and prevents phantom reads, but serialization anomalies can still occur; use `SERIALIZABLE` when the invariant requires serial execution, and retry the whole transaction on SQLSTATE `40001`. InnoDB `REPEATABLE READ` is the MySQL 8.4 default and distinguishes nonlocking consistent reads from locking reads; next-key/gap locking depends on the predicate and index access path. InnoDB `READ COMMITTED` takes a fresh snapshot for each consistent read and generally disables gap locking except for foreign-key and duplicate-key checks. These are product behaviors, not portable meanings of the isolation-level names. See the [PostgreSQL transaction isolation documentation](https://www.postgresql.org/docs/current/transaction-iso.html) and [MySQL 8.4 InnoDB isolation documentation](https://dev.mysql.com/doc/refman/8.4/en/innodb-transaction-isolation-levels.html).
 
 For inventory-like counters, a conditional update such as `UPDATE inventory SET available = available - 1 WHERE sku = ? AND available > 0` can be safer than read-then-write, provided affected-row checks and transaction boundaries are correct.
 
@@ -37,7 +43,7 @@ For inventory-like counters, a conditional update such as `UPDATE inventory SET 
 
 - Primary/replica separates write authority from read capacity or availability copies.
 - Replication can be synchronous or asynchronous; asynchronous replication introduces lag and stale reads.
-- Read-after-write requirements may need primary reads, session consistency, replica waiting, or sticky routing. Define the guarantee explicitly.
+- Read-after-write requirements may need primary reads, session consistency, replica waiting, or sticky routing. Define the guarantee explicitly, including its scope (same client/session, entity, or globally) and how long it is maintained. A successful write acknowledgement does not imply an asynchronously replicated follower is immediately current; sticky routing also needs a failover policy when the original primary changes.
 - Failover needs leader election/coordination, fencing against an old primary, routing update, and data-loss policy. “Two DBs” alone does not provide safe HA.
 - Multi-primary writes require conflict resolution, ownership partitioning, or coordination. Last-write-wins can silently discard meaningful business updates.
 

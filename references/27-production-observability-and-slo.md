@@ -2,6 +2,10 @@
 
 Observability should answer whether users can complete critical journeys, why they cannot, and what action is safe. Instrumentation volume is not a substitute for useful operational signals.
 
+## Scope and boundaries
+
+This document owns production telemetry architecture, SLIs/SLOs, error budgets, instrumentation quality, and observability-backend operations. Use [distributed tracing](56-distributed-tracing-and-context-propagation.md) for trace-context propagation details; [OpenTelemetry instrumentation](55-opentelemetry-and-instrumentation.md) for SDK/collector conventions; [service reliability](07-reliability-and-resilience.md) for timeout, retry, failover, and recovery controls; and [incident management](61-incident-management-and-postmortems.md) for command roles, communications, and postmortems. Observability signals support diagnosis; they do not establish causality or prove a recovery action is safe.
+
 ## Service-level objectives
 Define SLIs from user-visible behavior: availability, latency, correctness, freshness, durability, or successful completion. Specify event population, good-event definition, measurement window, exclusions, and aggregation. Set SLO targets based on user and business needs, not arbitrary industry defaults.
 

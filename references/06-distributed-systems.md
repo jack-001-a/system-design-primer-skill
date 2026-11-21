@@ -6,7 +6,7 @@ Distributed components communicate over networks that can delay, drop, duplicate
 
 ## 2. CAP theorem in context
 
-CAP describes the trade-off during a network partition between consistency and availability for a distributed data system. Partition tolerance is not an optional feature in a networked system; during a partition, an operation may be rejected/blocked to preserve a stronger consistency guarantee, or accepted with potentially stale/conflicting state to preserve availability.
+CAP is a statement about the guarantees a distributed read/write data operation can provide when a network partition occurs: a system cannot guarantee both linearizable consistency and availability for every request in that partition scenario. Partition tolerance is the failure condition being considered, not a mode that can simply be disabled in a networked system. A system may reject, delay, or route some operations to preserve linearizability, or accept operations that may be stale or conflicting to preserve availability. State which operations and partitions are in scope; do not use CAP as a generic ranking of databases or as a substitute for latency, durability, or normal-operation consistency analysis.
 
 Avoid the misleading shorthand “a database is CP/AP.” Behavior varies by operation, topology, consistency mode, quorum, and failure condition. State the actual read/write guarantee and failure scenario.
 
@@ -15,7 +15,7 @@ Avoid the misleading shorthand “a database is CP/AP.” Behavior varies by ope
 - **Strong / linearizable**: operations appear to take effect atomically in a single real-time-respecting order.
 - **Sequential consistency**: operations appear in one order consistent with each process's program order, but not necessarily real-time order.
 - **Causal consistency**: causally related operations are observed in causal order.
-- **Eventual consistency**: absent new writes and with successful propagation, replicas converge; it does not specify a fixed convergence deadline by itself.
+- **Eventual consistency**: under the model's assumptions, if updates stop and propagation/repair continues successfully, replicas eventually converge; this guarantee alone specifies neither a maximum staleness interval nor read-your-writes, monotonic reads, or conflict-free updates.
 - **Read-your-writes / monotonic reads**: useful session guarantees that may be weaker than global linearizability.
 
 Match the required guarantee to business invariants. A follower count can tolerate eventual convergence; a payment/ledger invariant usually requires transactional or carefully coordinated semantics.

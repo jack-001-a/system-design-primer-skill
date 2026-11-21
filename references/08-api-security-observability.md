@@ -1,5 +1,9 @@
 # API design, security, and observability
 
+## Scope and boundaries
+
+This document owns the shared API/security/observability entry-point concepts: HTTP contract shape, authentication-versus-authorization basics, threat boundaries, and operational visibility. Use [API security and rate limiting](47-api-security-rate-limiting-and-abuse.md) for detailed abuse controls and quota algorithms; [IAM and authorization models](49-iam-rbac-abac-rebac.md) for policy evaluation, tenant/object authorization, and revocation; [production observability and SLOs](27-production-observability-and-slo.md) for telemetry architecture and service-level objectives. A trace, gateway, or authenticated identity is not itself proof that an action is authorized or successful.
+
 ## 1. API design
 
 Define resources/commands, request/response schema, error model, pagination, filtering, sorting, idempotency, versioning, and compatibility. Use stable identifiers and explicit validation. Avoid leaking database schemas into public contracts.

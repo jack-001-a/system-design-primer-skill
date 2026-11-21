@@ -1,5 +1,9 @@
 # Asynchronous processing, queues, and event-driven design
 
+## Scope and boundaries
+
+This document owns broker-agnostic queue, delivery, consumer-idempotency, retry, backpressure, and outbox/inbox fundamentals. Use [the Kafka/Pulsar reference](28-event-streaming-and-kafka-pulsar.md) for broker-specific partition, replication, offset, and operations behavior; [durable workflow orchestration](32-workflow-orchestration-and-temporal.md) for long-running process state and replay; and [consensus and distributed transactions](37-consensus-and-distributed-transactions.md) for cross-resource atomicity, sagas, and ambiguous transaction outcomes. Incident command and backlog-recovery operations belong in [incident management](61-incident-management-and-postmortems.md).
+
 ## 1. Why async
 
 Use asynchronous work to decouple latency, smooth bursts, isolate failures, or process work that does not need to finish before the user receives a response. Do not move a step async if the user requires a synchronous guarantee and there is no durable acknowledgement/compensation design.

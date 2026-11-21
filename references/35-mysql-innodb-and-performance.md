@@ -9,6 +9,8 @@ InnoDB stores row data in the clustered primary-key B-tree. Secondary-index reco
 
 ## Transactions, locks, and MVCC
 InnoDB uses undo records for consistent reads and rollback, and redo logging for crash recovery. Under REPEATABLE READ, consistent reads and locking reads differ; next-key and gap locks can prevent phantom inserts but increase contention.
+
+For MySQL 8.4, REPEATABLE READ is the InnoDB default: plain consistent reads use the snapshot established by the first consistent read, while locking reads and DML use current data and acquire locks according to the index and search predicate. A unique-index equality lookup can lock only the matching index record; range predicates can take next-key/gap locks. READ COMMITTED creates a fresh snapshot for each consistent read and disables most gap locking, with documented exceptions such as foreign-key and duplicate-key checks. Verify these details for the exact MySQL release and statement shape in the [official isolation-level reference](https://dev.mysql.com/doc/refman/8.4/en/innodb-transaction-isolation-levels.html); do not infer lock coverage from SQL text alone.
 - Define isolation and read/write semantics for each critical transaction.
 - Diagnose deadlocks from engine reports; treat them as expected concurrency outcomes and retry bounded, idempotent transactions.
 - Keep transactions short, access rows in consistent order, and index predicates used by locking statements.

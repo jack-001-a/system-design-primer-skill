@@ -4,7 +4,7 @@
 
 An installable Agent Skill for software architecture design, architecture reviews, performance optimization, technology evaluation, and migration planning. It uses Donne Martin's System Design Primer as its knowledge foundation and adds modern production engineering practices.
 
-- **Version:** 2.3.0
+- **Version:** 2.4.0
 - **Language:** English, with standard technical terminology
 - **Runtime dependencies:** The Skill itself has no third-party runtime dependencies. Installation and validation require only Bash, PowerShell, or Python 3.
 
@@ -19,9 +19,14 @@ An installable Agent Skill for software architecture design, architecture review
 
 ## Quality, task routing, and evaluation
 
-Version 2.3.0 adds an evidence-first task-routing guide, explicit reference-loading paths, repository-review traceability rules, and a compact regression case set for design, review, optimization, security, and migration tasks. The validator checks the evaluation dataset structure and keeps the README, Skill metadata, package manifest, changelog, and VERSION aligned.
+Version 2.4.0 adds a provider-neutral evaluation runner, a seventeen-case regression catalog, human-reviewed scoring with a separate security gate, reproducibility manifests, review provenance, integrity chains, and cryptographic evidence verification. The validator checks the evaluation dataset structure and keeps the README, Skill metadata, package manifest, changelog, and VERSION aligned.
 
-Run the regression cases as review prompts when changing routing instructions or output contracts; they are test fixtures, not claims that an LLM has passed a behavioral benchmark.
+The evaluation workflow includes a provider-neutral model runner, a dependency-free human-review aggregator, reproducibility manifests, review-provenance records, and optional evidence signing and RFC 3161 timestamp verification. Run the seventeen fixture prompts through a user-supplied Python adapter, then review and aggregate the responses:
+
+    python scripts/run_evals.py --adapter ./adapter.py --model provider/model-and-version --output evals/responses.jsonl
+    python scripts/evaluate.py --responses evals/responses.jsonl --output evals/report.json
+
+See [evals/README.md](evals/README.md) for the adapter protocol, JSONL schema, scoring rubric, comparison controls, and limitations. The runner invokes only the adapter you supply; the aggregator validates human annotations and does not automatically judge model correctness or claim benchmark performance.
 
 ## Observability and performance engineering
 
@@ -35,11 +40,11 @@ Version 2.2.0 adds DNS and service discovery, load balancing and global traffic 
 
 We recommend downloading the versioned ZIP from [GitHub Releases](https://github.com/jack-001-a/system-design-primer-skill/releases). You can also download the source ZIP from the [main branch](https://github.com/jack-001-a/system-design-primer-skill/archive/refs/heads/main.zip).
 
-The release ZIP contains a `system-design-primer/` directory, an embedded `MANIFEST.sha256.json`, and a matching `.sha256` checksum file. Checksums use SHA-256. A Release is published only after the Git tag matches `VERSION` and CI passes.
+The release ZIP contains a `system-design-primer/` directory, an embedded `MANIFEST.sha256.json`, and a matching `.sha256` checksum file. Checksums use SHA-256. A Release is published only after the Git tag matches `VERSION`, its commit is reachable from `main`, and all three platform validation jobs pass.
 
 ## Install via npm
 
-This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 70 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies.
+This project is also published as the npm package `system-design-primer-skill`. The package includes `SKILL.md`, 70 reference documents, templates, and cross-platform installation scripts, with no third-party runtime dependencies. CI submits npm versions through OIDC-backed staged publishing; a maintainer must review and approve the staged version before it becomes public.
 
 Run the following in the target project root:
 
@@ -119,7 +124,7 @@ Extract the ZIP first. **Run the installation command from the root of the targe
 - Existing Skills are not overwritten by default. Use `--force` or `-Force` explicitly to update them.
 - `--dry-run` / `-WhatIf` previews target paths without creating or modifying files.
 - The installer checks all targets first, then stages replacements in a same-directory staging folder. If installation fails, it makes a best effort to restore the previous directory.
-- It copies only `SKILL.md`, `references`, `templates`, `scripts`, `ATTRIBUTION.md`, `LICENSE`, and `VERSION`. It does not copy `.git`, GitHub Actions, tests, or development tools.
+- It copies only `SKILL.md`, `references`, `templates`, `evals`, `ATTRIBUTION.md`, `LICENSE`, `VERSION`, and the two installer entry points (`scripts/install.sh` and `scripts/install.ps1`). Repository-only validation and packaging tools are not installed. It does not copy `.git`, GitHub Actions, tests, or development tools.
 - With `--agent all`, project-level targets are `.dsh/skills`, `.agents/skills`, `.claude/skills`, and `.github/skills`; user-level targets are `$DSH_HOME/skills`, `~/.agents/skills`, `~/.claude/skills`, and `~/.copilot/skills`. If `DSH_HOME` is unset, the DSH root defaults to `~/.dsh`.
 - DeepSeek Harness scans both its native `.dsh/skills` directory and the shared `.agents/skills` directory. Installing with `--agent all` therefore makes the same Skill available through both discovery paths; DSH's source ranking prefers the native DSH copy. Use `--agent dsh` when only DSH should discover this installation.
 - Cursor can also discover `.agents/skills` and `.claude/skills` for compatibility. If multiple hosts are enabled, prefer the corresponding single-host installation option to avoid duplicate discovery of the same Skill.
@@ -134,6 +139,7 @@ Run the following from the repository root:
     bash -n scripts/install.sh
     bash tests/test_install.sh
     python tools/package.py --output-dir dist
+    python tools/verify_package.py dist/system-design-primer-v$(tr -d '[:space:]' < VERSION).zip
 
 On Windows, you can also run:
 
@@ -170,7 +176,9 @@ Production architecture guidance covers [Kubernetes and container platforms](ref
 
 Data-intensive and event-driven architecture guidance covers [Kafka and Pulsar event streaming](references/28-event-streaming-and-kafka-pulsar.md), [Event Sourcing and CQRS](references/29-event-sourcing-and-cqrs.md), [CDC and Debezium](references/30-change-data-capture-and-debezium.md), [data lakehouse and stream/batch processing](references/31-data-lakehouse-and-stream-batch.md), [durable workflow orchestration](references/32-workflow-orchestration-and-temporal.md), and [schema registry and event governance](references/33-schema-registry-and-event-governance.md). Matching templates support event-streaming designs, event-sourced domains, and CDC data pipelines.
 
-API and real-time architecture guidance covers [API gateway and edge architecture](references/41-api-gateway-and-edge-architecture.md), [REST API design and lifecycle](references/42-rest-api-design-and-lifecycle.md), [GraphQL architecture](references/43-graphql-architecture-and-governance.md), [gRPC and service contracts](references/44-grpc-and-service-contracts.md), [WebSocket, SSE, and real-time systems](references/45-websocket-sse-and-realtime-systems.md), [real-time collaboration with OT/CRDT](references/46-realtime-collaboration-ot-crdt.md), and [API security, rate limiting, and abuse prevention](references/47-api-security-rate-limiting-and-abuse.md). Matching templates support API design, real-time system design, and API security reviews.\n\nDatabase and distributed-data guidance covers [PostgreSQL internals and performance](references/34-postgresql-internals-and-performance.md), [MySQL/InnoDB](references/35-mysql-innodb-and-performance.md), [sharding and Distributed SQL](references/36-sharding-and-distributed-sql.md), [consensus and distributed transactions](references/37-consensus-and-distributed-transactions.md), [Elasticsearch/OpenSearch search architecture](references/38-search-architecture-elasticsearch-opensearch.md), [vector databases and hybrid retrieval](references/39-vector-databases-and-hybrid-retrieval.md), and [zero-downtime database migrations](references/40-zero-downtime-database-migrations.md). Matching templates support database architecture reviews, sharding decisions, and migration plans.
+API and real-time architecture guidance covers [API gateway and edge architecture](references/41-api-gateway-and-edge-architecture.md), [REST API design and lifecycle](references/42-rest-api-design-and-lifecycle.md), [GraphQL architecture](references/43-graphql-architecture-and-governance.md), [gRPC and service contracts](references/44-grpc-and-service-contracts.md), [WebSocket, SSE, and real-time systems](references/45-websocket-sse-and-realtime-systems.md), [real-time collaboration with OT/CRDT](references/46-realtime-collaboration-ot-crdt.md), and [API security, rate limiting, and abuse prevention](references/47-api-security-rate-limiting-and-abuse.md). Matching templates support API design, real-time system design, and API security reviews.
+
+Database and distributed-data guidance covers [PostgreSQL internals and performance](references/34-postgresql-internals-and-performance.md), [MySQL/InnoDB](references/35-mysql-innodb-and-performance.md), [sharding and Distributed SQL](references/36-sharding-and-distributed-sql.md), [consensus and distributed transactions](references/37-consensus-and-distributed-transactions.md), [Elasticsearch/OpenSearch search architecture](references/38-search-architecture-elasticsearch-opensearch.md), [vector databases and hybrid retrieval](references/39-vector-databases-and-hybrid-retrieval.md), and [zero-downtime database migrations](references/40-zero-downtime-database-migrations.md). Matching templates support database architecture reviews, sharding decisions, and migration plans.
 
 
 

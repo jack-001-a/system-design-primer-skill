@@ -12,7 +12,7 @@ Define routing metadata and shard-map versioning, tenant affinity/isolation, reb
 
 ## Correctness and operations
 Cross-shard transactions may require two-phase commit or database-specific distributed protocols. Explain coordinator failure, prepared transaction recovery, lock duration, and availability implications. Prefer sagas only when business invariants tolerate intermediate states and compensations.
-Plan online resharding as a state machine: establish target ownership, copy a consistent snapshot, stream changes, verify counts/checksums/invariants, fence old writers, switch routing, monitor, and retain a bounded rollback path. Prevent dual-writer ambiguity.
+Plan online resharding as a state machine: establish target ownership, copy a consistent snapshot, stream changes from a well-defined log position, verify counts/checksums/invariants, fence old writers, switch routing at a defined ownership epoch, monitor, and retain a bounded rollback path. Prevent dual-writer ambiguity. Define how requests already in flight at cutover are drained or rejected, how retries discover the new owner, and how stale shard-map caches are invalidated or safely rejected.
 Track per-shard QPS, p95/p99 latency, CPU, storage, hot-key distribution, replication lag, queue depth, rebalance progress, and cross-shard traffic.
 
 ## Distributed SQL evaluation

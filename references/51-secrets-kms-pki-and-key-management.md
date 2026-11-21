@@ -1,5 +1,9 @@
 # Secrets Management, KMS, PKI, and Key Management
 
+## Scope and boundaries
+
+This document owns secret, cryptographic key, certificate authority, KMS/HSM, rotation, revocation, and key-recovery lifecycle. Use [workload identity](50-zero-trust-and-workload-identity.md) for workload identity issuance and federation; [supply-chain security](52-supply-chain-security-sbom-slsa.md) for build provenance and artifact signing; and [storage infrastructure](67-storage-infrastructure-and-storage-systems.md) for storage encryption and backup/restore integration. Rotating a key does not prove historical ciphertext was re-encrypted, old credentials were revoked, or encrypted backups remain recoverable.
+
 ## Secret lifecycle
 Inventory secrets, owners, consumers, environments, purpose, classification, and expiry. Prefer workload identity and dynamic credentials over static secrets. Centralize issuance, access policy, rotation, revocation, and audit; avoid distributing a universal root secret to every service.
 

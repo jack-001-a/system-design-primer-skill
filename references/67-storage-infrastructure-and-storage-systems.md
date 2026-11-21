@@ -1,5 +1,9 @@
 # Storage Infrastructure and Storage Systems
 
+## Scope and boundaries
+
+This document owns infrastructure-level block, file, and object storage behavior: performance, durability, replication, lifecycle tiers, backup integration, and storage cost. Use [data and storage](03-data-and-storage.md) for application data models and transaction semantics; [privacy engineering](54-privacy-engineering-and-data-governance.md) for retention and deletion obligations; and [secrets/KMS/PKI](51-secrets-kms-pki-and-key-management.md) for cryptographic key lifecycle. Storage durability, replication, snapshots, and retention locks do not by themselves prove application consistency, recoverability, or compliance with a deletion request.
+
 ## Workload characterization
 Classify data by access pattern, durability, latency, throughput, IOPS, block size, concurrency, growth, retention, sharing, locality, and recovery objectives. Separate application database semantics from underlying block, file, and object storage guarantees.
 

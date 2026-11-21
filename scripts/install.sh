@@ -58,8 +58,8 @@ for parent in "${PARENTS[@]}"; do
     fail "target already exists: $dest (use --force to replace it)"
   fi
 done
-PACKAGE_ITEMS=(SKILL.md references templates ATTRIBUTION.md LICENSE VERSION)
-SCRIPT_ITEMS=(install.sh install.ps1 validate.py)
+PACKAGE_ITEMS=(SKILL.md references templates evals ATTRIBUTION.md LICENSE VERSION)
+SCRIPT_ITEMS=(install.sh install.ps1)
 for item in "${PACKAGE_ITEMS[@]}"; do
   [[ -e "$SOURCE/$item" ]] || fail "required package entry is missing: $item"
 done

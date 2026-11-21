@@ -48,8 +48,8 @@ switch ($Agent + ':' + $Scope) {
   'copilot:user' { $Parents += (Join-Path $Base '.copilot/skills') }
 }
 
-$Items = @('SKILL.md','references','templates','ATTRIBUTION.md','LICENSE','VERSION')
-$ScriptItems = @('install.sh','install.ps1','validate.py')
+$Items = @('SKILL.md','references','templates','evals','ATTRIBUTION.md','LICENSE','VERSION')
+$ScriptItems = @('install.sh','install.ps1')
 foreach ($Item in $Items) {
   if (-not (Test-Path -LiteralPath (Join-Path $Source $Item))) {
     throw "Required package entry is missing: $Item"
