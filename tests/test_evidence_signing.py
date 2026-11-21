@@ -23,10 +23,23 @@ class EvidenceSigningTests(unittest.TestCase):
  def write_store(self): self.trust.write_text(json.dumps(self.store,sort_keys=True),encoding="utf-8")
  def write_envelope(self): self.signature.write_text(json.dumps(self.envelope),encoding="utf-8")
  def verify(self): return verify_signature(self.report,self.signature,self.trust,trust_store_sha256(self.trust))
- def test_sign_and_verify(self): self.assertTrue(self.verify()["historically_valid"])
- def test_revoked_after_signature_is_historically_valid_but_not_current(self):
+ def test_sign_and_verify_does_not_claim_historical_validity_from_self_asserted_time(self):
+  result=self.verify()
+  self.assertTrue(result["verified"])
+  self.assertIsNone(result["historically_valid"])
+  self.assertEqual(result["historical_validity"],"unproven")
+  self.assertEqual(result["signing_time_provenance"],"signer_asserted")
+  self.assertEqual(result["verification_scope"]["signing_time_claim"],"not_independently_verified")
+  self.assertTrue(result["currently_authorized"])
+ def test_revoked_key_keeps_historical_validity_unproven_and_is_not_currently_authorized(self):
   self.store["keys"]["release-2026"]["status"]="revoked"; self.store["keys"]["release-2026"]["revoked_at"]=(datetime.now(timezone.utc)+timedelta(days=1)).isoformat(timespec="seconds").replace("+00:00","Z"); self.write_store()
-  result=self.verify(); self.assertTrue(result["historically_valid"]); self.assertFalse(result["currently_authorized"])
+  result=self.verify()
+  self.assertIsNone(result["historically_valid"])
+  self.assertEqual(result["historical_validity"],"unproven")
+  self.assertFalse(result["currently_authorized"])
+ def test_revoked_key_without_effective_time_is_rejected(self):
+  self.store["keys"]["release-2026"]["status"]="revoked"; self.store["keys"]["release-2026"]["revoked_at"]=None; self.write_store()
+  with self.assertRaisesRegex(ValueError,"must declare revoked_at"): self.verify()
  def test_signature_at_or_after_revocation_rejected(self):
   self.store["keys"]["release-2026"]["revoked_at"]="2020-01-01T00:00:00Z"; self.write_store()
   with self.assertRaisesRegex(ValueError,"revocation effective time"): self.verify()

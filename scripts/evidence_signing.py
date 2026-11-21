@@ -1,4 +1,4 @@
-"""Ed25519 signatures and historical trust evaluation for evidence roots."""
+"""Ed25519 signatures and current trust-state evaluation for evidence roots."""
 from __future__ import annotations
 import argparse, base64, hashlib, json, re, sys
 from datetime import datetime, timezone
@@ -56,16 +56,33 @@ def verify_signature(report_path: Path,signature_path: Path,trust_path: Path,exp
  if entry["status"] not in {"active","revoked","disabled"}: raise ValueError("invalid trust-store key status")
  not_before=parse_utc(entry["not_before"],"not_before"); not_after=parse_utc(entry["not_after"],"not_after")
  if not_before>=not_after: raise ValueError("key validity interval must have not_before < not_after")
+ if entry["status"]=="revoked" and entry["revoked_at"] is None:
+  raise ValueError("revoked trust-store keys must declare revoked_at")
  revoked_at=None if entry["revoked_at"] is None else parse_utc(entry["revoked_at"],"revoked_at")
- if not_before>signed_time or signed_time>not_after: raise ValueError("signature timestamp is outside key validity interval")
- if revoked_at is not None and signed_time>=revoked_at: raise ValueError("signature timestamp is at or after key revocation effective time")
+ if not_before>signed_time or signed_time>not_after: raise ValueError("signature timestamp claim is outside key validity interval")
+ if revoked_at is not None and signed_time>=revoked_at: raise ValueError("signature timestamp claim is at or after key revocation effective time")
  public=serialization.load_pem_public_key(entry["public_key_pem"].encode("ascii"))
  if not isinstance(public,Ed25519PublicKey): raise ValueError("trust-store key must be Ed25519")
  try: public.verify(base64.b64decode(envelope["signature"],validate=True),payload(key_id,signed_at,root))
  except Exception as exc: raise ValueError("Ed25519 signature verification failed") from exc
  now=datetime.now(timezone.utc)
  currently_authorized=entry["status"]=="active" and not_before<=now<=not_after and (revoked_at is None or now<revoked_at)
- return {"verified":True,"historically_valid":True,"currently_authorized":currently_authorized,"key_status":entry["status"],"key_id":key_id,"signed_at":signed_at,"not_before":entry["not_before"],"not_after":entry["not_after"],"revoked_at":entry["revoked_at"],"trust_store_sha256":actual_trust_sha256,"evidence_root":root}
+ return {
+  "verified":True,
+  "verification_scope":{"ed25519_signature":"verified","signing_time_claim":"not_independently_verified"},
+  "historically_valid":None,
+  "historical_validity":"unproven",
+  "signing_time_provenance":"signer_asserted",
+  "currently_authorized":currently_authorized,
+  "key_status":entry["status"],
+  "key_id":key_id,
+  "signed_at":signed_at,
+  "not_before":entry["not_before"],
+  "not_after":entry["not_after"],
+  "revoked_at":entry["revoked_at"],
+  "trust_store_sha256":actual_trust_sha256,
+  "evidence_root":root,
+ }
 def main() -> int:
  p=argparse.ArgumentParser(description=__doc__); sub=p.add_subparsers(dest="command",required=True)
  s=sub.add_parser("sign"); s.add_argument("--report",type=Path,required=True); s.add_argument("--private-key",type=Path,required=True); s.add_argument("--key-id",required=True); s.add_argument("--output",type=Path,required=True)
