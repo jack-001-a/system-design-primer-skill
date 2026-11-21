@@ -38,11 +38,18 @@ jobs:
       - name: Require tag commit to be on main
         shell: bash
         run: |
-          release_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
-          git merge-base --is-ancestor "$release_commit" refs/remotes/origin/main || {
-            echo "::error::Refusing to publish a tag whose commit is not reachable from main"
-            exit 1
-          }
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            release_commit="$(git rev-parse "refs/tags/${RELEASE_TAG}^{commit}")"
+            git merge-base --is-ancestor "$release_commit" refs/remotes/origin/main || {
+              echo "::error::Refusing to publish a tag whose commit is not reachable from main"
+              exit 1
+            }
+          else
+            git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main || {
+              echo "::error::Refusing to publish a tag whose commit is not reachable from main"
+              exit 1
+            }
+          fi
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
