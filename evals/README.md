@@ -185,6 +185,26 @@ This is suitable for a release/benchmark gate; without the flag, partial reports
   tool permissions, or generation settings change.
 
 
+
+## Signing and historical-time limits
+
+The Ed25519 envelope's `signed_at` value is supplied by the signer. A valid Ed25519
+signature proves that the corresponding private key signed the envelope; it does **not**
+prove when that signing happened. A holder of the private key can backdate the value.
+Accordingly, `scripts/evidence_signing.py verify` reports
+`historical_validity: "unproven"` and `historically_valid: null`. It separately reports
+whether the key is authorized **now** according to the pinned trust store.
+
+Do not treat the envelope's `signed_at` as an independent timestamp or use it alone to
+establish historical signing validity. For independent time evidence, create an RFC 3161
+request over the signature and verify the returned token against a separately pinned TSA
+CA bundle with `scripts/evidence_timestamp.py`. That verification establishes the token's
+binding and TSA chain at genTime, but it does not by itself verify the Ed25519 signature,
+the evidence archive, or certificate revocation status. Those checks remain separate
+requirements. A trust-store key marked `revoked` must include an explicit `revoked_at`
+effective time; an absent time is rejected rather than interpreted as an unknown historical
+boundary.
+
 ## Reproducibility manifests
 
 A run manifest records the configuration needed to interpret and compare an evaluation.
