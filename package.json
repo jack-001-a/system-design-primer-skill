@@ -1,6 +1,6 @@
 {
   "name": "system-design-primer-skill",
-  "version": "2.3.0",
+  "version": "2.4.0",
   "description": "A portable System Design Agent Skill with evidence-first task routing, architecture design and review, distributed systems, security, data platforms, AI systems, observability, performance, networking, and resilience.",
   "license": "CC-BY-4.0",
   "repository": {
